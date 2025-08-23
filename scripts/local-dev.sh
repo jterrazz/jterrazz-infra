@@ -180,7 +180,6 @@ get_kubeconfig() {
         info "Found existing kubeconfig, testing connectivity..."
         if KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml" kubectl get nodes &>/dev/null; then
             success "Existing kubeconfig is working!"
-            info "Cluster: $(KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml" kubectl cluster-info --short 2>/dev/null | head -1 || echo "Kubernetes cluster")"
             info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
             return 0
         else
@@ -188,54 +187,19 @@ get_kubeconfig() {
         fi
     fi
     
-    # Try to get fresh kubeconfig using Ansible (more reliable)
-    if [ -f "ansible/inventories/local/hosts.yml" ]; then
-        info "Fetching kubeconfig via Ansible..."
-        if (cd ansible && ansible all -i inventories/local/hosts.yml -m ansible.builtin.fetch \
-            -a "src=/etc/rancher/k3s/k3s.yaml dest=../local-kubeconfig.yaml flat=true" \
-            --become 2>/dev/null); then
-            
-            # Update server address in kubeconfig
-            sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml" 2>/dev/null || true
-            
-            success "Kubeconfig updated successfully via Ansible!"
-            info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
-            return 0
-        fi
-    fi
-    
-    # Fallback: try direct SSH (may fail due to key issues)
-    warning "Ansible fetch failed, trying direct SSH..."
-    
-    # Clean up any conflicting SSH host keys for this IP
-    ssh-keygen -R "$vm_ip" 2>/dev/null || true
-    ssh-keygen -R "192.168.64.*" 2>/dev/null || true
-    
-    # Copy kubeconfig from VM using robust SSH options
+    # Fetch kubeconfig directly via SSH (simple and reliable now that SSH works)
+    info "Fetching kubeconfig via SSH..."
     if scp -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        -o PasswordAuthentication=no \
-        -o IdentitiesOnly=yes \
-        -o ConnectTimeout=10 \
         ubuntu@"$vm_ip":/etc/rancher/k3s/k3s.yaml \
-        "$PROJECT_DIR/local-kubeconfig.yaml" 2>/dev/null; then
+        "$PROJECT_DIR/local-kubeconfig.yaml"; then
         
-        # Update server address
+        # Update server address to point to VM IP
         sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml"
         
-        success "Kubeconfig fetched via SSH successfully!"
+        success "Kubeconfig fetched successfully!"
         info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
     else
         error "Failed to fetch kubeconfig via SSH."
-        info "The kubeconfig is automatically retrieved during 'make start'"
-        info "If you need a fresh copy, run: make clean && make start"
-        
-        # If there's an existing file, suggest using it
-        if [ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
-            warning "However, an existing kubeconfig file is present."
-            info "Try: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
-        fi
         exit 1
     fi
 }
@@ -266,21 +230,14 @@ status() {
         
         echo
         info "Testing SSH connectivity..."
-        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
-               -o StrictHostKeyChecking=no \
-               -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=5 \
-               ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
+        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
             echo "🟢 SSH: Connected"
         else
             echo "🔴 SSH: Failed"
         fi
         
         info "Testing Kubernetes..."
-        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
-               -o StrictHostKeyChecking=no \
-               -o UserKnownHostsFile=/dev/null \
-               ubuntu@"$vm_ip" "sudo k3s kubectl get nodes" 2>/dev/null; then
+        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get nodes" 2>/dev/null; then
             echo "🟢 Kubernetes: Running"
         else
             echo "🔴 Kubernetes: Not running"
@@ -295,10 +252,7 @@ ssh_vm() {
     local vm_ip
     vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
     
-    ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        ubuntu@"$vm_ip"
+    ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip"
 }
 
 # Main command dispatcher
