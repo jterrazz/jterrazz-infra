@@ -24,13 +24,13 @@ write-kubeconfig: /etc/rancher/k3s/k3s.yaml
 
 # TLS SANs for API server certificate
 tls-san:
-{% for san in k3s_server_config.tls-san %}
+{% for san in k3s_server_config['tls-san'] %}
   - {{ san }}
 {% endfor %}
 
 # Node configuration
 node-ip: {{ k3s_node_ip }}
-node-external-ip: {{ ansible_host }}
+node-external-ip: {{ k3s_node_ip }}
 
 # Kubelet configuration
 kubelet-arg:

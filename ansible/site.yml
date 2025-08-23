@@ -9,7 +9,6 @@
 
   vars:
     # k3s configuration
-    k3s_version: "{{ k3s_version | default('v1.28.5+k3s1') }}"
     k3s_data_dir: "/var/lib/rancher/k3s"
     k3s_config_dir: "/etc/rancher/k3s"
 

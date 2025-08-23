@@ -1,8 +1,6 @@
 # Local Development Environment
 # Simulates the VPS environment using Docker containers
 
-version: '3.8'
-
 services:
   # Main server container (simulates Hetzner VPS)
   jterrazz-server:
@@ -38,17 +36,7 @@ services:
     command: >
       bash -c "
         # Install essential packages
-        apt-get update && apt-get install -y 
-          openssh-server 
-          systemd 
-          systemd-sysv 
-          sudo 
-          curl 
-          wget 
-          gnupg 
-          ca-certificates 
-          python3 
-          python3-pip &&
+        apt-get update && apt-get install -y openssh-server systemd systemd-sysv sudo curl wget gnupg ca-certificates python3 python3-pip &&
         
         # Configure SSH
         mkdir -p /run/sshd &&
@@ -62,10 +50,7 @@ services:
         echo 'ubuntu:localdev' | chpasswd &&
         echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu &&
         
-        # Start SSH service
-        service ssh start &&
-        
-        # Keep container running with systemd
+        # Keep container running with systemd (will start SSH automatically)
         exec /sbin/init
       "
     

@@ -140,25 +140,26 @@ dev-reset: ## 🔄 Reset local environment (stop, clean, start)
 ##@ Setup and Dependencies
 
 setup: ## 📦 Install project dependencies
-	@echo "$(GREEN)Setting up project dependencies...$(NC)"
+	@echo "$(GREEN)Setting up local development dependencies...$(NC)"
 	@command -v docker >/dev/null 2>&1 || { echo "$(RED)Please install Docker first$(NC)"; exit 1; }
 	@command -v docker-compose >/dev/null 2>&1 || { echo "$(RED)Please install Docker Compose first$(NC)"; exit 1; }
 	pip install ansible
-	@command -v kubectl >/dev/null 2>&1 || { echo "$(YELLOW)Consider installing kubectl for Kubernetes management$(NC)"; }
-	@command -v helm >/dev/null 2>&1 || { echo "$(YELLOW)Consider installing Helm for package management$(NC)"; }
-	@echo "$(GREEN)Setup complete!$(NC)"
+	@command -v kubectl >/dev/null 2>&1 || { echo "$(YELLOW)Consider installing kubectl for easier k8s management$(NC)"; }
+	@echo "$(YELLOW)Note: Helm, k3s, and other tools are installed BY Ansible INSIDE containers$(NC)"
+	@echo "$(GREEN)Local development setup complete!$(NC)"
 
 deps: ## 🔍 Check all dependencies
-	@echo "$(BLUE)Checking dependencies...$(NC)"
-	@echo "Required dependencies:"
+	@echo "$(BLUE)Checking client dependencies (what YOU need installed)...$(NC)"
+	@echo "Required for local development commands:"
 	@command -v docker >/dev/null 2>&1 && echo "  ✅ Docker" || echo "  ❌ Docker (required)"
 	@command -v docker-compose >/dev/null 2>&1 && echo "  ✅ Docker Compose" || echo "  ❌ Docker Compose (required)"
 	@command -v ansible >/dev/null 2>&1 && echo "  ✅ Ansible" || echo "  ❌ Ansible (required)"
-	@echo "Optional dependencies:"
-	@command -v kubectl >/dev/null 2>&1 && echo "  ✅ kubectl" || echo "  ⚠️  kubectl (recommended)"
-	@command -v helm >/dev/null 2>&1 && echo "  ✅ Helm" || echo "  ⚠️  Helm (recommended)"
-	@command -v terraform >/dev/null 2>&1 && echo "  ✅ Terraform" || echo "  ⚠️  Terraform (for production)"
-	@command -v gh >/dev/null 2>&1 && echo "  ✅ GitHub CLI" || echo "  ⚠️  GitHub CLI (for GitHub Actions)"
+	@echo "Required for production deployment commands:"
+	@command -v terraform >/dev/null 2>&1 && echo "  ✅ Terraform" || echo "  ❌ Terraform (for make prod-* commands)"
+	@echo "Optional/convenience tools:"
+	@command -v kubectl >/dev/null 2>&1 && echo "  ✅ kubectl" || echo "  ⚠️  kubectl (for make k8s-* commands)"
+	@command -v gh >/dev/null 2>&1 && echo "  ✅ GitHub CLI" || echo "  ⚠️  GitHub CLI (for make gh-* commands)"
+	@echo "$(YELLOW)Note: Helm, k3s, etc. are installed BY Ansible INSIDE containers/servers$(NC)"
 
 ##@ Kubernetes Management
 
