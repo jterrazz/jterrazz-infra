@@ -86,21 +86,21 @@
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: '0644'
-  when: auto_updates_enabled
+  when: security_auto_updates_enabled
 
 - name: Configure unattended upgrades settings
   template:
     src: 50unattended-upgrades.j2
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: '0644'
-  when: unattended_upgrades_enabled
+  when: security_unattended_upgrades_enabled
 
 - name: Enable and start unattended-upgrades
   systemd:
     name: unattended-upgrades
     enabled: yes
     state: started
-  when: unattended_upgrades_enabled
+  when: security_unattended_upgrades_enabled
 
 # Kernel Parameter Tuning
 - name: Configure kernel parameters for security
@@ -109,7 +109,7 @@
     value: "{{ item.value }}"
     state: present
     reload: yes
-  loop: "{{ kernel_parameters }}"
+  loop: "{{ security_kernel_parameters }}"
 
 # System Hardening
 - name: Secure shared memory
@@ -119,7 +119,7 @@
     fstype: tmpfs
     opts: defaults,noexec,nosuid
     state: present
-  when: secure_shared_memory
+  when: security_secure_shared_memory
 
 - name: Disable unused network protocols
   blockinfile:
@@ -131,7 +131,7 @@
       install sctp /bin/true
       install rds /bin/true
       install tipc /bin/true
-  when: disable_uncommon_protocols
+  when: security_disable_uncommon_protocols
 
 # Audit and Monitoring Setup
 - name: Enable auditd service
