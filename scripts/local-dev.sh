@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Local Development Environment Manager
-# Simple script for Docker + Ansible + k3s local development
+# Local Development Environment - Real Ubuntu VM + Ansible + Kubernetes
+# Perfect for testing the complete infrastructure workflow locally
 
 set -euo pipefail
 
@@ -15,293 +15,255 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Simple logging
+# Logging
 info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 success() { echo -e "${GREEN}✅ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 error() { echo -e "${RED}❌ $1${NC}"; }
 
-# Setup SSH key for passwordless access
-setup_ssh_key() {
-    local ssh_key_dir="$PROJECT_DIR/local-data/ssh"
-    local private_key="$ssh_key_dir/id_rsa"
-    local public_key="$ssh_key_dir/id_rsa.pub"
-    
-    # Create SSH key directory
-    mkdir -p "$ssh_key_dir"
-    
-    # Generate SSH key pair if it doesn't exist
-    if [ ! -f "$private_key" ]; then
-        info "Generating SSH key pair for local development..."
-        ssh-keygen -t rsa -b 2048 -f "$private_key" -N "" -C "local-dev@jterrazz-infra"
-        success "SSH key pair generated"
-    fi
-    
-    # Copy public key to container's authorized_keys
-    info "Setting up SSH key authentication..."
-    if docker exec jterrazz-infra-server bash -c "
-        mkdir -p /home/ubuntu/.ssh &&
-        echo '$(cat "$public_key")' > /home/ubuntu/.ssh/authorized_keys &&
-        chown -R ubuntu:ubuntu /home/ubuntu &&
-        chmod 755 /home/ubuntu &&
-        chmod 700 /home/ubuntu/.ssh &&
-        chmod 600 /home/ubuntu/.ssh/authorized_keys
-    " 2>/dev/null; then
-        success "SSH key authentication configured"
-    else
-        error "Failed to configure SSH key authentication"
-        return 1
-    fi
-}
+# VM Configuration
+VM_NAME="jterrazz-dev"
+VM_CPUS="2"
+VM_MEMORY="4G"
+VM_DISK="20G"
 
-# SSH command with key authentication
-ssh_cmd() {
-    local ssh_key="$PROJECT_DIR/local-data/ssh/id_rsa"
-    ssh ubuntu@localhost -p 2222 -i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$@"
-}
-
-# Start local environment
-start() {
-    info "Starting local development environment..."
+# Create Ubuntu VM
+create_vm() {
+    info "Creating Ubuntu VM '$VM_NAME'..."
     
-    cd "$PROJECT_DIR"
-    
-    # Start containers
-    if docker-compose up -d; then
-        success "Containers started"
-    else
-        error "Failed to start containers"
-        return 1
-    fi
-    
-    # Wait for container to be fully ready
-    info "Waiting for container to initialize..."
-    sleep 10
-    
-    # Wait for ubuntu user to be created and SSH to be ready
-    info "Waiting for SSH service..."
-    for i in {1..20}; do
-        if docker exec jterrazz-infra-server test -d /home/ubuntu 2>/dev/null; then
-            success "Container initialization complete"
-            break
-        fi
-        
-        if [ $i -eq 20 ]; then
-            error "Container failed to initialize after 40 seconds"
-            return 1
-        fi
-        
-        sleep 2
-    done
-    
-    # Setup SSH keys
-    setup_ssh_key
-    
-    # Wait for SSH to be ready with key authentication
-    info "Testing SSH connection..."
-    for i in {1..10}; do
-        if ssh_cmd "echo 'ready'" 2>/dev/null; then
-            success "SSH service ready"
-            break
-        fi
-        
-        if [ $i -eq 10 ]; then
-            error "SSH connection failed after 10 attempts"
-            return 1
-        fi
-        
-        sleep 2
-    done
-    
-    success "Local environment ready"
-}
-
-# Stop local environment
-stop() {
-    info "Stopping local development environment..."
-    
-    cd "$PROJECT_DIR"
-    
-    if docker-compose down; then
-        success "Environment stopped"
-    else
-        warn "Some containers may still be running"
-    fi
-}
-
-# Clean local environment
-clean() {
-    info "Cleaning local development environment..."
-    
-    cd "$PROJECT_DIR"
-    
-    # Confirm destructive action
-    warn "This will remove all local data!"
-    read -p "Are you sure? (y/N): " -n 1 -r
-    echo
-    
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        info "Clean cancelled"
+    if multipass list | grep -q "$VM_NAME"; then
+        warn "VM '$VM_NAME' already exists"
         return 0
     fi
     
-    # Stop and remove containers
-    docker-compose down -v
+    multipass launch \
+        --name "$VM_NAME" \
+        --cpus "$VM_CPUS" \
+        --memory "$VM_MEMORY" \
+        --disk "$VM_DISK" \
+        22.04
     
-    # Remove local data using Docker (no sudo needed)
-    if [ -d "local-data" ]; then
-        docker run --rm -v "$PWD/local-data:/data" ubuntu:22.04 rm -rf /data/* || true
-        rm -rf local-data/
-    fi
-    
-    # Remove dangling images
-    docker image prune -f
-    
-    success "Environment cleaned"
+    success "VM created successfully"
 }
 
-# Run Ansible playbook
-ansible() {
-    info "Running Ansible playbook..."
+# Configure SSH access for Ansible
+setup_ssh() {
+    info "Setting up SSH access..."
+    
+    # Create SSH directory if it doesn't exist
+    mkdir -p "$PROJECT_DIR/local-data/ssh"
+    
+    # Generate SSH key if it doesn't exist
+    if [ ! -f "$PROJECT_DIR/local-data/ssh/id_rsa" ]; then
+        ssh-keygen -t rsa -b 2048 -f "$PROJECT_DIR/local-data/ssh/id_rsa" -N "" -C "local-dev@jterrazz-infra"
+        success "SSH key generated"
+    fi
+    
+    # Get VM IP
+    local vm_ip
+    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+    
+    # Install public key in VM
+    multipass exec "$VM_NAME" -- bash -c "
+        mkdir -p ~/.ssh &&
+        echo '$(cat "$PROJECT_DIR/local-data/ssh/id_rsa.pub")' >> ~/.ssh/authorized_keys &&
+        chmod 700 ~/.ssh &&
+        chmod 600 ~/.ssh/authorized_keys
+    "
+    
+    success "SSH key installed in VM"
+    echo "VM IP: $vm_ip"
+}
+
+# Update Ansible inventory for local VM
+update_inventory() {
+    info "Updating Ansible inventory..."
+    
+    local vm_ip
+    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+    
+    # Create local development inventory
+    cat > "$PROJECT_DIR/ansible/inventories/local/hosts.yml" << EOF
+---
+all:
+  children:
+    jterrazz:
+      hosts:
+        jterrazz-local:
+          ansible_host: $vm_ip
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ${PROJECT_DIR}/local-data/ssh/id_rsa
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+          
+          # Environment configuration
+          environment_type: "local"
+          domain_name: "local.dev"
+          
+          # Skip components that don't work well in local dev
+          skip_security: false  # Enable full security testing
+          skip_tailscale: true  # Skip VPN for local testing
+          skip_argocd: false    # Enable ArgoCD
+          
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+EOF
+
+    # Ensure directory exists
+    mkdir -p "$PROJECT_DIR/ansible/inventories/local"
+    
+    success "Ansible inventory updated"
+    info "VM accessible at: $vm_ip"
+}
+
+# Run Ansible playbook against VM
+run_ansible() {
+    info "Running Ansible playbook against local VM..."
     
     cd "$PROJECT_DIR/ansible"
     
-    # Build command with any additional arguments
-    local cmd="ansible-playbook -i inventories/local/hosts.yml site.yml"
-    if [ $# -gt 0 ]; then
-        cmd="$cmd $*"
-    fi
+    # Test connectivity first
+    ansible -i inventories/local/hosts.yml -m ping all
     
-    info "Command: $cmd"
+    # Run the full playbook
+    ansible-playbook -i inventories/local/hosts.yml site.yml -v
     
-    if eval "$cmd"; then
-        success "Ansible playbook completed"
-    else
-        error "Ansible playbook failed"
-        return 1
-    fi
+    success "Ansible playbook completed"
 }
 
-# Get kubeconfig from local k3s
+# Get kubeconfig from VM
 get_kubeconfig() {
-    info "Getting kubeconfig from local k3s..."
+    info "Getting kubeconfig from VM..."
     
-    cd "$PROJECT_DIR"
+    local vm_ip
+    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
     
-    # Get kubeconfig from container
-    if docker exec jterrazz-infra-server test -f /etc/rancher/k3s/k3s.yaml; then
-        # Copy and modify kubeconfig
-        docker exec jterrazz-infra-server cat /etc/rancher/k3s/k3s.yaml | \
-            sed 's/127.0.0.1/localhost/g' | \
-            sed 's/6443/6443/g' > local-kubeconfig.yaml
-        
-        success "Kubeconfig saved to local-kubeconfig.yaml"
-        info "Use: export KUBECONFIG=./local-kubeconfig.yaml"
+    # Copy kubeconfig from VM
+    scp -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        ubuntu@"$vm_ip":/etc/rancher/k3s/k3s.yaml \
+        "$PROJECT_DIR/local-kubeconfig.yaml"
+    
+    # Update server address
+    sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml"
+    
+    success "Kubeconfig saved to local-kubeconfig.yaml"
+    info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+}
+
+# Delete VM
+delete_vm() {
+    info "Deleting VM '$VM_NAME'..."
+    
+    if multipass list | grep -q "$VM_NAME"; then
+        multipass delete "$VM_NAME"
+        multipass purge
+        success "VM deleted"
     else
-        error "k3s not installed or kubeconfig not found"
-        return 1
+        warn "VM '$VM_NAME' not found"
     fi
 }
 
-# Show local environment status
+# Show VM status
 status() {
-    info "Local Environment Status:"
+    info "Local Development VM Status:"
     echo
     
-    # Container status
-    if docker ps --filter "name=jterrazz-infra-server" --format "table {{.Names}}\t{{.Status}}" | grep -q jterrazz-infra-server; then
-        echo "🟢 Container: Running"
-    else
-        echo "🔴 Container: Stopped"
-        return 0
-    fi
-    
-    # SSH connectivity
-    if ssh_cmd "echo 'ok'" 2>/dev/null; then
-        echo "🟢 SSH: Connected"
-    else
-        echo "🔴 SSH: Not available"
-        return 0
-    fi
-    
-    # k3s status
-    if docker exec jterrazz-infra-server systemctl is-active k3s 2>/dev/null | grep -q active; then
-        echo "🟢 k3s: Running"
+    if multipass list | grep -q "$VM_NAME"; then
+        multipass info "$VM_NAME"
         
-        # Node count
-        local nodes
-        nodes=$(docker exec jterrazz-infra-server kubectl get nodes --no-headers 2>/dev/null | wc -l || echo "0")
-        echo "📊 Nodes: $nodes"
+        local vm_ip
+        vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
         
-        # Pod count
-        local pods
-        pods=$(docker exec jterrazz-infra-server kubectl get pods -A --no-headers 2>/dev/null | wc -l || echo "0")
-        echo "📊 Pods: $pods"
+        echo
+        info "Testing SSH connectivity..."
+        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+               -o StrictHostKeyChecking=no \
+               -o UserKnownHostsFile=/dev/null \
+               -o ConnectTimeout=5 \
+               ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
+            echo "🟢 SSH: Connected"
+        else
+            echo "🔴 SSH: Failed"
+        fi
+        
+        info "Testing Kubernetes..."
+        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+               -o StrictHostKeyChecking=no \
+               -o UserKnownHostsFile=/dev/null \
+               ubuntu@"$vm_ip" "sudo k3s kubectl get nodes" 2>/dev/null; then
+            echo "🟢 Kubernetes: Running"
+        else
+            echo "🔴 Kubernetes: Not running"
+        fi
     else
-        echo "🔴 k3s: Not running"
-    fi
-    
-    # Kubeconfig availability
-    if [ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
-        echo "🟢 Kubeconfig: Available"
-    else
-        echo "🔴 Kubeconfig: Not found (run: make kubeconfig)"
+        echo "🔴 VM: Not found"
     fi
 }
 
-# Show help
-show_help() {
-    echo "Local Development Environment Manager"
-    echo
-    echo "Usage: $0 <command>"
-    echo
-    echo "Commands:"
-    echo "  start           Start local Docker environment"
-    echo "  stop            Stop local environment"
-    echo "  clean           Clean local environment (removes data)"
-    echo "  ansible [args]  Run Ansible playbook with optional arguments"
-    echo "  get-kubeconfig  Get kubeconfig from local k3s cluster"
-    echo "  status          Show local environment status"
-    echo "  help            Show this help message"
-    echo
-    echo "Examples:"
-    echo "  $0 ansible --tags=k3s"
-    echo "  $0 ansible --check"
+# SSH into VM
+ssh_vm() {
+    local vm_ip
+    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+    
+    ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null \
+        ubuntu@"$vm_ip"
 }
 
 # Main command dispatcher
-main() {
-    case "${1:-help}" in
-        start)
-            start
-            ;;
-        stop)
-            stop
-            ;;
-        clean)
-            clean
-            ;;
-        ansible)
-            shift
-            ansible "$@"
-            ;;
-        get-kubeconfig)
-            get_kubeconfig
-            ;;
-        status)
-            status
-            ;;
-        help|--help|-h)
-            show_help
-            ;;
-        *)
-            error "Unknown command: $1"
-            echo
-            show_help
-            exit 1
-            ;;
-    esac
-}
-
-# Run main function
-main "$@"
+case "${1:-help}" in
+    create)
+        create_vm
+        setup_ssh
+        update_inventory
+        ;;
+    ansible)
+        run_ansible
+        ;;
+    kubeconfig)
+        get_kubeconfig
+        ;;
+    delete)
+        delete_vm
+        ;;
+    status)
+        status
+        ;;
+    ssh)
+        ssh_vm
+        ;;
+    full)
+        create_vm
+        setup_ssh
+        update_inventory
+        run_ansible
+        get_kubeconfig
+        status
+        ;;
+    help|--help|-h)
+        echo "Local Development Manager - Real Ubuntu VM + Ansible + Kubernetes"
+        echo
+        echo "Usage: $0 <command>"
+        echo
+        echo "Commands:"
+        echo "  create      Create Ubuntu VM and setup SSH"
+        echo "  ansible     Run Ansible playbook against VM"
+        echo "  kubeconfig  Get kubeconfig from VM"
+        echo "  delete      Delete VM"
+        echo "  status      Show VM status"
+        echo "  ssh         SSH into VM"
+        echo "  full        Complete setup (create + ansible + kubeconfig)"
+        echo "  help        Show this help"
+        echo
+        echo "Examples:"
+        echo "  $0 full      # Complete local development setup"
+        echo "  $0 ssh       # Access the VM"
+        echo "  $0 status    # Check everything"
+        ;;
+    *)
+        error "Unknown command: $1"
+        exit 1
+        ;;
+esac

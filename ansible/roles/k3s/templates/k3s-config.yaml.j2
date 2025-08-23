@@ -5,8 +5,10 @@
 bind-address: {{ k3s_node_ip }}
 https-listen-port: 6443
 
-# Cluster configuration
+# Single-node cluster configuration
+{% if environment_type != 'local' %}
 cluster-init: true
+{% endif %}
 token: {{ k3s_token }}
 
 # Disable built-in components (we'll use our own)
@@ -37,9 +39,8 @@ kubelet-arg:
   - "max-pods=250"
 {% if is_local_environment | default(false) %}
 
-# Local development configuration (Docker-in-Docker fixes)
-container-runtime-endpoint: unix:///run/containerd/containerd.sock
-snapshotter: "fuse-overlayfs"
+# Local development configuration
+# Let K3s handle its own containerd runtime
 {% endif %}
 
 # Enable features

@@ -10,68 +10,15 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
-- name: Add ArgoCD Helm repository
-  kubernetes.core.helm_repository:
-    name: argo
-    repo_url: https://argoproj.github.io/argo-helm
-    state: present
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+- name: Download ArgoCD installation manifest
+  get_url:
+    url: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
+    dest: "/tmp/argocd-install.yaml"
+    mode: "0644"
 
-- name: Install ArgoCD with Helm
-  kubernetes.core.helm:
-    name: argocd
-    chart_ref: argo/argo-cd
-    release_namespace: "{{ argocd_namespace }}"
-    create_namespace: false
-    chart_version: "{{ argocd_version }}"
-    values:
-      global:
-        image:
-          tag: "v2.9.3"
-      server:
-        ingress:
-          enabled: "{{ argocd_server.ingress.enabled }}"
-          ingressClassName: "{{ argocd_server.ingress.ingressClassName }}"
-          hosts:
-            - "{{ argocd_server.ingress.hostname }}"
-          tls:
-            - secretName: argocd-server-tls
-              hosts:
-                - "{{ argocd_server.ingress.hostname }}"
-          annotations: "{{ argocd_server.ingress.annotations }}"
-        config: "{{ argocd_config }}"
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-      controller:
-        resources:
-          requests:
-            cpu: 250m
-            memory: 256Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-      dex:
-        enabled: false  # Disable OIDC for simplicity
-      redis-ha:
-        enabled: "{{ argocd_ha.enabled }}"
-      redis:
-        enabled: "{{ argocd_redis.enabled }}"
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 100m
-            memory: 128Mi
-    state: present
-    wait: true
-    wait_timeout: 600
+- name: Apply ArgoCD manifests to the argocd namespace
+  shell: |
+    kubectl apply -n {{ argocd_namespace }} -f /tmp/argocd-install.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -84,7 +31,7 @@
     wait_condition:
       type: Available
       status: "True"
-    wait_timeout: 300
+    wait_timeout: 180
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -107,18 +54,20 @@
   file:
     path: /root/.argocd
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Display ArgoCD access information
   debug:
     msg: |
       ✅ ArgoCD installed successfully!
-      • Version: {{ argocd_version }}
       • Namespace: {{ argocd_namespace }}
-      • URL: https://{{ argocd_server.ingress.hostname }}
       • Username: admin
       • Password: {{ argocd_admin_password | default('Check secret: kubectl -n argocd get secret argocd-initial-admin-secret') }}
       
+      🔗 Access ArgoCD:
+      • Port-forward: kubectl port-forward svc/argocd-server -n argocd 8080:443
+      • Then open: https://localhost:8080 (accept self-signed cert)
+
       🚀 GitOps ready!
       • Connect your Git repositories
       • Deploy applications declaratively
@@ -128,7 +77,12 @@
   file:
     path: /root/argocd-apps
     state: directory
-    mode: '0755'
+    mode: "0755"
+
+- name: Clean up installation manifest
+  file:
+    path: /tmp/argocd-install.yaml
+    state: absent
 
 - name: Create sample ArgoCD application
   copy:
@@ -154,4 +108,4 @@
           syncOptions:
           - CreateNamespace=true
     dest: /root/argocd-apps/sample-app.yaml
-    mode: '0644'
+    mode: "0644"

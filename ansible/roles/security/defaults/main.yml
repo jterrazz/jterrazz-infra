@@ -29,7 +29,7 @@ ufw_default_forward: "deny"
 # Required firewall rules for our stack
 ufw_rules:
   - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
-  - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Let's Encrypt)" }
+  - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Lets Encrypt)" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
   - { port: "6443", proto: "tcp", rule: "allow", comment: "Kubernetes API" }
   - { port: "41641", proto: "udp", rule: "allow", comment: "Tailscale" }

@@ -44,7 +44,7 @@
   loop:
     - { direction: 'incoming', policy: '{{ ufw_default_incoming }}' }
     - { direction: 'outgoing', policy: '{{ ufw_default_outgoing }}' }
-    - { direction: 'forward', policy: '{{ ufw_default_forward }}' }
+    - { direction: 'routed', policy: '{{ ufw_default_forward }}' }
   when: ufw_enabled
 
 - name: Configure UFW rules

@@ -12,8 +12,8 @@
     k3s_data_dir: "/var/lib/rancher/k3s"
     k3s_config_dir: "/etc/rancher/k3s"
 
-    # Domain configuration
-    domain_name: "{{ domain_name | default('localhost') }}"
+    # Domain configuration - will be set by inventory
+    # domain_name: set in inventory files
 
     # Application versions
     helm_version: "v3.13.3"
@@ -56,19 +56,20 @@
     - name: Install essential packages
       apt:
         name:
-          - curl
-          - wget
-          - git
-          - vim
-          - htop
-          - unzip
-          - ca-certificates
-          - gnupg
-          - lsb-release
-          - python3-pip
-          - python3-yaml  # Required for Ansible Kubernetes modules
-          - python3-kubernetes  # Required for Ansible Kubernetes modules
-          - jq
+        - curl
+        - wget
+        - git
+        - vim
+        - htop
+        - unzip
+        - ca-certificates
+        - gnupg
+        - lsb-release
+        - python3-pip
+        - python3-yaml  # Required for Ansible Kubernetes modules
+        - python3-kubernetes  # Required for Ansible Kubernetes modules
+        - jq
+        - iptables  # Required for k3s networking
         state: present
 
     - name: Create k3s directories

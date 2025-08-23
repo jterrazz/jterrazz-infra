@@ -11,41 +11,35 @@ BLUE := \033[34m
 RED := \033[31m
 NC := \033[0m
 
-##@ Local Development
+##@ Local Development (Real K3s + Ansible)
 
-start: ## 🚀 Start local development environment
-	@echo "$(GREEN)Starting local environment...$(NC)"
-	./scripts/local-dev.sh start
+start: ## 🚀 Complete local setup (VM + Ansible + K3s)
+	@echo "$(GREEN)Setting up real K3s with Ansible on Ubuntu VM...$(NC)"
+	./scripts/local-dev.sh full
 
-stop: ## ⏹️  Stop local environment
-	@echo "$(YELLOW)Stopping local environment...$(NC)"
-	./scripts/local-dev.sh stop
+create: ## 🏗️  Create Ubuntu VM and setup SSH
+	@echo "$(GREEN)Creating Ubuntu VM...$(NC)"
+	./scripts/local-dev.sh create
 
-clean: ## 🧹 Clean local environment (removes all data!)
-	@echo "$(RED)Cleaning local environment...$(NC)"
-	./scripts/local-dev.sh clean
+ansible: ## ⚙️  Run Ansible playbook on VM
+	@echo "$(GREEN)Running Ansible on VM...$(NC)"
+	./scripts/local-dev.sh ansible
 
-ansible: ## ⚙️  Run Ansible playbook locally
-	@echo "$(GREEN)Running Ansible playbook...$(NC)"
-	./scripts/local-dev.sh ansible $(ARGS)
+kubeconfig: ## 📋 Get kubeconfig from VM
+	@echo "$(BLUE)Getting kubeconfig from VM...$(NC)"
+	./scripts/local-dev.sh kubeconfig
 
-kubeconfig: ## 📋 Get kubeconfig from local k3s
-	@echo "$(BLUE)Getting kubeconfig...$(NC)"
-	./scripts/local-dev.sh get-kubeconfig
+status: ## 📊 Show VM and K3s status
+	@echo "$(BLUE)Checking VM status...$(NC)"
+	./scripts/local-dev.sh status
 
-shell: ## 🐚 SSH into local container
-	@echo "$(GREEN)Connecting to container...$(NC)"
-	@if [ -f local-data/ssh/id_rsa ]; then \
-		ssh ubuntu@localhost -p 2222 -i local-data/ssh/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR; \
-	else \
-		echo "$(YELLOW)SSH key not found. Run 'make start' first.$(NC)"; \
-	fi
+ssh: ## 🐚 SSH into Ubuntu VM
+	@echo "$(GREEN)Connecting to VM...$(NC)"
+	./scripts/local-dev.sh ssh
 
-logs: ## 📋 Show container logs
-	@docker logs jterrazz-infra-server
-
-status: ## 📊 Show local environment status
-	@./scripts/local-dev.sh status
+stop: ## 🗑️  Delete Ubuntu VM
+	@echo "$(RED)Deleting VM...$(NC)"
+	./scripts/local-dev.sh delete
 
 ##@ Production Deployment
 
@@ -55,18 +49,11 @@ deploy: ## 🚀 Deploy to production
 
 ##@ Development Shortcuts
 
-dev: ## 🔄 Full development cycle (clean → start → ansible → kubeconfig)
-	@echo "$(GREEN)Running full development cycle...$(NC)"
-	@$(MAKE) clean
+dev: ## 🔄 Full development cycle (same as start)
 	@$(MAKE) start
-	@sleep 10
-	@$(MAKE) ansible
-	@$(MAKE) kubeconfig
-	@echo "$(GREEN)✅ Development environment ready!$(NC)"
 
-reset: ## 🔄 Reset environment (stop → clean → start)
+reset: ## 🔄 Reset environment (stop → start)
 	@$(MAKE) stop || true
-	@$(MAKE) clean
 	@$(MAKE) start
 
 ##@ Utilities
@@ -74,9 +61,8 @@ reset: ## 🔄 Reset environment (stop → clean → start)
 deps: ## 🔍 Check dependencies
 	@echo "$(BLUE)Checking dependencies...$(NC)"
 	@echo "Local development:"
-	@command -v docker >/dev/null 2>&1 && echo "  ✅ Docker" || echo "  ❌ Docker (required)"
-	@command -v docker-compose >/dev/null 2>&1 && echo "  ✅ Docker Compose" || echo "  ❌ Docker Compose (required)"
-	@command -v ansible >/dev/null 2>&1 && echo "  ✅ Ansible" || echo "  ❌ Ansible (required)"
+	@command -v multipass >/dev/null 2>&1 && echo "  ✅ Multipass" || echo "  ❌ Multipass (required - brew install multipass)"
+	@command -v ansible >/dev/null 2>&1 && echo "  ✅ Ansible" || echo "  ❌ Ansible (required - brew install ansible)"
 	@echo "Production deployment:"
 	@command -v terraform >/dev/null 2>&1 && echo "  ✅ Terraform" || echo "  ❌ Terraform (for production)"
 	@echo "Optional tools:"
@@ -84,17 +70,14 @@ deps: ## 🔍 Check dependencies
 
 setup: ## 📦 Install dependencies
 	@echo "$(GREEN)Installing dependencies...$(NC)"
-	@command -v docker >/dev/null 2>&1 || { echo "$(RED)Please install Docker first$(NC)"; exit 1; }
-	@command -v docker-compose >/dev/null 2>&1 || { echo "$(RED)Please install Docker Compose first$(NC)"; exit 1; }
-	@pip install ansible
+	@command -v multipass >/dev/null 2>&1 || { echo "$(RED)Installing Multipass...$(NC)"; brew install multipass; }
+	@command -v ansible >/dev/null 2>&1 || { echo "$(RED)Installing Ansible...$(NC)"; brew install ansible; }
 	@echo "$(GREEN)Dependencies installed!$(NC)"
 
-clean-all: ## 🧹 Clean everything
+clean: ## 🧹 Clean everything (delete VM and kubeconfig)
 	@echo "$(RED)Cleaning everything...$(NC)"
-	@$(MAKE) clean || true
+	@$(MAKE) stop || true
 	@rm -f local-kubeconfig.yaml kubeconfig
-	@rm -rf local-data/
-	@docker system prune -f
 	@echo "$(GREEN)Cleanup complete$(NC)"
 
 ##@ Help
@@ -105,7 +88,7 @@ help: ## 💡 Display this help message
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 	@echo ""
 	@echo "$(BLUE)Quick Examples:$(NC)"
-	@echo "  make dev                    # Complete development setup"
-	@echo "  make ansible ARGS='--tags=k3s'  # Run specific Ansible tags"
-	@echo "  make shell                  # SSH into container"
+	@echo "  make start                  # Complete local setup (VM + K3s + Ansible)"
+	@echo "  make ssh                    # SSH into Ubuntu VM"
+	@echo "  make status                 # Check VM and K3s status"
 	@echo "  make deploy                 # Deploy to production"
