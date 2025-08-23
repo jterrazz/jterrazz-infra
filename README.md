@@ -94,6 +94,7 @@ sudo infra portainer [action]
 # Configure Nginx reverse proxy with SSL
 sudo infra nginx [action]
   --configure, -c        # Setup reverse proxy and SSL
+  --secure               # Ensure HTTPS-only (disable port 80 services)
   --test, -t             # Test configuration
   --reload, -r           # Reload configuration
   --restart              # Restart service

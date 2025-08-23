@@ -15,6 +15,55 @@ source "$LIB_DIR/ssl.sh"
 readonly NGINX_CONFIG_PATH="/etc/nginx/sites-available/portainer"
 readonly NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/portainer"
 
+# Disable HTTP services for HTTPS-only setup
+disable_http_services() {
+    log "Ensuring HTTPS-only setup (no port 80 services)..."
+    
+    # Check what's listening on port 80
+    local port_80_service
+    port_80_service=$(netstat -tlnp 2>/dev/null | grep ':80 ' | head -1)
+    
+    if [[ -n "$port_80_service" ]]; then
+        warn "Service detected on port 80: $port_80_service"
+        
+        # Common services that might be on port 80
+        local services_to_stop=("apache2" "httpd" "lighttpd")
+        
+        for service in "${services_to_stop[@]}"; do
+            if systemctl is-active --quiet "$service" 2>/dev/null; then
+                log "Stopping and disabling $service (HTTPS-only setup)"
+                systemctl stop "$service" || warn "Failed to stop $service"
+                systemctl disable "$service" || warn "Failed to disable $service"
+            fi
+        done
+        
+        # Check if it's a default Nginx default site still somehow active
+        if [[ -f /etc/nginx/sites-enabled/default ]]; then
+            rm -f /etc/nginx/sites-enabled/default
+            log "Removed default Nginx site"
+        fi
+        
+        # Ensure UFW blocks port 80 if firewall is active
+        if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+            ufw delete allow 80/tcp 2>/dev/null || true
+            ufw delete allow http 2>/dev/null || true
+            log "Removed port 80 from UFW firewall rules"
+        fi
+        
+        # Double-check after cleanup
+        sleep 2
+        port_80_service=$(netstat -tlnp 2>/dev/null | grep ':80 ' | head -1)
+        if [[ -n "$port_80_service" ]]; then
+            warn "Port 80 still in use after cleanup: $port_80_service"
+            warn "Manual investigation may be required"
+        else
+            log "✅ Port 80 successfully closed - HTTPS-only setup confirmed"
+        fi
+    else
+        log "✅ No services on port 80 - HTTPS-only setup confirmed"
+    fi
+}
+
 # Configure Nginx for Portainer with SSL
 configure_nginx_portainer() {
     log "Configuring Nginx reverse proxy for Portainer..."
@@ -57,6 +106,9 @@ configure_nginx_portainer() {
     
     # Remove default site if it exists
     rm -f /etc/nginx/sites-enabled/default
+    
+    # Ensure no HTTP (port 80) services are running - HTTPS-only setup
+    disable_http_services
     
     log "Nginx configuration generated successfully"
     return 0
@@ -397,6 +449,11 @@ cmd_nginx() {
                 exit 1
             fi
             ;;
+        secure|https-only)
+            check_root || exit 1
+            print_header "HTTPS-Only Security Check"
+            disable_http_services
+            ;;
         status)
             show_nginx_status
             ;;
@@ -471,6 +528,8 @@ show_nginx_help() {
     echo "  --restart            Restart Nginx service"
     echo "  --remove             Remove Nginx configuration for Portainer"
     echo "  --renew-ssl          Force SSL certificate renewal (requires --force-ssl)"
+    echo "  --secure             Ensure HTTPS-only setup (disable port 80 services)"
+    echo "  --https-only         Alias for --secure"
     echo "  --status, -s         Show Nginx status and configuration (default)"
     echo "  --help, -h           Show this help message"
     echo
@@ -480,6 +539,7 @@ show_nginx_help() {
     echo "Examples:"
     echo "  infra nginx                          # Show status"
     echo "  infra nginx --configure              # Setup reverse proxy with SSL"
+    echo "  infra nginx --secure                 # Ensure HTTPS-only (disable port 80)"
     echo "  infra nginx --test                   # Test configuration"
     echo "  infra nginx --renew-ssl --force-ssl  # Force certificate renewal"
 }
