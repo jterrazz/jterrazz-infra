@@ -2,7 +2,7 @@
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean ansible kubeconfig shell logs status deploy deps setup
+.PHONY: help start stop clean ansible kubeconfig shell logs status deploy deps
 
 # Colors
 GREEN := \033[32m
@@ -67,12 +67,6 @@ deps: ## 🔍 Check dependencies
 	@command -v terraform >/dev/null 2>&1 && echo "  ✅ Terraform" || echo "  ❌ Terraform (for production)"
 	@echo "Optional tools:"
 	@command -v kubectl >/dev/null 2>&1 && echo "  ✅ kubectl" || echo "  ⚠️  kubectl (recommended)"
-
-setup: ## 📦 Install dependencies
-	@echo "$(GREEN)Installing dependencies...$(NC)"
-	@command -v multipass >/dev/null 2>&1 || { echo "$(RED)Installing Multipass...$(NC)"; brew install multipass; }
-	@command -v ansible >/dev/null 2>&1 || { echo "$(RED)Installing Ansible...$(NC)"; brew install ansible; }
-	@echo "$(GREEN)Dependencies installed!$(NC)"
 
 clean: ## 🧹 Clean everything (delete VM and kubeconfig)
 	@echo "$(RED)Cleaning everything...$(NC)"
