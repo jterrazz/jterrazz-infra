@@ -135,15 +135,15 @@
     - name: Create kubeconfig copy
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        dest: "{% if environment_type == 'multipass' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         flat: true
       delegate_to: "{{ inventory_hostname }}"
 
     - name: Update kubeconfig server address
       ansible.builtin.replace:
-        path: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        path: "{% if environment_type == 'multipass' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
-        replace: "{% if environment_type == 'local' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
+        replace: "{% if environment_type == 'multipass' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
         backup: false
       delegate_to: localhost
       become: false

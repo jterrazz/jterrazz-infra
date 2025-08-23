@@ -17,6 +17,7 @@ Thumbs.db
 # Local development environment
 local-data/
 local-kubeconfig.yaml
+ansible/kubeconfig
 .local-env
 
 # Terraform
