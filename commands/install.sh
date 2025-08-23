@@ -44,6 +44,107 @@ install_system_dependencies() {
     return 0
 }
 
+# Verify system dependencies are actually installed
+verify_system_dependencies() {
+    local missing_packages=()
+    local required_bins=("nginx" "ufw" "fail2ban-server" "docker" "curl" "wget" "git")
+    
+    log "Verifying system dependencies..."
+    
+    for bin in "${required_bins[@]}"; do
+        if ! command -v "$bin" &> /dev/null; then
+            missing_packages+=("$bin")
+        fi
+    done
+    
+    if [[ ${#missing_packages[@]} -gt 0 ]]; then
+        warn "Missing required binaries: ${missing_packages[*]}"
+        return 1
+    fi
+    
+    log "All system dependencies verified"
+    return 0
+}
+
+# Verify Docker installation
+verify_docker() {
+    log "Verifying Docker installation..."
+    
+    if ! command -v docker &> /dev/null; then
+        warn "Docker binary not found"
+        return 1
+    fi
+    
+    if ! systemctl is-active --quiet docker 2>/dev/null; then
+        warn "Docker service not running"
+        return 1
+    fi
+    
+    if ! docker compose version &> /dev/null; then
+        warn "Docker Compose plugin not available"
+        return 1
+    fi
+    
+    log "Docker installation verified"
+    return 0
+}
+
+# Verify services are running
+verify_services() {
+    log "Verifying required services..."
+    local failed_services=()
+    
+    # Check UFW
+    if command -v ufw &> /dev/null; then
+        if ! ufw status | grep -q "Status: active"; then
+            warn "UFW firewall not active"
+            failed_services+=("ufw")
+        fi
+    fi
+    
+    # Check fail2ban
+    if command -v fail2ban-server &> /dev/null; then
+        if ! systemctl is-active --quiet fail2ban 2>/dev/null; then
+            warn "Fail2ban service not running"
+            failed_services+=("fail2ban")
+        fi
+    fi
+    
+    if [[ ${#failed_services[@]} -gt 0 ]]; then
+        warn "Services need attention: ${failed_services[*]}"
+        return 1
+    fi
+    
+    log "All services verified"
+    return 0
+}
+
+# Reset state for missing components
+reset_missing_states() {
+    log "Checking for missing components and resetting state..."
+    
+    # Check and reset system dependencies
+    if ! verify_system_dependencies >/dev/null 2>&1; then
+        warn "System dependencies missing - will reinstall"
+        reset_step "system_dependencies"
+    fi
+    
+    # Check and reset Docker
+    if ! verify_docker >/dev/null 2>&1; then
+        warn "Docker installation incomplete - will reinstall"
+        reset_step "docker_installation"
+    fi
+    
+    # Check and reset services
+    if ! verify_services >/dev/null 2>&1; then
+        warn "Services need reconfiguration"
+        reset_step "firewall_configuration"
+        reset_step "fail2ban_configuration"
+    fi
+    
+    return 0
+}
+
 # Install Docker CE
 install_docker() {
     log "Installing Docker CE..."
@@ -272,6 +373,9 @@ cmd_install() {
     info "Architecture: $(dpkg --print-architecture)"
     echo
     
+    # Check for missing components and reset states if needed
+    reset_missing_states
+    
     # Install components
     run_step "system_dependencies" "install_system_dependencies" || exit 1
     
@@ -290,9 +394,42 @@ cmd_install() {
     
     run_step "system_optimization" "optimize_system" || exit 1
     
+    # Final verification
+    print_section "Installation Verification"
+    local verification_failed=false
+    
+    if verify_system_dependencies; then
+        log "✅ System dependencies: All required binaries present"
+    else
+        error "❌ System dependencies: Some binaries missing"
+        verification_failed=true
+    fi
+    
+    if [[ "$skip_docker" != "true" ]]; then
+        if verify_docker; then
+            log "✅ Docker: Installation complete and running"
+        else
+            error "❌ Docker: Installation incomplete or not running"
+            verification_failed=true
+        fi
+    fi
+    
+    if [[ "$skip_firewall" != "true" || "$skip_security" != "true" ]]; then
+        if verify_services; then
+            log "✅ Services: All security services active"
+        else
+            warn "⚠️  Services: Some services may need attention"
+        fi
+    fi
+    
     # Summary
     print_section "Installation Summary"
-    log "System installation completed successfully"
+    if [[ "$verification_failed" == "true" ]]; then
+        warn "System installation completed with some issues"
+        warn "Run 'infra install' again to fix missing components"
+    else
+        log "System installation completed successfully"
+    fi
     
     echo
     echo "✅ Installed Components:"

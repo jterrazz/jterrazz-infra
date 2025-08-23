@@ -345,6 +345,15 @@ cmd_portainer() {
     case "$action" in
         deploy)
             print_header "Portainer Deployment"
+            
+            # Check prerequisites
+            if ! command -v docker &> /dev/null; then
+                error "Docker is not installed or missing"
+                error "This may happen if the installation was incomplete"
+                error "Fix: sudo infra install  (will detect and reinstall missing components)"
+                exit 1
+            fi
+            
             run_step "portainer_volume" "create_portainer_volume" || exit 1
             run_step "portainer_container" "deploy_portainer_container" || exit 1
             

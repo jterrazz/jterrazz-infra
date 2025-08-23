@@ -570,7 +570,9 @@ cmd_nginx() {
             
             # Check prerequisites
             if ! command -v nginx &> /dev/null; then
-                error "Nginx is not installed. Run: infra install"
+                error "Nginx is not installed or missing"
+                error "This may happen if the installation was incomplete"
+                error "Fix: sudo infra install  (will detect and reinstall missing components)"
                 exit 1
             fi
             

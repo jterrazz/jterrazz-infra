@@ -109,25 +109,7 @@ uninstall_cli() {
     return 0
 }
 
-# Update the CLI
-update_cli() {
-    local source_dir="$1"
-    
-    log "Updating JTerrazz Infrastructure CLI..."
-    
-    # Backup current version if it exists
-    if [[ -d "$CLI_HOME" ]]; then
-        local backup_dir="${CLI_HOME}.backup.$(date +%Y%m%d-%H%M%S)"
-        log "Backing up current installation to: $backup_dir"
-        cp -r "$CLI_HOME" "$backup_dir"
-    fi
-    
-    # Install new version
-    install_cli "$source_dir"
-    
-    log "Update completed successfully!"
-    return 0
-}
+
 
 # Show installation status
 show_status() {
@@ -178,14 +160,14 @@ show_help() {
     echo "Actions:"
     echo "  install   Install the CLI (default)"
     echo "  uninstall Remove the CLI"
-    echo "  update    Update existing installation"
+
     echo "  status    Show installation status"
     echo "  help      Show this help message"
     echo
     echo "Examples:"
     echo "  sudo $0           # Install CLI"
     echo "  sudo $0 install   # Install CLI"
-    echo "  sudo $0 update    # Update CLI"
+
     echo "  sudo $0 status    # Check installation"
     echo "  sudo $0 uninstall # Remove CLI"
 }
@@ -230,13 +212,7 @@ main() {
             echo "  infra portainer     # Setup Portainer"
             echo "  infra nginx         # Configure reverse proxy"
             ;;
-        update)
-            check_root
-            local source_dir
-            source_dir=$(get_source_dir)
-            validate_source "$source_dir" || exit 1
-            update_cli "$source_dir" || exit 1
-            ;;
+
         uninstall)
             check_root
             uninstall_cli || exit 1
