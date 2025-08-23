@@ -60,10 +60,7 @@
             memory: 30Mi
     state: present
     wait: true
-    wait_condition:
-      type: Ready
-      status: "True"
-    wait_timeout: 300
+    wait_timeout: "300s"
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
@@ -77,6 +74,7 @@
       type: Available
       status: "True"
     wait_timeout: 300
+    wait: true
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 

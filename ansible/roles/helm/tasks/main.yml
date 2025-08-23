@@ -18,12 +18,12 @@
     src: "{{ helm_download_url }}"
     dest: /tmp
     remote_src: yes
-    creates: /tmp/linux-amd64/helm
+    creates: "/tmp/linux-{{ helm_arch }}/helm"
   when: not helm_binary.stat.exists or helm_version not in helm_installed_version.stdout | default('')
 
 - name: Copy Helm binary to install directory
   copy:
-    src: /tmp/linux-amd64/helm
+    src: "/tmp/linux-{{ helm_arch }}/helm"
     dest: "{{ helm_install_dir }}/helm"
     mode: '0755'
     remote_src: yes
@@ -66,5 +66,5 @@
 
 - name: Clean up download files
   file:
-    path: /tmp/linux-amd64
+    path: "/tmp/linux-{{ helm_arch }}"
     state: absent

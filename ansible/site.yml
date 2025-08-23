@@ -66,6 +66,8 @@
           - gnupg
           - lsb-release
           - python3-pip
+          - python3-yaml  # Required for Ansible Kubernetes modules
+          - python3-kubernetes  # Required for Ansible Kubernetes modules
           - jq
         state: present
 
@@ -91,6 +93,7 @@
     - role: helm
     
     - role: cert-manager
+      when: not (skip_cert_manager | default(false))
     
     - role: nginx-ingress
     
