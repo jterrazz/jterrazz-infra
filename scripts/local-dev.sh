@@ -67,20 +67,29 @@ setup_ssh() {
     ssh-keygen -R "$vm_ip" 2>/dev/null || true
     ssh-keygen -R "192.168.64.*" 2>/dev/null || true
     
-    # Install public key in VM (replace existing to avoid duplicates)
+    # Install public key in VM using multipass mount (more reliable)
     local pub_key
     pub_key=$(cat "$PROJECT_DIR/local-data/ssh/id_rsa.pub")
     
+    # Use multipass transfer to safely copy the SSH key
+    echo "$pub_key" > "$PROJECT_DIR/local-data/ssh/temp_key.pub"
+    multipass transfer "$PROJECT_DIR/local-data/ssh/temp_key.pub" "$VM_NAME:/tmp/ssh_key.pub"
+    
+    # Install the key using multipass exec (no SSH required)
     multipass exec "$VM_NAME" -- bash -c "
         mkdir -p ~/.ssh &&
-        # Remove any existing entries for this key
-        grep -v 'local-dev@jterrazz-infra' ~/.ssh/authorized_keys 2>/dev/null > ~/.ssh/authorized_keys.tmp || touch ~/.ssh/authorized_keys.tmp &&
-        # Add the new key
-        echo '$pub_key' >> ~/.ssh/authorized_keys.tmp &&
-        mv ~/.ssh/authorized_keys.tmp ~/.ssh/authorized_keys &&
         chmod 700 ~/.ssh &&
-        chmod 600 ~/.ssh/authorized_keys
+        # Clear and install the key
+        cat /tmp/ssh_key.pub > ~/.ssh/authorized_keys &&
+        chmod 600 ~/.ssh/authorized_keys &&
+        # Clean up temp file
+        rm -f /tmp/ssh_key.pub &&
+        # Verify the key was installed
+        echo 'SSH key installed with' \$(wc -l < ~/.ssh/authorized_keys) 'entries'
     "
+    
+    # Clean up local temp file
+    rm -f "$PROJECT_DIR/local-data/ssh/temp_key.pub"
     
     # Test SSH connection
     if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
@@ -166,29 +175,69 @@ get_kubeconfig() {
     local vm_ip
     vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
     
+    # Check if kubeconfig already exists and works
+    if [ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
+        info "Found existing kubeconfig, testing connectivity..."
+        if KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml" kubectl get nodes &>/dev/null; then
+            success "Existing kubeconfig is working!"
+            info "Cluster: $(KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml" kubectl cluster-info --short 2>/dev/null | head -1 || echo "Kubernetes cluster")"
+            info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+            return 0
+        else
+            warning "Existing kubeconfig not working, fetching fresh copy..."
+        fi
+    fi
+    
+    # Try to get fresh kubeconfig using Ansible (more reliable)
+    if [ -f "ansible/inventories/local/hosts.yml" ]; then
+        info "Fetching kubeconfig via Ansible..."
+        if (cd ansible && ansible all -i inventories/local/hosts.yml -m ansible.builtin.fetch \
+            -a "src=/etc/rancher/k3s/k3s.yaml dest=../local-kubeconfig.yaml flat=true" \
+            --become 2>/dev/null); then
+            
+            # Update server address in kubeconfig
+            sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml" 2>/dev/null || true
+            
+            success "Kubeconfig updated successfully via Ansible!"
+            info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+            return 0
+        fi
+    fi
+    
+    # Fallback: try direct SSH (may fail due to key issues)
+    warning "Ansible fetch failed, trying direct SSH..."
+    
     # Clean up any conflicting SSH host keys for this IP
     ssh-keygen -R "$vm_ip" 2>/dev/null || true
     ssh-keygen -R "192.168.64.*" 2>/dev/null || true
     
     # Copy kubeconfig from VM using robust SSH options
-    scp -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+    if scp -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
         -o StrictHostKeyChecking=no \
         -o UserKnownHostsFile=/dev/null \
         -o PasswordAuthentication=no \
         -o IdentitiesOnly=yes \
         -o ConnectTimeout=10 \
         ubuntu@"$vm_ip":/etc/rancher/k3s/k3s.yaml \
-        "$PROJECT_DIR/local-kubeconfig.yaml" || {
-        error "Failed to copy kubeconfig. SSH authentication failed."
-        info "This usually happens after VM recreation. Try: make clean && make start"
+        "$PROJECT_DIR/local-kubeconfig.yaml" 2>/dev/null; then
+        
+        # Update server address
+        sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml"
+        
+        success "Kubeconfig fetched via SSH successfully!"
+        info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+    else
+        error "Failed to fetch kubeconfig via SSH."
+        info "The kubeconfig is automatically retrieved during 'make start'"
+        info "If you need a fresh copy, run: make clean && make start"
+        
+        # If there's an existing file, suggest using it
+        if [ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
+            warning "However, an existing kubeconfig file is present."
+            info "Try: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+        fi
         exit 1
-    }
-    
-    # Update server address
-    sed -i.bak "s/127.0.0.1/$vm_ip/g" "$PROJECT_DIR/local-kubeconfig.yaml"
-    
-    success "Kubeconfig saved to local-kubeconfig.yaml"
-    info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
+    fi
 }
 
 # Delete VM
