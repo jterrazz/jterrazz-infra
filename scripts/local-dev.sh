@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Local Development Environment Manager
-# Test Ansible + Kubernetes locally before VPS deployment
+# Simple script for Docker + Ansible + k3s local development
 
 set -euo pipefail
 
@@ -13,335 +13,289 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Logging
-log_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
-log_success() { echo -e "${GREEN}✅ $1${NC}"; }
-log_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-log_error() { echo -e "${RED}❌ $1${NC}"; }
+# Simple logging
+info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
+success() { echo -e "${GREEN}✅ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
+error() { echo -e "${RED}❌ $1${NC}"; }
 
-# Check dependencies
-check_dependencies() {
-    log_info "Checking dependencies..."
+# Setup SSH key for passwordless access
+setup_ssh_key() {
+    local ssh_key_dir="$PROJECT_DIR/local-data/ssh"
+    local private_key="$ssh_key_dir/id_rsa"
+    local public_key="$ssh_key_dir/id_rsa.pub"
     
-    local missing_deps=()
+    # Create SSH key directory
+    mkdir -p "$ssh_key_dir"
     
-    if ! command -v docker &> /dev/null; then
-        missing_deps+=("docker")
+    # Generate SSH key pair if it doesn't exist
+    if [ ! -f "$private_key" ]; then
+        info "Generating SSH key pair for local development..."
+        ssh-keygen -t rsa -b 2048 -f "$private_key" -N "" -C "local-dev@jterrazz-infra"
+        success "SSH key pair generated"
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
-        missing_deps+=("docker-compose")
+    # Copy public key to container's authorized_keys
+    info "Setting up SSH key authentication..."
+    if docker exec jterrazz-infra-server bash -c "
+        mkdir -p /home/ubuntu/.ssh &&
+        echo '$(cat "$public_key")' > /home/ubuntu/.ssh/authorized_keys &&
+        chown -R ubuntu:ubuntu /home/ubuntu &&
+        chmod 755 /home/ubuntu &&
+        chmod 700 /home/ubuntu/.ssh &&
+        chmod 600 /home/ubuntu/.ssh/authorized_keys
+    " 2>/dev/null; then
+        success "SSH key authentication configured"
+    else
+        error "Failed to configure SSH key authentication"
+        return 1
     fi
-    
-    if ! command -v ansible &> /dev/null; then
-        missing_deps+=("ansible")
-    fi
-    
-    if ! command -v kubectl &> /dev/null; then
-        missing_deps+=("kubectl")
-    fi
-    
-    if [ ${#missing_deps[@]} -ne 0 ]; then
-        log_error "Missing dependencies: ${missing_deps[*]}"
-        echo
-        echo "Install missing dependencies:"
-        for dep in "${missing_deps[@]}"; do
-            case $dep in
-                docker)
-                    echo "  🐳 Docker: https://docs.docker.com/get-docker/"
-                    ;;
-                docker-compose)
-                    echo "  🐙 Docker Compose: https://docs.docker.com/compose/install/"
-                    ;;
-                ansible)
-                    echo "  📦 Ansible: pip install ansible"
-                    ;;
-                kubectl)
-                    echo "  ⚙️ kubectl: https://kubernetes.io/docs/tasks/tools/"
-                    ;;
-            esac
-        done
-        exit 1
-    fi
-    
-    log_success "All dependencies found"
+}
+
+# SSH command with key authentication
+ssh_cmd() {
+    local ssh_key="$PROJECT_DIR/local-data/ssh/id_rsa"
+    ssh ubuntu@localhost -p 2222 -i "$ssh_key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR "$@"
 }
 
 # Start local environment
-start_environment() {
-    log_info "Starting local development environment..."
+start() {
+    info "Starting local development environment..."
     
     cd "$PROJECT_DIR"
     
-    # Create local data directories
-    mkdir -p local-data/{server,k3s,ssh}
-    
     # Start containers
-    docker-compose up -d
+    if docker-compose up -d; then
+        success "Containers started"
+    else
+        error "Failed to start containers"
+        return 1
+    fi
     
-    log_info "Waiting for containers to be ready..."
+    # Wait for container to be fully ready
+    info "Waiting for container to initialize..."
     sleep 10
     
-    # Wait for SSH to be ready
-    local max_attempts=30
-    local attempt=1
-    
-    while [ $attempt -le $max_attempts ]; do
-        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p 2222 ubuntu@localhost "echo 'SSH Ready'" &>/dev/null; then
-            log_success "SSH connection established"
+    # Wait for ubuntu user to be created and SSH to be ready
+    info "Waiting for SSH service..."
+    for i in {1..20}; do
+        if docker exec jterrazz-infra-server test -d /home/ubuntu 2>/dev/null; then
+            success "Container initialization complete"
             break
         fi
         
-        if [ $attempt -eq $max_attempts ]; then
-            log_error "SSH connection failed after $max_attempts attempts"
-            exit 1
+        if [ $i -eq 20 ]; then
+            error "Container failed to initialize after 40 seconds"
+            return 1
         fi
         
-        log_info "Waiting for SSH... (attempt $attempt/$max_attempts)"
-        sleep 5
-        ((attempt++))
+        sleep 2
     done
+    
+    # Setup SSH keys
+    setup_ssh_key
+    
+    # Wait for SSH to be ready with key authentication
+    info "Testing SSH connection..."
+    for i in {1..10}; do
+        if ssh_cmd "echo 'ready'" 2>/dev/null; then
+            success "SSH service ready"
+            break
+        fi
+        
+        if [ $i -eq 10 ]; then
+            error "SSH connection failed after 10 attempts"
+            return 1
+        fi
+        
+        sleep 2
+    done
+    
+    success "Local environment ready"
 }
 
 # Stop local environment
-stop_environment() {
-    log_info "Stopping local development environment..."
+stop() {
+    info "Stopping local development environment..."
     
     cd "$PROJECT_DIR"
-    docker-compose down
     
-    log_success "Environment stopped"
-}
-
-# Clean local environment
-clean_environment() {
-    log_warning "This will remove all local data and containers!"
-    read -p "Are you sure? (y/N): " -n 1 -r
-    echo
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        cd "$PROJECT_DIR"
-        
-        # Stop and remove containers
-        docker-compose down -v
-        
-        # Remove local data using Docker (no sudo needed)
-        if [ -d "local-data" ]; then
-            docker run --rm -v "$PWD/local-data:/data" ubuntu:22.04 rm -rf /data/*
-            rm -rf local-data/
-        fi
-        
-        # Remove dangling images
-        docker image prune -f
-        
-        log_success "Environment cleaned"
+    if docker-compose down; then
+        success "Environment stopped"
     else
-        log_info "Clean cancelled"
+        warn "Some containers may still be running"
     fi
 }
 
-# Run Ansible playbook against local environment
-run_ansible() {
-    log_info "Running Ansible playbook against local environment..."
+# Clean local environment
+clean() {
+    info "Cleaning local development environment..."
+    
+    cd "$PROJECT_DIR"
+    
+    # Confirm destructive action
+    warn "This will remove all local data!"
+    read -p "Are you sure? (y/N): " -n 1 -r
+    echo
+    
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        info "Clean cancelled"
+        return 0
+    fi
+    
+    # Stop and remove containers
+    docker-compose down -v
+    
+    # Remove local data using Docker (no sudo needed)
+    if [ -d "local-data" ]; then
+        docker run --rm -v "$PWD/local-data:/data" ubuntu:22.04 rm -rf /data/* || true
+        rm -rf local-data/
+    fi
+    
+    # Remove dangling images
+    docker image prune -f
+    
+    success "Environment cleaned"
+}
+
+# Run Ansible playbook
+ansible() {
+    info "Running Ansible playbook..."
     
     cd "$PROJECT_DIR/ansible"
     
-    # Install Ansible collections
-    ansible-galaxy install -r requirements.yml
+    # Build command with any additional arguments
+    local cmd="ansible-playbook -i inventories/local/hosts.yml site.yml"
+    if [ $# -gt 0 ]; then
+        cmd="$cmd $*"
+    fi
     
-    # Run unified playbook with local inventory
-    ansible-playbook \
-        -i inventories/local/hosts.yml \
-        site.yml \
-        --diff \
-        --check \
-        "$@"
+    info "Command: $cmd"
     
-    log_success "Ansible dry-run completed"
-    
-    read -p "Apply changes? (y/N): " -n 1 -r
-    echo
-    
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ansible-playbook \
-            -i inventories/local/hosts.yml \
-            site.yml \
-            --diff \
-            "$@"
-        
-        log_success "Ansible playbook applied"
+    if eval "$cmd"; then
+        success "Ansible playbook completed"
     else
-        log_info "Ansible apply cancelled"
+        error "Ansible playbook failed"
+        return 1
     fi
 }
 
 # Get kubeconfig from local k3s
 get_kubeconfig() {
-    log_info "Getting kubeconfig from local k3s..."
+    info "Getting kubeconfig from local k3s..."
     
-    # Copy kubeconfig from container
-    docker exec jterrazz-infra-server bash -c "
-        if [ -f /etc/rancher/k3s/k3s.yaml ]; then
-            cat /etc/rancher/k3s/k3s.yaml
-        else
-            echo 'k3s not installed yet. Run ansible first.'
-            exit 1
-        fi
-    " > local-kubeconfig.yaml
+    cd "$PROJECT_DIR"
     
-    # Update server address for local access
-    sed -i 's/127.0.0.1:6443/localhost:6443/g' local-kubeconfig.yaml
-    
-    export KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml"
-    
-    log_success "Kubeconfig saved to local-kubeconfig.yaml"
-    log_info "Export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
-}
-
-# Test Kubernetes connectivity
-test_kubernetes() {
-    log_info "Testing Kubernetes connectivity..."
-    
-    if [ ! -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
-        log_error "kubeconfig not found. Run 'get-kubeconfig' first."
-        exit 1
-    fi
-    
-    export KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml"
-    
-    # Test basic connectivity
-    if kubectl cluster-info &>/dev/null; then
-        log_success "Kubernetes cluster is accessible"
+    # Get kubeconfig from container
+    if docker exec jterrazz-infra-server test -f /etc/rancher/k3s/k3s.yaml; then
+        # Copy and modify kubeconfig
+        docker exec jterrazz-infra-server cat /etc/rancher/k3s/k3s.yaml | \
+            sed 's/127.0.0.1/localhost/g' | \
+            sed 's/6443/6443/g' > local-kubeconfig.yaml
         
-        echo
-        kubectl get nodes -o wide
-        echo
-        kubectl get pods -A
-        
+        success "Kubeconfig saved to local-kubeconfig.yaml"
+        info "Use: export KUBECONFIG=./local-kubeconfig.yaml"
     else
-        log_error "Cannot connect to Kubernetes cluster"
-        exit 1
+        error "k3s not installed or kubeconfig not found"
+        return 1
     fi
 }
 
-# Show environment status
-show_status() {
-    log_info "Local Environment Status"
+# Show local environment status
+status() {
+    info "Local Environment Status:"
     echo
     
-    # Docker containers
-    echo "🐳 Docker Containers:"
-    docker-compose ps
-    echo
+    # Container status
+    if docker ps --filter "name=jterrazz-infra-server" --format "table {{.Names}}\t{{.Status}}" | grep -q jterrazz-infra-server; then
+        echo "🟢 Container: Running"
+    else
+        echo "🔴 Container: Stopped"
+        return 0
+    fi
     
     # SSH connectivity
-    echo "🔐 SSH Connectivity:"
-    if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p 2222 ubuntu@localhost "echo 'SSH: ✅ Connected'" 2>/dev/null; then
-        echo "SSH: ✅ Connected"
+    if ssh_cmd "echo 'ok'" 2>/dev/null; then
+        echo "🟢 SSH: Connected"
     else
-        echo "SSH: ❌ Not accessible"
+        echo "🔴 SSH: Not available"
+        return 0
     fi
-    echo
     
-    # Kubernetes status
-    echo "☸️ Kubernetes Status:"
+    # k3s status
+    if docker exec jterrazz-infra-server systemctl is-active k3s 2>/dev/null | grep -q active; then
+        echo "🟢 k3s: Running"
+        
+        # Node count
+        local nodes
+        nodes=$(docker exec jterrazz-infra-server kubectl get nodes --no-headers 2>/dev/null | wc -l || echo "0")
+        echo "📊 Nodes: $nodes"
+        
+        # Pod count
+        local pods
+        pods=$(docker exec jterrazz-infra-server kubectl get pods -A --no-headers 2>/dev/null | wc -l || echo "0")
+        echo "📊 Pods: $pods"
+    else
+        echo "🔴 k3s: Not running"
+    fi
+    
+    # Kubeconfig availability
     if [ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]; then
-        export KUBECONFIG="$PROJECT_DIR/local-kubeconfig.yaml"
-        if kubectl cluster-info &>/dev/null; then
-            echo "Cluster: ✅ Running"
-            kubectl get nodes --no-headers | awk '{print "Nodes: " $2 " (" $1 ")"}'
-        else
-            echo "Cluster: ❌ Not accessible"
-        fi
+        echo "🟢 Kubeconfig: Available"
     else
-        echo "Cluster: ❓ kubeconfig not found"
+        echo "🔴 Kubeconfig: Not found (run: make kubeconfig)"
     fi
-    echo
-    
-    # Services
-    echo "🌐 Local Services:"
-    echo "  SSH:       localhost:2222"
-    echo "  HTTP:      localhost:80"  
-    echo "  HTTPS:     localhost:443"
-    echo "  k3s API:   localhost:6443"
-    echo "  Portainer: localhost:9000 (via k3s)"
 }
 
 # Show help
 show_help() {
-    cat << EOF
-🏠 Local Development Environment Manager
-
-Test your Ansible playbooks and Kubernetes configurations locally before VPS deployment.
-
-USAGE:
-    $0 <command> [options]
-
-COMMANDS:
-    start           Start local Docker environment
-    stop            Stop local Docker environment  
-    clean           Clean all local data and containers
-    ansible         Run Ansible playbook against local environment
-    get-kubeconfig  Extract kubeconfig from local k3s
-    test-k8s        Test Kubernetes connectivity
-    status          Show environment status
-    help            Show this help message
-
-EXAMPLES:
-    # Start local environment and run full setup
-    $0 start
-    $0 ansible
-    $0 get-kubeconfig
-    $0 test-k8s
-    
-    # Run specific Ansible roles
-    $0 ansible --tags k3s,nginx-ingress
-    
-    # Clean restart
-    $0 clean
-    $0 start
-
-WORKFLOW:
-    1. Test locally:    $0 start && $0 ansible 
-    2. Verify k8s:      $0 get-kubeconfig && $0 test-k8s
-    3. Deploy to VPS:   GitHub Actions or manual Terraform
-
-EOF
+    echo "Local Development Environment Manager"
+    echo
+    echo "Usage: $0 <command>"
+    echo
+    echo "Commands:"
+    echo "  start           Start local Docker environment"
+    echo "  stop            Stop local environment"
+    echo "  clean           Clean local environment (removes data)"
+    echo "  ansible [args]  Run Ansible playbook with optional arguments"
+    echo "  get-kubeconfig  Get kubeconfig from local k3s cluster"
+    echo "  status          Show local environment status"
+    echo "  help            Show this help message"
+    echo
+    echo "Examples:"
+    echo "  $0 ansible --tags=k3s"
+    echo "  $0 ansible --check"
 }
 
-# Main function
+# Main command dispatcher
 main() {
     case "${1:-help}" in
         start)
-            check_dependencies
-            start_environment
+            start
             ;;
         stop)
-            stop_environment
+            stop
             ;;
         clean)
-            clean_environment
+            clean
             ;;
         ansible)
             shift
-            run_ansible "$@"
+            ansible "$@"
             ;;
         get-kubeconfig)
             get_kubeconfig
             ;;
-        test-k8s)
-            test_kubernetes
-            ;;
         status)
-            show_status
+            status
             ;;
         help|--help|-h)
             show_help
             ;;
         *)
-            log_error "Unknown command: $1"
+            error "Unknown command: $1"
             echo
             show_help
             exit 1
@@ -349,4 +303,5 @@ main() {
     esac
 }
 
+# Run main function
 main "$@"

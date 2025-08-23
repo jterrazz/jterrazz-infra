@@ -39,16 +39,21 @@ services:
         apt-get update && 
         apt-get install -y openssh-server systemd systemd-sysv sudo python3 &&
         
-        # Configure SSH for password auth
+        # Configure SSH for key-based auth
         mkdir -p /run/sshd &&
-        sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config &&
-        sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config &&
         
         # Create ubuntu user for Ansible
         useradd -m -s /bin/bash ubuntu &&
         usermod -aG sudo ubuntu &&
-        echo 'ubuntu:localdev' | chpasswd &&
         echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu &&
+        
+        # Set up SSH key authentication
+        mkdir -p /home/ubuntu/.ssh &&
+        if [ -f /home/ubuntu/.ssh/authorized_keys ]; then
+          cp /home/ubuntu/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys.bak || true
+        fi &&
+        chown -R ubuntu:ubuntu /home/ubuntu/.ssh &&
+        chmod 700 /home/ubuntu/.ssh &&
         
         # Start systemd (SSH will auto-start)
         exec /sbin/init
