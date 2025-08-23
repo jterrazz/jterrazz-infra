@@ -59,7 +59,7 @@ variable "allowed_ssh_ips" {
 variable "allowed_k8s_ips" {
   description = "IP addresses allowed to access Kubernetes API"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Restrict this to your IPs
+  default     = ["100.64.0.0/10"]  # Tailscale IP range only (secure)
 }
 
 # Cloudflare DNS Configuration

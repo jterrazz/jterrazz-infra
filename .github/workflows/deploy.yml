@@ -1,0 +1,127 @@
+## JTerrazz Infrastructure - Deployment Workflow
+# Deploys via Ansible with Tailscale for secure K8s API access
+
+name: 🚀 Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ansible/**"
+      - "kubernetes/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: "Force deployment (skip safety checks)"
+        required: false
+        default: "false"
+        type: boolean
+
+env:
+  ANSIBLE_HOST_KEY_CHECKING: False
+  ANSIBLE_STDOUT_CALLBACK: yaml
+
+jobs:
+  deploy:
+    name: 🛠️ Deploy to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 Install Dependencies
+        run: |
+          pip install ansible kubernetes requests
+
+      - name: 🔐 Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: 🌐 Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: ⏳ Wait for Tailscale Connection
+        run: |
+          echo "🔄 Waiting for Tailscale to establish connection..."
+          sleep 10
+          tailscale ip -4
+
+      - name: 🔧 Create Ansible Inventory
+        run: |
+          mkdir -p inventory
+          cat > inventory/production << EOF
+          [k3s_cluster]
+          production ansible_host=${{ secrets.SERVER_IP }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+          [k3s_cluster:vars]
+          domain_name=${{ secrets.DOMAIN_NAME }}
+          environment=production
+          k3s_version=v1.28.5+k3s1
+
+          [all:vars]
+          ansible_python_interpreter=/usr/bin/python3
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          EOF
+
+      - name: 🧪 Test Ansible Connection
+        run: |
+          cd ansible
+          ansible all -i ../inventory/production -m ping
+
+      - name: 🔍 Test Kubernetes API Access (via Tailscale)
+        run: |
+          echo "🔍 Testing K8s API access via Tailscale..."
+          # Test if we can reach the K8s API through Tailscale
+          curl -k --connect-timeout 10 https://${{ secrets.SERVER_IP }}:6443/api/v1 || echo "⚠️ K8s API not accessible (expected before deployment)"
+
+      - name: 🚀 Deploy via Ansible
+        run: |
+          cd ansible
+          ansible-playbook -i ../inventory/production site.yml
+
+      - name: ✅ Verify Deployment
+        run: |
+          echo "🔍 Verifying cluster health..."
+          # SSH to server and check k3s status (since kubectl needs to be run locally on server)
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_IP }} "k3s kubectl get nodes -o wide"
+          ssh -i ~/.ssh/id_rsa root@${{ secrets.SERVER_IP }} "k3s kubectl get pods -A"
+
+      - name: 📊 Deployment Summary
+        run: |
+          echo "✅ Deployment Complete!"
+          echo ""
+          echo "🌍 Services:"
+          echo "  • Landing Page: https://${{ secrets.DOMAIN_NAME }}"
+          echo "  • ArgoCD: https://argocd.${{ secrets.DOMAIN_NAME }}"
+          echo "  • Portainer: https://portainer.${{ secrets.DOMAIN_NAME }}"
+          echo ""
+          echo "🔐 Access restricted to Tailscale VPN users only"
+          echo "🎯 K8s API (6443) secured with Tailscale IP restriction"
+
+  notify:
+    name: 📢 Notify
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 📬 Send Notification
+        if: failure()
+        run: |
+          echo "🚨 Deployment failed! Check the logs above."
+          # Add your notification logic here (Slack, Discord, email, etc.)
