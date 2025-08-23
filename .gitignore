@@ -46,6 +46,12 @@ logs/
 *.temp
 .cache/
 
+# Backup files
+*.bak
+*.backup
+*.orig
+*~
+
 # Environment variables
 .env
 .env.local
