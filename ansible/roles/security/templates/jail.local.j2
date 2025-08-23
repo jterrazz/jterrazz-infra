@@ -35,7 +35,8 @@ logpath = /var/log/auth.log
 maxretry = 2
 bantime = {{ security_fail2ban_bantime }}
 
-# Web server protection (nginx)
+# Web server protection (nginx) - only enabled if nginx is installed
+{% if ansible_facts.packages is defined and 'nginx' in ansible_facts.packages %}
 [nginx-http-auth]
 enabled = true
 filter = nginx-http-auth
@@ -56,6 +57,7 @@ filter = nginx-botsearch
 logpath = /var/log/nginx/access.log
 maxretry = 5
 bantime = {{ security_fail2ban_bantime }}
+{% endif %}
 
 # Additional protections
 [recidive]

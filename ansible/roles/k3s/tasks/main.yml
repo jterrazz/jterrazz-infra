@@ -69,7 +69,6 @@
   ansible.builtin.debug:
     msg: "About to install k3s version {{ k3s_version }}"
 
-
 - name: Install k3s server
   ansible.builtin.shell: "INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh"
   environment:

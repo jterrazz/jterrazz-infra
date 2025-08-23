@@ -72,6 +72,11 @@
   when: security_ufw_enabled
 
 # fail2ban Configuration
+- name: Gather package facts for fail2ban configuration
+  ansible.builtin.package_facts:
+    manager: auto
+  when: security_fail2ban_enabled
+
 - name: Configure fail2ban jail.local
   template:
     src: jail.local.j2
