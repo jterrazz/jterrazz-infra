@@ -114,34 +114,8 @@ update_inventory() {
     local vm_ip
     vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
     
-    # Create local development inventory
-    cat > "$PROJECT_DIR/ansible/inventories/local/hosts.yml" << EOF
----
-all:
-  children:
-    jterrazz:
-      hosts:
-        jterrazz-local:
-          ansible_host: $vm_ip
-          ansible_user: ubuntu
-          ansible_ssh_private_key_file: ${PROJECT_DIR}/local-data/ssh/id_rsa
-          ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-          
-          # Environment configuration
-          environment_type: "local"
-          domain_name: "local.dev"
-          
-          # Skip components that don't work well in local dev
-          skip_security: false  # Enable full security testing
-          skip_tailscale: true  # Skip VPN for local testing
-          skip_argocd: false    # Enable ArgoCD
-          
-      vars:
-        ansible_python_interpreter: /usr/bin/python3
-EOF
-
-    # Ensure directory exists
-    mkdir -p "$PROJECT_DIR/ansible/inventories/local"
+    # Update the multipass inventory with current VM IP
+    sed -i.bak "s/ansible_host: .*/ansible_host: $vm_ip/" "$PROJECT_DIR/ansible/inventories/multipass/hosts.yml"
     
     success "Ansible inventory updated"
     info "VM accessible at: $vm_ip"
@@ -154,10 +128,10 @@ run_ansible() {
     cd "$PROJECT_DIR/ansible"
     
     # Test connectivity first
-    ansible -i inventories/local/hosts.yml -m ping all
+    ansible -i inventories/multipass/hosts.yml -m ping all
     
     # Run the full playbook
-    ansible-playbook -i inventories/local/hosts.yml site.yml -v
+    ansible-playbook -i inventories/multipass/hosts.yml site.yml -v
     
     success "Ansible playbook completed"
 }
