@@ -3,6 +3,14 @@
 # JTerrazz Infrastructure - Status Command
 # Show comprehensive system and service status
 
+# Get script directory and source libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+# Source required libraries
+source "$LIB_DIR/common.sh"
+source "$LIB_DIR/ssl.sh"
+
 # Show system information
 show_system_info() {
     print_section "System Information"

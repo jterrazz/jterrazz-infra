@@ -3,8 +3,13 @@
 # JTerrazz Infrastructure - Nginx Command
 # Configure Nginx reverse proxy with SSL
 
-# Source SSL utilities
-source "${LIB_DIR}/ssl.sh"
+# Get script directory and source libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+# Source required libraries
+source "$LIB_DIR/common.sh"
+source "$LIB_DIR/ssl.sh"
 
 readonly NGINX_CONFIG_PATH="/etc/nginx/sites-available/portainer"
 readonly NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/portainer"

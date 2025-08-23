@@ -3,6 +3,13 @@
 # JTerrazz Infrastructure - System Upgrade Command
 # Updates system packages and security patches
 
+# Get script directory and source libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+
+# Source required libraries
+source "$LIB_DIR/common.sh"
+
 # Update system packages
 update_system_packages() {
     log "Updating package lists..."
