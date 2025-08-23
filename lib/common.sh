@@ -3,20 +3,26 @@
 # JTerrazz Infrastructure - Common Library
 # Shared utilities, logging, and state management functions
 
-# Color codes for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
+# Color codes for output (only define if not already set)
+if [[ -z "${RED:-}" ]]; then
+    readonly RED='\033[0;31m'
+    readonly GREEN='\033[0;32m'
+    readonly YELLOW='\033[1;33m'
+    readonly BLUE='\033[0;34m'
+    readonly NC='\033[0m' # No Color
+fi
 
 # Configuration with sensible defaults for private network access via Tailscale
-readonly DOMAIN_NAME="${DOMAIN_NAME:-manager.jterrazz.com}"
-readonly PORTAINER_VERSION="${PORTAINER_VERSION:-latest}"
+if [[ -z "${DOMAIN_NAME:-}" ]]; then
+    readonly DOMAIN_NAME="${DOMAIN_NAME:-manager.jterrazz.com}"
+    readonly PORTAINER_VERSION="${PORTAINER_VERSION:-latest}"
+fi
 
 # State management
-readonly STATE_DIR="/var/lib/jterrazz-infra"
-readonly STATE_FILE="${STATE_DIR}/state"
+if [[ -z "${STATE_DIR:-}" ]]; then
+    readonly STATE_DIR="/var/lib/jterrazz-infra"
+    readonly STATE_FILE="${STATE_DIR}/state"
+fi
 
 # Ensure state directory exists
 init_state() {
