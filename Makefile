@@ -71,7 +71,8 @@ deps: ## 🔍 Check dependencies
 clean: ## 🧹 Clean everything (delete VM and kubeconfig)
 	@echo "$(RED)Cleaning everything...$(NC)"
 	@$(MAKE) stop || true
-	@rm -f local-kubeconfig.yaml kubeconfig
+	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
+	@rm -rf local-data/
 	@echo "$(GREEN)Cleanup complete$(NC)"
 
 ##@ Help
