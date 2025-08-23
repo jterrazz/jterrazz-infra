@@ -11,11 +11,15 @@ cluster-init: true
 {% endif %}
 token: {{ k3s_token }}
 
-# Disable built-in components (we'll use our own)
+# Disable built-in components (local-storage now enabled for development!)
+{% if k3s_disable_components and k3s_disable_components|length > 0 %}
 disable:
 {% for component in k3s_disable_components %}
   - {{ component }}
 {% endfor %}
+{% else %}
+# All k3s components enabled (including local-storage for PVCs)
+{% endif %}
 
 # Storage configuration
 data-dir: {{ k3s_data_dir }}
