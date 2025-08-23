@@ -19,7 +19,17 @@ update_system_packages() {
         return 1
     fi
     
-    log "Upgrading installed packages..."
+    # Check how many packages can be upgraded
+    local upgradable_count
+    upgradable_count=$(apt list --upgradable 2>/dev/null | wc -l)
+    upgradable_count=$((upgradable_count - 1)) # Remove header line
+    
+    if [[ $upgradable_count -eq 0 ]]; then
+        log "All packages are already up to date"
+        return 0
+    fi
+    
+    log "Upgrading $upgradable_count package(s)..."
     if ! apt upgrade -y; then
         error "Failed to upgrade packages"
         return 1
@@ -31,7 +41,18 @@ update_system_packages() {
 
 # Update security patches only
 update_security_patches() {
-    log "Installing security updates only..."
+    log "Checking for security updates..."
+    
+    # Check for security-related packages that can be upgraded
+    local security_packages
+    security_packages=$(apt list --upgradable 2>/dev/null | grep -i security | wc -l)
+    
+    if [[ $security_packages -eq 0 ]]; then
+        log "No security updates available"
+        return 0
+    fi
+    
+    log "Found $security_packages security update(s), installing..."
     if ! unattended-upgrade -v; then
         # Fallback to manual security updates if unattended-upgrades not available
         if ! apt list --upgradable | grep -i security | cut -d'/' -f1 | xargs apt install -y; then
@@ -83,26 +104,26 @@ perform_system_upgrade() {
     info "Kernel: $(uname -r)"
     echo
     
-    # Perform upgrade
+    # Perform upgrade (always check for updates)
     if [[ "$security_only" == "true" ]]; then
-        run_step "security_updates" "update_security_patches" || exit 1
+        update_security_patches || exit 1
     else
-        run_step "system_upgrade" "update_system_packages" || exit 1
+        update_system_packages || exit 1
     fi
     
     # Cleanup system
-    run_step "system_cleanup" "cleanup_system" || exit 1
+    cleanup_system || exit 1
     
     # Check for reboot requirement
     check_reboot_required
     
     print_section "Upgrade Summary"
-    log "System upgrade completed successfully"
+    log "✅ System upgrade completed successfully!"
     
     if [[ "$security_only" != "true" ]]; then
-        info "All packages have been updated to the latest versions"
+        info "System packages checked and updated as needed"
     else
-        info "Security patches have been applied"
+        info "Security updates checked and applied as needed"
     fi
 }
 
