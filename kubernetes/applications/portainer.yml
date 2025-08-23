@@ -133,20 +133,21 @@ spec:
     app: portainer
 
 ---
-# Portainer Ingress (optional - for domain access)
+# Portainer Ingress using Traefik (built-in with k3s)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: portainer-ingress
   namespace: portainer
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    # Restrict to Tailscale IPs only
-    nginx.ingress.kubernetes.io/whitelist-source-range: "100.64.0.0/10"
+    # Traefik automatic HTTPS redirect
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+    # Traefik backend protocol (HTTPS backend)
+    traefik.ingress.kubernetes.io/service.serversscheme: https
+    # Restrict to Tailscale IPs only using Traefik middleware
+    traefik.ingress.kubernetes.io/router.middlewares: default-tailscale-whitelist@kubernetescrd
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
   - hosts:
     - portainer.{{ domain_name | default('localhost') }}

@@ -1,0 +1,27 @@
+---
+# Traefik Middleware for Tailscale IP whitelisting
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: tailscale-whitelist
+  namespace: default
+spec:
+  ipWhiteList:
+    sourceRange:
+      - "100.64.0.0/10"  # Tailscale IP range
+      - "127.0.0.1/32"   # Localhost
+      - "10.0.0.0/8"     # Private networks
+      - "192.168.0.0/16" # Private networks
+      - "172.16.0.0/12"  # Private networks
+
+---
+# Traefik HTTPS redirect middleware
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect
+  namespace: default
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

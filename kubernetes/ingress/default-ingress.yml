@@ -105,24 +105,24 @@ spec:
         app: default-landing
     spec:
       containers:
-      - name: nginx
-        image: nginx:alpine
-        ports:
-        - containerPort: 80
-        volumeMounts:
-        - name: html
-          mountPath: /usr/share/nginx/html
-        resources:
-          requests:
-            cpu: 10m
-            memory: 16Mi
-          limits:
-            cpu: 50m
-            memory: 64Mi
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
       volumes:
-      - name: html
-        configMap:
-          name: default-landing-page
+        - name: html
+          configMap:
+            name: default-landing-page
 
 ---
 # Default landing page service
@@ -135,34 +135,35 @@ spec:
   selector:
     app: default-landing
   ports:
-  - port: 80
-    targetPort: 80
+    - port: 80
+      targetPort: 80
 
 ---
-# Main ingress with SSL
+# Main ingress with SSL using Traefik (built-in with k3s)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: main-ingress
   namespace: default
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Traefik automatic HTTPS redirect
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+    # Traefik automatic ACME SSL certificates (no cert-manager needed!)
+    traefik.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   tls:
-  - hosts:
-    - "{{ domain_name | default('localhost') }}"
-    secretName: main-tls
+    - hosts:
+        - "{{ domain_name | default('localhost') }}"
+      secretName: main-tls
   rules:
-  - host: "{{ domain_name | default('localhost') }}"
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: default-landing
-            port:
-              number: 80
+    - host: "{{ domain_name | default('localhost') }}"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: default-landing
+                port:
+                  number: 80

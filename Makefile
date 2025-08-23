@@ -29,6 +29,10 @@ kubeconfig: ## 📋 Get kubeconfig from VM
 	@echo "$(BLUE)Getting kubeconfig from VM...$(NC)"
 	./scripts/local-dev.sh kubeconfig
 
+apps: ## 🚀 Deploy applications (Traefik configs + ArgoCD apps)
+	@echo "$(GREEN)Deploying applications via ArgoCD...$(NC)"
+	./scripts/deploy-apps.sh
+
 status: ## 📊 Show VM and K3s status
 	@echo "$(BLUE)Checking VM status...$(NC)"
 	./scripts/local-dev.sh status
@@ -84,6 +88,7 @@ help: ## 💡 Display this help message
 	@echo ""
 	@echo "$(BLUE)Quick Examples:$(NC)"
 	@echo "  make start                  # Complete local setup (VM + K3s + Ansible)"
+	@echo "  make apps                   # Deploy applications (after start)"
 	@echo "  make ssh                    # SSH into Ubuntu VM"
 	@echo "  make status                 # Check VM and K3s status"
 	@echo "  make deploy                 # Deploy to production"

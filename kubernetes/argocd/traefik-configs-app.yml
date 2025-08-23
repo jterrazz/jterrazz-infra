@@ -1,0 +1,30 @@
+---
+# ArgoCD Application for Traefik Configurations
+# Deploys Traefik middleware and additional configurations
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik-configs
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jterrazz/jterrazz-infra.git
+    targetRevision: HEAD
+    path: kubernetes/traefik
+    directory:
+      include: "*.yml"
+      exclude: "README.md"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true

@@ -18,8 +18,7 @@
     # Application versions
     helm_version: "v3.13.3"
     argocd_version: "v2.9.3"
-    cert_manager_version: "v1.13.3"
-    nginx_ingress_version: "4.8.3"
+
 
     # Tailscale
     tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
