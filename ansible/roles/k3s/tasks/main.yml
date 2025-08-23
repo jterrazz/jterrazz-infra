@@ -17,17 +17,27 @@
   failed_when: false
   when: k3s_binary.stat.exists
 
+- name: Check if k3s is already at the correct version
+  ansible.builtin.set_fact:
+    k3s_needs_install: "{{ not k3s_binary.stat.exists or (k3s_version not in (k3s_installed_version.stdout | default(''))) }}"
+
+- name: Check if k3s installation script exists
+  ansible.builtin.stat:
+    path: /tmp/k3s-install.sh
+  register: k3s_script_exists
+
 - name: Download k3s installation script
   ansible.builtin.get_url:
     url: "{{ k3s_install_script_url }}"
     dest: /tmp/k3s-install.sh
-    mode: '0755'
+    mode: "0755"
+  when: k3s_needs_install and not k3s_script_exists.stat.exists
 
 - name: Create k3s configuration directory
   ansible.builtin.file:
     path: "{{ k3s_config_dir }}"
     state: directory
-    mode: '0755'
+    mode: "0755"
     owner: root
     group: root
 
@@ -50,7 +60,7 @@
   ansible.builtin.template:
     src: k3s-config.yaml.j2
     dest: "{{ k3s_config_dir }}/config.yaml"
-    mode: '0640'
+    mode: "0640"
     owner: root
     group: root
   notify: restart k3s
@@ -59,11 +69,13 @@
   ansible.builtin.debug:
     msg: "About to install k3s version {{ k3s_version }}"
 
-- name: Force install k3s server  # noqa command-instead-of-shell
+
+- name: Install k3s server
   ansible.builtin.shell: "INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh"
   environment:
     K3S_TOKEN: "{{ k3s_token }}"
-  changed_when: true  # Always considered changed as it's an installation
+  when: k3s_needs_install
+  changed_when: k3s_needs_install
 
 - name: Ensure k3s service is started and enabled
   ansible.builtin.systemd:
@@ -96,20 +108,20 @@
 - name: Set kubeconfig permissions
   ansible.builtin.file:
     path: /etc/rancher/k3s/k3s.yaml
-    mode: '0644'
+    mode: "0644"
 
 - name: Create .kube directory for root
   ansible.builtin.file:
     path: /root/.kube
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 - name: Copy kubeconfig for root user
   ansible.builtin.copy:
     src: /etc/rancher/k3s/k3s.yaml
     dest: /root/.kube/config
     remote_src: true
-    mode: '0600'
+    mode: "0600"
 
 - name: Display k3s cluster status
   ansible.builtin.debug:
@@ -124,3 +136,4 @@
   ansible.builtin.file:
     path: /tmp/k3s-install.sh
     state: absent
+  when: k3s_needs_install

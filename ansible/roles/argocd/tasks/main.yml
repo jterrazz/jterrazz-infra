@@ -10,18 +10,40 @@
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
+  # Determine if ArgoCD is already deployed first, to avoid downloading/cleaning manifests needlessly
+- name: Check if ArgoCD is already deployed
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: argocd-server
+    namespace: "{{ argocd_namespace }}"
+  register: argocd_deployment
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  failed_when: false
+
+- name: Check if ArgoCD manifest exists
+  ansible.builtin.stat:
+    path: "/tmp/argocd-install.yaml"
+  register: argocd_manifest_exists
+
 - name: Download ArgoCD installation manifest
   ansible.builtin.get_url:
     url: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
     dest: "/tmp/argocd-install.yaml"
     mode: "0644"
+  when: (argocd_deployment is not defined) or (argocd_deployment.resources | length == 0)
+
+  # Deployment check moved earlier
 
 - name: Apply ArgoCD manifests to the argocd namespace
   ansible.builtin.shell: |
     kubectl apply -n {{ argocd_namespace }} -f /tmp/argocd-install.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: true # Always considered changed as it's an installation
+  when: argocd_deployment.resources | length == 0
+  register: argocd_apply_result
+  changed_when: "'created' in argocd_apply_result.stdout or 'configured' in argocd_apply_result.stdout"
 
 - name: Wait for ArgoCD server to be ready
   kubernetes.core.k8s_info:
@@ -84,6 +106,7 @@
   ansible.builtin.file:
     path: /tmp/argocd-install.yaml
     state: absent
+  when: (argocd_deployment is not defined) or (argocd_deployment.resources | length == 0)
 
 - name: Create sample ArgoCD application
   ansible.builtin.copy:

@@ -27,25 +27,32 @@
     src: sshd_config.j2
     dest: /etc/ssh/sshd_config
     backup: yes
-    mode: '0600'
+    mode: "0600"
     owner: root
     group: root
   notify: restart sshd
 
 # UFW Firewall Configuration
-- name: Reset UFW to defaults
-  ufw:  # noqa syntax-check[unknown-module]
-    state: reset
+- name: Check UFW status
+  ufw:
+    state: enabled
+  register: ufw_status
   when: security_ufw_enabled
+
+- name: Reset UFW to defaults (only if not properly configured)
+  ufw: # noqa syntax-check[unknown-module]
+    state: reset
+  when: security_ufw_enabled and (ufw_status is failed or ufw_status.changed)
+  notify: reload ufw
 
 - name: Configure UFW defaults
   ufw:
     direction: "{{ item.direction }}"
     policy: "{{ item.policy }}"
   loop:
-    - { direction: 'incoming', policy: '{{ security_ufw_default_incoming }}' }
-    - { direction: 'outgoing', policy: '{{ security_ufw_default_outgoing }}' }
-    - { direction: 'routed', policy: '{{ security_ufw_default_forward }}' }
+    - { direction: "incoming", policy: "{{ security_ufw_default_incoming }}" }
+    - { direction: "outgoing", policy: "{{ security_ufw_default_outgoing }}" }
+    - { direction: "routed", policy: "{{ security_ufw_default_forward }}" }
   when: security_ufw_enabled
 
 - name: Configure UFW rules
@@ -56,6 +63,7 @@
     comment: "{{ item.comment | default('') }}"
   loop: "{{ security_ufw_rules }}"
   when: security_ufw_enabled
+ 
 
 - name: Enable UFW
   ufw:
@@ -69,7 +77,7 @@
     src: jail.local.j2
     dest: /etc/fail2ban/jail.local
     backup: yes
-    mode: '0644'
+    mode: "0644"
   notify: restart fail2ban
   when: security_fail2ban_enabled
 
@@ -85,14 +93,14 @@
   template:
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
-    mode: '0644'
+    mode: "0644"
   when: security_auto_updates_enabled
 
 - name: Configure unattended upgrades settings
   template:
     src: 50unattended-upgrades.j2
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
-    mode: '0644'
+    mode: "0644"
   when: security_unattended_upgrades_enabled
 
 - name: Enable and start unattended-upgrades
@@ -153,7 +161,7 @@
       -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
       -a always,exit -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change
     dest: /etc/audit/rules.d/audit.rules
-    mode: '0640'
+    mode: "0640"
   notify: restart auditd
 
 # Security Status and Monitoring
@@ -190,7 +198,7 @@
       echo "💾 Disk Usage:"
       df -h / | tail -1
     dest: /usr/local/bin/security-status
-    mode: '0755'
+    mode: "0755"
 
 - name: Create security update check cron job
   cron:
