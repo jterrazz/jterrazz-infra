@@ -3,12 +3,13 @@
 # JTerrazz Infrastructure - Tailscale Command
 # Setup and manage Tailscale VPN for secure private network access
 
-# Get script directory and source libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
-
-# Source required libraries
-source "$LIB_DIR/common.sh"
+# Source required libraries (paths set by main infra script)
+# If running standalone, set up paths
+if [[ -z "${LIB_DIR:-}" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    LIB_DIR="$(dirname "$SCRIPT_DIR")/lib"
+    source "$LIB_DIR/common.sh"
+fi
 
 # Install Tailscale
 install_tailscale() {
