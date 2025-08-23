@@ -68,33 +68,9 @@ check_reboot_required() {
     fi
 }
 
-# Main upgrade command
-cmd_upgrade() {
-    local security_only=false
-    local skip_cleanup=false
-    
-    # Parse arguments
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --security-only)
-                security_only=true
-                shift
-                ;;
-            --skip-cleanup)
-                skip_cleanup=true
-                shift
-                ;;
-            --help|-h)
-                show_upgrade_help
-                exit 0
-                ;;
-            *)
-                error "Unknown option: $1"
-                show_upgrade_help
-                exit 1
-                ;;
-        esac
-    done
+# Perform system package upgrade
+perform_system_upgrade() {
+    local security_only="$1"
     
     print_header "System Upgrade"
     
@@ -114,10 +90,8 @@ cmd_upgrade() {
         run_step "system_upgrade" "update_system_packages" || exit 1
     fi
     
-    # Cleanup unless skipped
-    if [[ "$skip_cleanup" != "true" ]]; then
-        run_step "system_cleanup" "cleanup_system" || exit 1
-    fi
+    # Cleanup system
+    run_step "system_cleanup" "cleanup_system" || exit 1
     
     # Check for reboot requirement
     check_reboot_required
@@ -132,18 +106,139 @@ cmd_upgrade() {
     fi
 }
 
+# Perform self-update of the CLI
+perform_self_update() {
+    print_header "CLI Self-Update"
+    
+    # Validate system
+    check_root || exit 1
+    
+    # Check prerequisites
+    if ! command -v git &> /dev/null; then
+        error "Git is required for self-update but not installed"
+        error "Install git with: apt install git"
+        return 1
+    fi
+    
+    # Configuration
+    local repo_url="https://github.com/jterrazz/jterrazz-infra.git"
+    local temp_dir="/tmp/jterrazz-infra-update-$$"
+    local current_version=""
+    local new_version=""
+    
+    # Get current version
+    if current_version=$(infra --version 2>/dev/null); then
+        info "Current version: $current_version"
+    else
+        current_version="Unknown"
+        warn "Could not determine current version"
+    fi
+    
+    log "🔄 Fetching latest version from GitHub..."
+    
+    # Clean up any existing temp directory
+    [[ -d "$temp_dir" ]] && rm -rf "$temp_dir"
+    
+    # Clone the repository
+    if ! git clone --depth 1 "$repo_url" "$temp_dir" 2>/dev/null; then
+        error "Failed to clone repository from $repo_url"
+        error "Please check your internet connection and try again"
+        return 1
+    fi
+    
+    log "✅ Repository cloned successfully"
+    
+    # Check if there are actual changes
+    if [[ -f "$temp_dir/infra" ]]; then
+        # Simple version check (could be enhanced)
+        if [[ -f /opt/jterrazz-infra/infra ]] && cmp -s "$temp_dir/infra" "/opt/jterrazz-infra/infra"; then
+            info "You already have the latest version!"
+            rm -rf "$temp_dir"
+            return 0
+        fi
+    fi
+    
+    log "🚀 Installing updates..."
+    
+    # Change to temp directory and run install
+    if ! (cd "$temp_dir" && ./install.sh); then
+        error "Failed to install updates"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    
+    # Get new version
+    if new_version=$(infra --version 2>/dev/null); then
+        info "Updated to: $new_version"
+    else
+        new_version="Updated"
+    fi
+    
+    # Clean up
+    rm -rf "$temp_dir"
+    
+    print_section "Self-Update Summary"
+    log "✅ CLI updated successfully!"
+    echo
+    echo -e "${BLUE}📋 Version Information:${NC}"
+    echo "  Previous: $current_version"
+    echo "  Current:  $new_version"
+    echo
+    echo -e "${BLUE}🎉 Update completed!${NC}"
+    echo "All CLI commands are now using the latest version."
+    echo
+    info "You can now use all the latest features and improvements!"
+}
+
+# Main upgrade command
+cmd_upgrade() {
+    local security_only=false
+    local self_update=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --security-only)
+                security_only=true
+                shift
+                ;;
+            --self)
+                self_update=true
+                shift
+                ;;
+            --help|-h)
+                show_upgrade_help
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_upgrade_help
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Handle self-update or system upgrade
+    if [[ "$self_update" == "true" ]]; then
+        perform_self_update
+    else
+        perform_system_upgrade "$security_only"
+    fi
+}
+
 # Show upgrade command help
 show_upgrade_help() {
     echo "Usage: infra upgrade [options]"
     echo
-    echo "Update system packages and security patches"
+    echo "Update system packages, security patches, or the CLI itself"
     echo
     echo "Options:"
     echo "  --security-only   Install security updates only"
-    echo "  --skip-cleanup    Skip package cleanup (autoremove/autoclean)"
+    echo "  --self            Update the CLI itself from GitHub"
     echo "  --help, -h        Show this help message"
     echo
     echo "Examples:"
     echo "  infra upgrade                # Full system upgrade"
     echo "  infra upgrade --security-only  # Security patches only"
+    echo "  infra upgrade --self         # Update CLI to latest version"
 }

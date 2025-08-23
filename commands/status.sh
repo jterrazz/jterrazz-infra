@@ -116,16 +116,24 @@ show_network_status() {
         echo "  ss or netstat not available"
     fi
     
-    # Test external connectivity
+    # Test external connectivity (quick check)
     echo
     echo "External Connectivity:"
-    if curl -s --connect-timeout 5 ifconfig.me &>/dev/null; then
+    
+    # Quick DNS test first (much faster)
+    if timeout 2 nslookup google.com &>/dev/null || timeout 2 dig google.com &>/dev/null; then
+        echo "  ✅ Internet access available (DNS working)"
+        
+        # Optional: Try to get public IP with very short timeout
         local external_ip
-        external_ip=$(curl -s --connect-timeout 5 ifconfig.me 2>/dev/null)
-        echo "  ✅ Internet access available"
-        echo "  🌐 Public IP: ${external_ip:-Unknown}"
+        external_ip=$(timeout 2 curl -s --connect-timeout 2 --max-time 2 ifconfig.me 2>/dev/null)
+        if [[ -n "$external_ip" && "$external_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "  🌐 Public IP: $external_ip"
+        else
+            echo "  🌐 Public IP: Check timeout (use 'curl ifconfig.me' manually if needed)"
+        fi
     else
-        echo "  ❌ No internet access or timeout"
+        echo "  ❌ No internet access or DNS issues"
     fi
 }
 
@@ -427,8 +435,9 @@ show_setup_progress() {
             echo "  • infra portainer --deploy - Deploy Portainer"
         fi
         
-        if ! is_step_completed "nginx_configuration" && is_step_completed "portainer_container"; then
-            echo "  • infra nginx --configure - Setup reverse proxy"
+        # Only suggest nginx if it's not already configured
+        if ! is_step_completed "nginx_basic_setup" && is_step_completed "portainer_container"; then
+            echo "  • infra nginx --configure - Setup reverse proxy and SSL"
         fi
         
     else

@@ -1,13 +1,13 @@
 # JTerrazz Infrastructure CLI
 
-Professional infrastructure management CLI for deploying and managing containerized applications with HTTPS-only reverse proxy, trusted SSL certificates, and security hardening. Designed for private network access via Tailscale VPN with **no browser warnings**.
+Professional infrastructure management CLI for deploying and managing containerized applications with automated HTTPS reverse proxy, trusted SSL certificates, and Tailscale network security. Designed for private management with public API readiness and **no browser warnings**.
 
 ## ✨ Features
 
 - **🔧 Modular Architecture** - Clean separation of concerns with individual commands
 - **🔐 Private Management** - Management tools (Portainer) accessible only via Tailscale
 - **🚀 API Ready** - Port 443 configured with SSL, ready for public API services  
-- **🔒 SSL Certificates** - Trusted Let's Encrypt certificates via DNS challenge
+- **🔒 SSL Certificates** - Fully automated Let's Encrypt certificates via HTTP-01 challenge
 - **🐳 Docker Management** - Container deployment and management
 - **🌐 Smart Reverse Proxy** - Nginx ready for APIs, management tools stay private
 - **🔗 Tailscale VPN** - Secure private network access from anywhere
@@ -189,9 +189,10 @@ sudo infra tailscale --install
 sudo infra tailscale --connect               # Follow authentication URL
 
 # IMPORTANT: Configure DNS before deploying services
-# 1. Get your Tailscale IP: tailscale ip -4 (e.g., 100.64.1.2)
-# 2. Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
-# 3. SSL certificates will be generated interactively (manual DNS challenge)
+# 1. Get your server's public IP: curl ifconfig.me (e.g., 203.0.113.1)  
+# 2. Point manager.jterrazz.com → 203.0.113.1 in your DNS provider (for Let's Encrypt validation)
+# 3. SSL certificates will be generated automatically (HTTP-01 challenge)
+# 4. Services will be restricted to Tailscale IPs for security
 
 sudo infra portainer --deploy
 sudo infra nginx --configure  # Optional - for future APIs
@@ -225,38 +226,42 @@ sudo infra nginx --configure
 
 ### SSL Certificate Management
 
-This infrastructure uses **trusted SSL certificates** via Let's Encrypt DNS challenge. This provides the best of both worlds: **private network access** with **no browser warnings**.
+This infrastructure uses **fully automated SSL certificates** via Let's Encrypt HTTP-01 challenge with **Tailscale network restrictions** for security. This provides the perfect balance: **automated certificates** with **private network access**.
 
-#### **How Manual DNS Challenge Works**
+#### **How Automated HTTP-01 Challenge Works**
 
-- ✅ **Domain points to Tailscale IP** - Your DNS resolves to private 100.x.x.x address
-- ✅ **Let's Encrypt validates via DNS** - You manually add TXT records for validation
-- ✅ **No public server access needed** - Validation happens through DNS only
+- ✅ **Fully automated** - No manual intervention required for certificate generation or renewal
+- ✅ **Public validation, private access** - Let's Encrypt validates via HTTP, services restricted to Tailscale
+- ✅ **Port 80 for challenges only** - HTTP port used exclusively for Let's Encrypt verification  
 - ✅ **Trusted certificates** - No browser warnings, full green lock
-- ✅ **No API access required** - Just manual DNS record management
+- ✅ **Automatic renewal** - Certificates renew every 60-90 days automatically
+- ✅ **Tailscale IP restrictions** - HTTPS services only accessible from Tailscale network (100.64.0.0/10)
 
 #### **Certificate Generation Process**
 
-1. **Run the SSL setup:**
+1. **Ensure DNS points to public IP:**
+   ```bash
+   # Your domain must resolve to your server's public IP (not Tailscale IP)
+   # This is required for Let's Encrypt HTTP-01 validation
+   dig +short manager.jterrazz.com  # Should show your server's public IP
+   ```
 
-```bash
-sudo infra nginx --configure
-```
+2. **Run the automated SSL setup:**
+   ```bash
+   sudo infra nginx --configure
+   ```
 
-2. **Follow the interactive prompts:**
+3. **Automatic process:**
+   - ✅ Certbot automatically requests certificates via HTTP-01 challenge
+   - ✅ Let's Encrypt validates domain ownership via port 80  
+   - ✅ Nginx configuration automatically updated with SSL
+   - ✅ Tailscale IP restrictions automatically applied to HTTPS
+   - ✅ Automatic renewal timer enabled
 
-   - Certbot will show you a TXT record to create (e.g., `_acme-challenge.manager.jterrazz.com`)
-   - Copy the TXT record value
-
-3. **Add TXT record in Cloudflare:**
-
-   - Go to your Cloudflare DNS settings
-   - Add new TXT record with the name and value provided
-   - Wait ~30 seconds for propagation
-
-4. **Complete validation:**
-   - Press Enter in terminal to continue
-   - Let's Encrypt validates and issues certificate
+4. **Result:**
+   - Port 80: Let's Encrypt challenges only  
+   - Port 443: HTTPS services (restricted to Tailscale IPs)
+   - Certificates auto-renew every 60-90 days
 
 #### **Certificate Status**
 

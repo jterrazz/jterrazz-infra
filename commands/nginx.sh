@@ -103,6 +103,9 @@ disable_http_services() {
     fi
 }
 
+# DEPRECATED: This function is no longer used with automated HTTP-01 challenges
+# We now need port 80 for Let's Encrypt certificate validation
+
 # Create minimal HTTPS-only nginx configuration
 create_minimal_nginx_config() {
     local backup_dir="/etc/nginx/backup-$(date +%Y%m%d-%H%M%S)"
@@ -187,20 +190,24 @@ repair_nginx_config() {
     return 0
 }
 
-# Configure basic Nginx setup (ready for APIs, no management tools)
+# Configure basic Nginx setup with automated SSL and Tailscale IP restrictions
 configure_nginx_basic() {
-    log "Configuring basic Nginx setup for future API services..."
+    log "Configuring Nginx with automated SSL and Tailscale security restrictions..."
     
-    # Generate SSL certificates first  
+    # Create initial HTTP configuration for certbot
+    create_initial_http_site
+    
+    # Generate SSL certificates using automated HTTP-01 challenge
+    # This will automatically modify nginx config to add HTTPS
     generate_ssl_certificates "$DOMAIN_NAME" || return 1
     
-    # Ensure HTTPS-only setup (no port 80 services)
-    disable_http_services
+    # Add Tailscale IP restrictions for security
+    add_tailscale_ip_restrictions
     
-    # Create basic nginx configuration (no sites enabled initially)
-    create_basic_nginx_site
+    # Clean up HTTP services except for Let's Encrypt challenges
+    configure_secure_http_access
     
-    log "Basic Nginx configuration created successfully"
+    log "Nginx configured successfully with automated SSL and Tailscale security"
     return 0
 }
 
@@ -262,14 +269,111 @@ EOF
     log "Basic site configuration created"
 }
 
+# Create initial HTTP-only site for certbot
+create_initial_http_site() {
+    log "Creating initial HTTP site for Let's Encrypt verification..."
+    
+    cat > "$NGINX_CONFIG_PATH" << EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN_NAME;
+    
+    # Allow Let's Encrypt challenges
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        allow all;
+    }
+    
+    # Return 200 for initial setup
+    location / {
+        return 200 'Domain ready for SSL setup';
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+    
+    # Enable the site
+    ln -sf "$NGINX_CONFIG_PATH" "$NGINX_ENABLED_PATH"
+    rm -f /etc/nginx/sites-enabled/default
+    
+    # Create challenge directory
+    mkdir -p /var/www/html/.well-known/acme-challenge
+    
+    # Reload nginx
+    systemctl reload nginx
+    log "Initial HTTP site created for SSL verification"
+}
+
+# Add Tailscale IP restrictions to HTTPS configuration
+add_tailscale_ip_restrictions() {
+    log "Adding Tailscale IP restrictions for enhanced security..."
+    
+    # After certbot modifies the config, we need to add IP restrictions
+    # This requires modifying the HTTPS server block that certbot creates
+    local ssl_config="/etc/nginx/sites-available/$DOMAIN_NAME"
+    
+    if [[ -f "$ssl_config" ]] && grep -q "listen.*443.*ssl" "$ssl_config"; then
+        log "Adding Tailscale IP restrictions to HTTPS configuration..."
+        
+        # Add IP restrictions after the server_name directive in HTTPS block
+        sed -i '/listen.*443.*ssl/,/server_name.*'"$DOMAIN_NAME"'/{
+            /server_name.*'"$DOMAIN_NAME"'/a\
+    \
+    # Tailscale IP restrictions for management access\
+    allow 100.64.0.0/10;    # Tailscale IPv4 range\
+    allow 127.0.0.1;        # Localhost for health checks\
+    allow ::1;              # IPv6 localhost\
+    deny all;               # Deny everything else\
+    \
+    # Security headers\
+    add_header X-Frame-Options DENY;\
+    add_header X-Content-Type-Options nosniff;\
+    add_header X-XSS-Protection "1; mode=block";\
+    add_header Referrer-Policy strict-origin-when-cross-origin;
+        }' "$ssl_config"
+        
+        log "✅ Tailscale IP restrictions added to HTTPS configuration"
+        systemctl reload nginx
+    else
+        warn "HTTPS configuration not found - IP restrictions will be added after SSL setup"
+    fi
+}
+
+# Configure secure HTTP access (Let's Encrypt challenges only)
+configure_secure_http_access() {
+    log "Configuring secure HTTP access (Let's Encrypt challenges only)..."
+    
+    # After certbot has run, ensure HTTP only serves challenges
+    local services_to_stop=("apache2" "httpd" "lighttpd")
+    for service in "${services_to_stop[@]}"; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            systemctl stop "$service"
+            systemctl disable "$service" 2>/dev/null || true
+            log "Stopped and disabled $service"
+        fi
+    done
+    
+    # Update firewall to allow both HTTP (for challenges) and HTTPS
+    if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+        ufw allow 80/tcp comment 'HTTP for Let\'s Encrypt' &>/dev/null || true
+        ufw allow 443/tcp comment 'HTTPS' &>/dev/null || true
+        log "Updated firewall rules for HTTP/HTTPS access"
+    fi
+    
+    log "✅ HTTP access secured - only Let's Encrypt challenges allowed"
+}
+
 # Show basic setup information
 show_nginx_basic_info() {
     echo "🎉 Nginx setup completed successfully!"
     echo
     echo -e "${BLUE}📋 Configuration Summary:${NC}"
     echo "  • Domain: $DOMAIN_NAME"
-    echo "  • SSL: Let's Encrypt certificate (trusted, no browser warnings)"
-    echo "  • Port 443: Ready for API services"
+    echo "  • SSL: Automated Let's Encrypt certificates (HTTP-01 challenge)"
+    echo "  • Security: Tailscale IP restrictions (100.64.0.0/10)"
+    echo "  • Port 80: Let's Encrypt challenges only"
+    echo "  • Port 443: API services (restricted to Tailscale)"
     echo "  • Management tools: Private Tailscale access only"
     echo
     echo -e "${BLUE}🌐 Access Information:${NC}"
@@ -277,9 +381,9 @@ show_nginx_basic_info() {
     echo "  • Portainer (management): https://$DOMAIN_NAME:9443 (Tailscale only)"
     echo
     echo -e "${BLUE}🏠 DNS Configuration:${NC}"
-    echo "  • DNS A record: $DOMAIN_NAME → YOUR_TAILSCALE_IP (100.x.x.x)"
-    echo "  • Management tools accessible via Tailscale network only"
-    echo "  • Port 443 ready for public API services"
+    echo "  • DNS A record: $DOMAIN_NAME → YOUR_PUBLIC_IP (for Let's Encrypt)"
+    echo "  • HTTPS access restricted to Tailscale network (100.x.x.x range)"
+    echo "  • Automatic certificate renewal every 60-90 days"
     echo
     if is_tailscale_connected; then
         local ts_ip

@@ -111,44 +111,149 @@ uninstall_cli() {
 
 
 
-# Show installation status
+# Show installation status with nice formatting
 show_status() {
-    echo "JTerrazz Infrastructure CLI Installation Status:"
+    # Header
+    echo
+    echo -e "${BLUE}═══ JTerrazz Infrastructure CLI - Installation Status ═══${NC}"
     echo
     
+    # Command Installation Status
+    echo -e "${BLUE}▸ Command Installation${NC}"
     if [[ -L "$INSTALL_DIR/$CLI_NAME" ]]; then
-        echo "✅ Command symlink exists: $INSTALL_DIR/$CLI_NAME"
+        echo "  ✅ Global command symlink"
+        echo "     Location: $INSTALL_DIR/$CLI_NAME"
         
         local target
         target=$(readlink "$INSTALL_DIR/$CLI_NAME")
-        echo "   → Points to: $target"
-        
         if [[ -f "$target" ]]; then
-            echo "   ✅ Target file exists"
+            echo "     Target: $target ✅"
         else
-            echo "   ❌ Target file missing"
+            echo "     Target: $target ❌ (missing)"
         fi
     else
-        echo "❌ Command symlink not found"
+        echo "  ❌ Global command symlink not found"
+        echo "     Expected: $INSTALL_DIR/$CLI_NAME"
     fi
     
+    # CLI Home Directory Status  
+    echo
+    echo -e "${BLUE}▸ CLI Home Directory${NC}"
     if [[ -d "$CLI_HOME" ]]; then
-        echo "✅ CLI home directory exists: $CLI_HOME"
+        echo "  ✅ CLI home directory exists"
+        echo "     Location: $CLI_HOME"
         
-        local file_count
-        file_count=$(find "$CLI_HOME" -type f | wc -l)
-        echo "   Files: $file_count"
+        local file_count dir_count
+        file_count=$(find "$CLI_HOME" -type f 2>/dev/null | wc -l)
+        dir_count=$(find "$CLI_HOME" -type d 2>/dev/null | wc -l)
+        
+        echo "     Contents: $file_count files, $((dir_count - 1)) directories"
+        
+        # Check key directories
+        if [[ -d "$CLI_HOME/commands" ]]; then
+            local cmd_count
+            cmd_count=$(ls -1 "$CLI_HOME/commands"/*.sh 2>/dev/null | wc -l)
+            echo "     Commands: $cmd_count available"
+        fi
+        
+        if [[ -d "$CLI_HOME/lib" ]]; then
+            echo "     Libraries: ✅ Available"
+        fi
     else
-        echo "❌ CLI home directory not found"
+        echo "  ❌ CLI home directory not found"
+        echo "     Expected: $CLI_HOME"
+    fi
+    
+    # Command Availability
+    echo
+    echo -e "${BLUE}▸ Command Availability${NC}"
+    if command -v "$CLI_NAME" &> /dev/null; then
+        echo "  ✅ Command available in PATH"
+        
+        # Get version info
+        local version_info
+        if version_info=$("$CLI_NAME" --version 2>/dev/null); then
+            echo "     Version: $version_info"
+        else
+            echo "     Version: Unable to determine"
+        fi
+        
+        # Test basic functionality
+        if "$CLI_NAME" --help &>/dev/null; then
+            echo "     Status: ✅ Fully functional"
+        else
+            echo "     Status: ⚠️  May have issues"
+        fi
+    else
+        echo "  ❌ Command not found in PATH"
+        echo "     Run: hash -r  # Refresh shell command cache"
+    fi
+    
+    # System Integration  
+    echo
+    echo -e "${BLUE}▸ System Integration${NC}"
+    
+    # Check shell integration
+    local shell_name
+    shell_name=$(basename "$SHELL" 2>/dev/null || echo "unknown")
+    echo "  Shell: $shell_name"
+    
+    # Check if running as expected user
+    if [[ $EUID -eq 0 ]]; then
+        echo "  User: root (installation mode)"
+    else
+        echo "  User: $(whoami) (normal operation)"
+    fi
+    
+    # Check permissions
+    if [[ -x "$INSTALL_DIR/$CLI_NAME" ]]; then
+        echo "  Permissions: ✅ Executable"
+    else
+        echo "  Permissions: ❌ Not executable"
+    fi
+    
+    # Summary
+    echo
+    echo -e "${BLUE}▸ Summary${NC}"
+    
+    local issues=0
+    local status_icon="✅"
+    local status_msg="Installation is healthy"
+    
+    # Check for issues
+    if [[ ! -L "$INSTALL_DIR/$CLI_NAME" ]]; then
+        ((issues++))
+    fi
+    
+    if [[ ! -d "$CLI_HOME" ]]; then
+        ((issues++))
+    fi
+    
+    if ! command -v "$CLI_NAME" &> /dev/null; then
+        ((issues++))
+    fi
+    
+    if [[ $issues -gt 0 ]]; then
+        status_icon="⚠️"
+        status_msg="Found $issues issue(s) - run 'sudo $0 install' to fix"
+    fi
+    
+    echo "  $status_icon $status_msg"
+    
+    if [[ $issues -eq 0 ]]; then
+        echo
+        echo -e "${GREEN}🎉 Installation is working perfectly!${NC}"
+        echo
+        echo "Available commands:"
+        echo "  infra --help           # Show help"
+        echo "  infra status           # Show system status"  
+        echo "  infra install          # Install dependencies"
+        echo "  infra tailscale        # Manage VPN"
+        echo "  infra portainer        # Manage containers"
+        echo "  infra nginx            # Configure reverse proxy"
     fi
     
     echo
-    if command -v "$CLI_NAME" &> /dev/null; then
-        echo "✅ Command is available in PATH"
-        "$CLI_NAME" --version
-    else
-        echo "❌ Command not found in PATH"
-    fi
 }
 
 # Show help

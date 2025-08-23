@@ -6,53 +6,64 @@
 # Source common utilities
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-# Install certbot for manual DNS challenge
-install_certbot_and_dns_plugin() {
-    log "Installing certbot for manual DNS challenge..."
+# Install certbot for automated HTTP-01 challenge
+install_certbot() {
+    log "Installing certbot for automated HTTP-01 challenge..."
     
-    if ! apt install -y certbot; then
-        error "Failed to install certbot"
+    # Install certbot and nginx plugin
+    if ! apt install -y certbot python3-certbot-nginx; then
+        error "Failed to install certbot and nginx plugin"
         return 1
     fi
     
-    log "Certbot installed successfully"
+    log "Certbot with nginx plugin installed successfully"
     return 0
 }
 
-# No credentials verification needed for manual DNS challenge
-verify_dns_credentials() {
-    log "Using manual DNS challenge - no API credentials needed"
-    log "You'll add DNS TXT records manually in Cloudflare interface"
+# Verify prerequisites for HTTP-01 challenge
+verify_http_challenge_requirements() {
+    log "Verifying HTTP-01 challenge requirements..."
+    
+    # Check if Nginx is running
+    if ! systemctl is-active --quiet nginx; then
+        warn "Nginx is not running - will start it for certificate generation"
+        systemctl start nginx || return 1
+    fi
+    
+    # Check if port 80 is available for challenges (temporarily)
+    log "HTTP-01 challenge requires port 80 for certificate validation"
     return 0
 }
 
-# Obtain certificate using manual DNS challenge
-obtain_certificate_dns_challenge() {
+# Obtain certificate using automated HTTP-01 challenge
+obtain_certificate_http_challenge() {
     local domain="$1"
     
-    log "Requesting SSL certificate for $domain using manual DNS challenge..."
-    echo
-    echo "🔑 MANUAL DNS CHALLENGE PROCESS:"
-    echo "1. Certbot will show you a TXT record to create"
-    echo "2. Add this TXT record in your Cloudflare DNS settings"  
-    echo "3. Press Enter when ready to continue validation"
-    echo "4. Certificate will be issued automatically"
+    log "Requesting SSL certificate for $domain using automated HTTP-01 challenge..."
+    echo "🔑 AUTOMATED HTTP-01 CHALLENGE:"
+    echo "• Let's Encrypt will verify domain ownership via port 80"
+    echo "• Fully automated - no manual intervention required"
+    echo "• Nginx will serve challenge files automatically"
     echo
     
-    if ! certbot certonly \
-        --manual \
-        --preferred-challenges dns \
-        --manual-public-ip-logging-ok \
+    # Ensure nginx is running for the challenge
+    systemctl start nginx || return 1
+    
+    # Use nginx plugin for automated certificate installation
+    if ! certbot --nginx \
         -d "$domain" \
         --agree-tos \
         --email "admin@$domain" \
+        --redirect \
+        --non-interactive \
         --expand; then
-        error "Failed to obtain SSL certificate using manual DNS challenge"
-        error "Make sure you added the TXT record exactly as shown"
+        error "Failed to obtain SSL certificate using HTTP-01 challenge"
+        error "Ensure port 80 is accessible from the internet and domain resolves correctly"
         return 1
     fi
     
-    log "SSL certificate obtained successfully via manual DNS challenge"
+    log "✅ SSL certificate obtained and installed successfully via HTTP-01 challenge"
+    log "Certificate includes automatic HTTPS redirect"
     return 0
 }
 
@@ -62,14 +73,14 @@ has_certificates() {
     [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]
 }
 
-# Generate SSL certificates using Let's Encrypt DNS challenge
+# Generate SSL certificates using automated HTTP-01 challenge
 generate_ssl_certificates() {
     local domain="$1"
     
-    log "Generating SSL certificates for $domain using DNS challenge..."
+    log "Generating SSL certificates for $domain using automated HTTP-01 challenge..."
     
-    # Install certbot and DNS plugin
-    install_certbot_and_dns_plugin || return 1
+    # Install certbot and nginx plugin
+    install_certbot || return 1
     
     # Check if certificates already exist
     if has_certificates "$domain"; then
@@ -77,17 +88,17 @@ generate_ssl_certificates() {
         return 0
     fi
     
-    # Verify DNS provider credentials are set
-    verify_dns_credentials || return 1
+    # Verify HTTP challenge requirements
+    verify_http_challenge_requirements || return 1
     
-    # Generate certificate using DNS challenge
-    obtain_certificate_dns_challenge "$domain" || return 1
+    # Generate certificate using automated HTTP-01 challenge
+    obtain_certificate_http_challenge "$domain" || return 1
     
     log "SSL certificates generated successfully for $domain"
     return 0
 }
 
-# Setup certificate renewal automation
+# Setup automatic certificate renewal
 setup_certificate_renewal() {
     local domain="$1"
     
@@ -95,18 +106,34 @@ setup_certificate_renewal() {
         return 0
     fi
     
-    log "Certificate renewal information for manual DNS challenge..."
+    log "Setting up automatic certificate renewal..."
+    
+    # Enable and start certbot renewal timer
+    if ! systemctl is-enabled certbot.timer &>/dev/null; then
+        systemctl enable certbot.timer || return 1
+        log "Enabled certbot automatic renewal timer"
+    fi
+    
+    if ! systemctl is-active certbot.timer &>/dev/null; then
+        systemctl start certbot.timer || return 1
+        log "Started certbot automatic renewal timer"
+    fi
+    
+    # Test automatic renewal
+    log "Testing automatic renewal process..."
+    if certbot renew --dry-run --quiet; then
+        log "✅ Automatic renewal test successful"
+    else
+        warn "Automatic renewal test failed - check configuration"
+    fi
     
     # Show certificate expiry information
     if openssl x509 -in "/etc/letsencrypt/live/$domain/cert.pem" -noout -dates 2>/dev/null; then
         local expiry_date
         expiry_date=$(openssl x509 -in "/etc/letsencrypt/live/$domain/cert.pem" -noout -enddate | cut -d= -f2)
         log "Certificate expires on: $expiry_date"
+        log "Automatic renewal will occur within 30 days of expiry"
     fi
-    
-    warn "Manual DNS challenge certificates require manual renewal"
-    warn "Before expiry, run: sudo infra nginx --configure (and add new TXT records)"
-    warn "Monitor expiry with: check-ssl-cert"
     
     return 0
 }
@@ -147,13 +174,19 @@ if [[ -f "\$CERT_PATH" ]]; then
     fi
     
     echo
-    echo "=== Manual Renewal Info ==="
-    echo "⚠️  Manual DNS challenge certificates require manual renewal"
-    echo "📅 Renew before expiry with: sudo infra nginx --configure"
+    echo "=== Automatic Renewal Info ==="
+    if systemctl is-active --quiet certbot.timer; then
+        echo "✅ Automatic renewal is enabled and running"
+        echo "🔄 Certificates renew automatically within 30 days of expiry"
+    else
+        echo "❌ Automatic renewal service not running"
+        echo "Fix: sudo systemctl enable --now certbot.timer"
+    fi
+    echo "📅 Manual renewal (if needed): sudo certbot renew"
 else
     echo "❌ Let's Encrypt certificate not found"
     echo "Run: sudo infra nginx --configure"
-    echo "Follow interactive prompts to add DNS TXT records manually"
+    echo "HTTP-01 challenge will be used automatically"
 fi
 
 echo
