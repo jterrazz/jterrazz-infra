@@ -153,6 +153,40 @@ EOF
     log "Created minimal HTTPS-only Nginx configuration"
 }
 
+# Repair broken nginx configuration
+repair_nginx_config() {
+    log "Repairing Nginx configuration..."
+    
+    # Reset state to force regeneration
+    if [[ -f /var/lib/jterrazz-infra/state ]]; then
+        log "Resetting nginx configuration state..."
+        sed -i '/nginx_configuration/d' /var/lib/jterrazz-infra/state
+        sed -i '/ssl_certificates/d' /var/lib/jterrazz-infra/state
+        sed -i '/nginx_validation/d' /var/lib/jterrazz-infra/state
+        log "State reset - configuration will be regenerated"
+    fi
+    
+    # Remove broken configuration files
+    if [[ -f /etc/nginx/sites-enabled/portainer ]]; then
+        rm -f /etc/nginx/sites-enabled/portainer
+        log "Removed broken site configuration"
+    fi
+    
+    if [[ -f /etc/nginx/sites-available/portainer ]]; then
+        rm -f /etc/nginx/sites-available/portainer  
+        log "Removed broken available site configuration"
+    fi
+    
+    # Force regeneration
+    log "Regenerating Nginx configuration..."
+    configure_nginx_portainer || return 1
+    validate_nginx_config || return 1
+    manage_nginx_service restart || return 1
+    
+    log "✅ Nginx configuration repaired successfully"
+    return 0
+}
+
 # Configure Nginx for Portainer with SSL
 configure_nginx_portainer() {
     log "Configuring Nginx reverse proxy for Portainer..."
@@ -538,6 +572,11 @@ cmd_nginx() {
                 exit 1
             fi
             ;;
+        repair|fix)
+            check_root || exit 1
+            print_header "Nginx Configuration Repair"
+            repair_nginx_config
+            ;;
         secure|https-only)
             check_root || exit 1
             print_header "HTTPS-Only Security Check"
@@ -617,6 +656,7 @@ show_nginx_help() {
     echo "  --restart            Restart Nginx service"
     echo "  --remove             Remove Nginx configuration for Portainer"
     echo "  --renew-ssl          Force SSL certificate renewal (requires --force-ssl)"
+    echo "  --repair, --fix      Repair broken Nginx configuration (reset and regenerate)"
     echo "  --secure             Ensure HTTPS-only setup (disable port 80 services)"
     echo "  --https-only         Alias for --secure"
     echo "  --status, -s         Show Nginx status and configuration (default)"
@@ -628,6 +668,7 @@ show_nginx_help() {
     echo "Examples:"
     echo "  infra nginx                          # Show status"
     echo "  infra nginx --configure              # Setup reverse proxy with SSL"
+    echo "  infra nginx --repair                 # Fix broken configuration"
     echo "  infra nginx --secure                 # Ensure HTTPS-only (disable port 80)"
     echo "  infra nginx --test                   # Test configuration"
     echo "  infra nginx --renew-ssl --force-ssl  # Force certificate renewal"
