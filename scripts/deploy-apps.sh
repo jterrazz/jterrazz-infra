@@ -26,9 +26,18 @@ check_cluster() {
         exit 1
     fi
     
+    # Set kubeconfig if local file exists and KUBECONFIG is not set
+    if [[ -z "${KUBECONFIG:-}" ]] && [[ -f "local-kubeconfig.yaml" ]]; then
+        info "Using local kubeconfig file..."
+        export KUBECONFIG="$(pwd)/local-kubeconfig.yaml"
+    fi
+    
     if ! kubectl cluster-info &> /dev/null; then
         error "Cannot connect to Kubernetes cluster. Please check your kubeconfig."
         info "Hint: Run 'make kubeconfig' to get the kubeconfig from your VM."
+        if [[ -f "local-kubeconfig.yaml" ]]; then
+            info "Or set: export KUBECONFIG=$(pwd)/local-kubeconfig.yaml"
+        fi
         exit 1
     fi
     
