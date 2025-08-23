@@ -5,10 +5,11 @@ Professional infrastructure management CLI for deploying and managing containeri
 ## ✨ Features
 
 - **🔧 Modular Architecture** - Clean separation of concerns with individual commands
-- **🔐 HTTPS-Only** - Port 443 only, no HTTP exposure
+- **🔐 Private Management** - Management tools (Portainer) accessible only via Tailscale
+- **🚀 API Ready** - Port 443 configured with SSL, ready for public API services  
 - **🔒 SSL Certificates** - Trusted Let's Encrypt certificates via DNS challenge
 - **🐳 Docker Management** - Container deployment and management
-- **🌐 Reverse Proxy** - Nginx with security headers and optimizations
+- **🌐 Smart Reverse Proxy** - Nginx ready for APIs, management tools stay private
 - **🔗 Tailscale VPN** - Secure private network access from anywhere
 - **🛡️ Security Hardening** - UFW firewall, fail2ban, automatic updates
 - **📊 Status Monitoring** - Comprehensive system and service status reporting
@@ -48,14 +49,17 @@ sudo infra tailscale --connect
 # Get your Tailscale IP: tailscale ip -4  (e.g., 100.64.1.2)
 # Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
 
-# 5. Deploy Portainer container manager
+# 5. Deploy Portainer container manager (private access only)
 sudo infra portainer --deploy
 
-# 6. Configure Nginx reverse proxy with SSL (interactive - you'll add TXT records manually)
+# 6. Configure Nginx for future API services (optional - port 443 ready when needed)
 sudo infra nginx --configure
 
-# 7. Check overall status
+# 7. Check overall status  
 infra status
+
+# 8. Access management tools
+# Portainer: https://manager.jterrazz.com:9443 (Tailscale private network only)
 ```
 
 ## 📋 Commands
@@ -170,10 +174,10 @@ jterrazz-infra/
 
 ### Private Network Access via Tailscale (Default Setup)
 
-This infrastructure is designed for **private network access only** via Tailscale VPN. Your domain resolves to your server's Tailscale private IP, providing secure access from anywhere without exposing services to the public internet.
+This infrastructure uses a **hybrid approach**: **private management tools** + **API-ready public services**. Your domain resolves to your server's Tailscale private IP, providing secure access from anywhere.
 
-> 🎯 **The Perfect Setup**: Public DNS + Private Access + Trusted SSL  
-> Your domain (manager.jterrazz.com) points to your private Tailscale IP, Let's Encrypt validates ownership via DNS challenges, and you get **trusted SSL certificates with zero browser warnings** while keeping everything completely private!
+> 🎯 **Smart Architecture**: Private Management + Public API Ready  
+> Management tools (Portainer) accessible only via Tailscale network on port 9443. Port 443 configured with trusted SSL certificates, ready for your public API services when needed. Perfect separation of concerns!
 
 ```bash
 # Setup private access via Tailscale VPN with trusted SSL certificates
@@ -191,10 +195,11 @@ sudo infra tailscale --connect               # Follow authentication URL
 # 3. SSL certificates will be generated interactively (manual DNS challenge)
 
 sudo infra portainer --deploy
-sudo infra nginx --configure
+sudo infra nginx --configure  # Optional - for future APIs
 
 # Access from any device on your Tailscale network:
-# https://manager.jterrazz.com (resolves to server's Tailscale private IP)
+# Management: https://manager.jterrazz.com:9443 (Portainer - private only)
+# APIs: https://manager.jterrazz.com (port 443 - ready when needed)
 ```
 
 ### Advanced Configuration Options

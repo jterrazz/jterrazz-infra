@@ -187,7 +187,118 @@ repair_nginx_config() {
     return 0
 }
 
-# Configure Nginx for Portainer with SSL
+# Configure basic Nginx setup (ready for APIs, no management tools)
+configure_nginx_basic() {
+    log "Configuring basic Nginx setup for future API services..."
+    
+    # Generate SSL certificates first  
+    generate_ssl_certificates "$DOMAIN_NAME" || return 1
+    
+    # Ensure HTTPS-only setup (no port 80 services)
+    disable_http_services
+    
+    # Create basic nginx configuration (no sites enabled initially)
+    create_basic_nginx_site
+    
+    log "Basic Nginx configuration created successfully"
+    return 0
+}
+
+# Create basic nginx site configuration (placeholder for APIs)
+create_basic_nginx_site() {
+    log "Creating basic site configuration..."
+    
+    # Determine SSL certificate paths
+    local ssl_cert ssl_key
+    read -r ssl_cert ssl_key < <(get_ssl_cert_paths "$DOMAIN_NAME")
+    
+    # Create a basic "coming soon" site for port 443
+    cat > "$NGINX_CONFIG_PATH" << EOF
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name $DOMAIN_NAME;
+    
+    # SSL configuration
+    ssl_certificate $ssl_cert;
+    ssl_certificate_key $ssl_key;
+    
+    # SSL settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    
+    # Hide nginx version
+    server_tokens off;
+    
+    # Placeholder for API services
+    location / {
+        return 200 '{"status":"ready","message":"Nginx configured - ready for API services"}';
+        add_header Content-Type application/json;
+    }
+    
+    # Health check endpoint
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+
+    # Enable the site
+    ln -sf "$NGINX_CONFIG_PATH" "$NGINX_ENABLED_PATH"
+    
+    # Remove default site if it exists
+    rm -f /etc/nginx/sites-enabled/default
+    
+    log "Basic site configuration created"
+}
+
+# Show basic setup information
+show_nginx_basic_info() {
+    echo "🎉 Nginx setup completed successfully!"
+    echo
+    echo -e "${BLUE}📋 Configuration Summary:${NC}"
+    echo "  • Domain: $DOMAIN_NAME"
+    echo "  • SSL: Let's Encrypt certificate (trusted, no browser warnings)"
+    echo "  • Port 443: Ready for API services"
+    echo "  • Management tools: Private Tailscale access only"
+    echo
+    echo -e "${BLUE}🌐 Access Information:${NC}"
+    echo "  • APIs (future): https://$DOMAIN_NAME"
+    echo "  • Portainer (management): https://$DOMAIN_NAME:9443 (Tailscale only)"
+    echo
+    echo -e "${BLUE}🏠 DNS Configuration:${NC}"
+    echo "  • DNS A record: $DOMAIN_NAME → YOUR_TAILSCALE_IP (100.x.x.x)"
+    echo "  • Management tools accessible via Tailscale network only"
+    echo "  • Port 443 ready for public API services"
+    echo
+    if is_tailscale_connected; then
+        local ts_ip
+        ts_ip=$(get_tailscale_ip)
+        if [[ -n "$ts_ip" ]]; then
+            echo -e "${GREEN}✅ Tailscale IP detected: $ts_ip${NC}"
+            echo "Management access: https://$DOMAIN_NAME:9443"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Tailscale not connected. Run: infra tailscale --connect${NC}"
+    fi
+    echo
+    echo -e "${BLUE}🚀 Next Steps:${NC}"
+    echo "  • Management tools: Access Portainer via Tailscale network"
+    echo "  • API services: Configure reverse proxy rules as needed"
+    echo "  • Port 443 is ready for your public services"
+}
+
+# Configure Nginx for Portainer with SSL (legacy - now optional)
 configure_nginx_portainer() {
     log "Configuring Nginx reverse proxy for Portainer..."
     
@@ -538,21 +649,18 @@ cmd_nginx() {
                 exit 1
             fi
             
-            if ! is_container_running portainer; then
-                warn "Portainer container is not running"
-                warn "Make sure to deploy Portainer first: infra portainer --deploy"
-            fi
+            log "Setting up Nginx for future API services (management tools remain private)"
             
-            # Configure nginx and SSL
+            # Configure nginx basic setup (no Portainer reverse proxy)
             run_step "ssl_certificates" "setup_ssl_certificates" || exit 1
-            run_step "nginx_configuration" "configure_nginx_portainer" || exit 1
+            run_step "nginx_basic_setup" "configure_nginx_basic" || exit 1
             run_step "nginx_validation" "validate_nginx_config" || exit 1
             run_step "nginx_service" "manage_nginx_service restart" || exit 1
             
             print_section "Configuration Summary"
-            log "Nginx reverse proxy configured successfully"
+            log "Nginx configured successfully - ready for API services"
             echo
-            show_final_info
+            show_nginx_basic_info
             ;;
         test)
             test_nginx || exit 1

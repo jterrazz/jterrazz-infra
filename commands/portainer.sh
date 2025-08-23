@@ -41,9 +41,24 @@ deploy_portainer_container() {
         docker rm portainer 2>/dev/null || true
     fi
     
-    # Deploy Portainer with HTTPS-only access via localhost
+    # Get Tailscale IP for private access
+    local tailscale_ip=""
+    if command -v tailscale &> /dev/null && tailscale status --json &>/dev/null; then
+        tailscale_ip=$(tailscale ip -4 2>/dev/null)
+    fi
+    
+    # Deploy Portainer for private Tailscale network access
+    local bind_ip="127.0.0.1"
+    if [[ -n "$tailscale_ip" ]]; then
+        bind_ip="$tailscale_ip"
+        log "Binding Portainer to Tailscale IP: $tailscale_ip"
+    else
+        log "Tailscale not connected, binding to localhost"
+        warn "Portainer will only be accessible locally until Tailscale is configured"
+    fi
+    
     if ! docker run -d \
-        -p 127.0.0.1:9443:9443 \
+        -p ${bind_ip}:9443:9443 \
         --name portainer \
         --restart=always \
         -v /var/run/docker.sock:/var/run/docker.sock \
@@ -56,8 +71,10 @@ deploy_portainer_container() {
     # Wait for container to be ready
     log "Waiting for Portainer to start..."
     local retries=30
+    local check_url="https://${bind_ip}:9443"
+    
     while [[ $retries -gt 0 ]]; do
-        if curl -k -s https://127.0.0.1:9443 &>/dev/null; then
+        if curl -k -s "$check_url" &>/dev/null; then
             break
         fi
         sleep 2
@@ -67,7 +84,10 @@ deploy_portainer_container() {
     if [[ $retries -eq 0 ]]; then
         warn "Portainer may not be fully ready yet (timeout reached)"
     else
-        log "Portainer is responding on https://127.0.0.1:9443"
+        log "Portainer is responding on $check_url"
+        if [[ -n "$tailscale_ip" ]]; then
+            log "Access via Tailscale network: https://$DOMAIN_NAME:9443"
+        fi
     fi
     
     log "Portainer container deployed successfully"
