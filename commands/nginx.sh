@@ -404,7 +404,7 @@ show_final_info() {
     if has_certificates "$DOMAIN_NAME"; then
         ssl_status="Let's Encrypt SSL certificate (valid and trusted)"
     else
-        ssl_status="Self-signed certificate (browser will show warning)"
+        ssl_status="Self-signed certificate (secure for private networks)"
     fi
     
     echo "🎉 Setup completed successfully!"
@@ -419,39 +419,31 @@ show_final_info() {
     echo "  • URL: https://$DOMAIN_NAME"
     echo "  • Initial Portainer setup timeout: 5 minutes"
     echo
-    echo -e "${BLUE}🏠 DNS Configuration:${NC}"
-    if [[ "$USE_REAL_SSL" == "true" ]]; then
-        echo "  • For Let's Encrypt certificates: Domain must resolve publicly"
-        echo "  • You can use private IP, but DNS must be publicly resolvable"
-        echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_IP_ADDRESS"
-        echo "  • Port 443 only (no port 80 needed)"
+    echo -e "${BLUE}🏠 DNS Configuration for Private Access:${NC}"
+    echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_TAILSCALE_IP (100.x.x.x)"
+    echo "  • Self-signed certificates (browser warning expected - safe to proceed)"
+    echo "  • Access only via Tailscale private network"
+    echo "  • Port 443 only (no port 80 needed)"
+    echo "  • Get Tailscale IP with: tailscale ip -4"
+    echo
+    if is_tailscale_connected; then
+        local ts_ip
+        ts_ip=$(get_tailscale_ip)
+        if [[ -n "$ts_ip" ]]; then
+            echo -e "${GREEN}✅ Tailscale IP detected: $ts_ip${NC}"
+            echo "Point your DNS A record: $DOMAIN_NAME → $ts_ip"
+        fi
     else
-        echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_PRIVATE_IP_ADDRESS"
-        echo "  • Access will be limited to your private network"
-        echo "  • Port 443 only (no port 80 needed)"
+        echo -e "${YELLOW}⚠️  Tailscale not connected. Run: infra tailscale --connect${NC}"
     fi
     echo
     
-    if has_certificates "$DOMAIN_NAME"; then
-        echo -e "${BLUE}🔄 Certificate Renewal Information:${NC}"
-        echo "  • Certificates expire every 90 days"
-        echo "  • Automatic renewal: enabled via systemd timer"
-        echo "  • Renewal checks: twice daily (random time)"
-        echo "  • Renewal threshold: 30 days before expiry"
-        echo
-        echo -e "${BLUE}📊 Certificate Management Commands:${NC}"
-        echo "  • Quick status: check-ssl-cert"
-        echo "  • Detailed info: certbot certificates"
-        echo "  • Test renewal: certbot renew --dry-run"
-        echo "  • Force renewal: infra nginx --renew-ssl --force-ssl"
-        echo "  • View logs: journalctl -u certbot.timer"
-        echo
-    elif [[ "$USE_REAL_SSL" == "true" ]]; then
-        echo -e "${YELLOW}💡 To get Let's Encrypt certificates later:${NC}"
-        echo "  1. Ensure $DOMAIN_NAME resolves to this server"
-        echo "  2. Run: infra nginx --configure"
-        echo
-    fi
+    echo -e "${BLUE}📊 Certificate Management:${NC}"
+    echo "  • Check status: check-ssl-cert"
+    echo "  • Self-signed certificates (no renewal needed)"
+    echo "  • Browser warning is expected and safe to proceed"
+    echo "  • Provides full TLS encryption for private network"
+    echo
     
     echo -e "${YELLOW}⚠️  Important: Complete Portainer setup within 5 minutes!${NC}"
 }

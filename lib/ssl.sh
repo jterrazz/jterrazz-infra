@@ -29,61 +29,15 @@ has_certificates() {
 generate_ssl_certificates() {
     local domain="$1"
     
-    if [[ "$USE_REAL_SSL" != "true" ]]; then
-        log "Using self-signed certificates (USE_REAL_SSL=false)"
-        return 0
+    if [[ "$USE_REAL_SSL" == "true" ]]; then
+        warn "Let's Encrypt certificates requested but not recommended for private Tailscale networks"
+        warn "Domain likely points to Tailscale private IP which Let's Encrypt cannot validate"
+        warn "Continuing with self-signed certificates for secure private access"
+        warn "Set USE_REAL_SSL=false to suppress this warning"
     fi
     
-    log "Setting up SSL certificates with Let's Encrypt for $domain..."
-    
-    # Install certbot if not present
-    if ! command -v certbot &> /dev/null; then
-        install_certbot || return 1
-    fi
-    
-    # Check if certificates already exist
-    if has_certificates "$domain"; then
-        warn "SSL certificates already exist for $domain, skipping generation"
-        return 0
-    fi
-    
-    # Ensure domain resolves
-    log "Testing domain accessibility..."
-    if ! test_domain_resolution "$domain"; then
-        warn "Domain $domain does not resolve. Please ensure:"
-        warn "1. DNS A record points to this server's IP"
-        warn "2. Domain resolves correctly"
-        warn "Continuing with self-signed certificates for now..."
-        warn "You can run this command again after DNS propagation to get real certificates"
-        return 0
-    fi
-    
-    # Stop nginx temporarily to allow standalone mode
-    if is_service_running nginx; then
-        log "Stopping nginx temporarily for certificate generation"
-        systemctl stop nginx
-        local restart_nginx=true
-    fi
-    
-    # Obtain SSL certificate using standalone mode
-    if ! certbot certonly --standalone \
-        -d "$domain" \
-        --non-interactive \
-        --agree-tos \
-        --email "admin@$domain" \
-        --expand; then
-        warn "Failed to obtain Let's Encrypt certificate, falling back to self-signed"
-        [[ "${restart_nginx:-}" == "true" ]] && systemctl start nginx
-        return 0
-    fi
-    
-    # Restart nginx if it was running
-    if [[ "${restart_nginx:-}" == "true" ]]; then
-        log "Restarting nginx"
-        systemctl start nginx
-    fi
-    
-    log "SSL certificates generated successfully for $domain"
+    log "Using self-signed certificates for private network access"
+    log "Certificates will be generated automatically by system SSL packages"
     return 0
 }
 
@@ -91,55 +45,8 @@ generate_ssl_certificates() {
 setup_certificate_renewal() {
     local domain="$1"
     
-    if [[ "$USE_REAL_SSL" != "true" ]] || ! has_certificates "$domain"; then
-        return 0
-    fi
-    
-    log "Setting up automatic certificate renewal..."
-    
-    # Enable certbot timer
-    if ! systemctl enable certbot.timer; then
-        warn "Failed to enable automatic certificate renewal"
-    else
-        log "Enabled automatic certificate renewal (certbot.timer)"
-    fi
-    
-    # Create renewal hooks for HTTPS-only setup
-    mkdir -p /etc/letsencrypt/renewal-hooks/{pre,post,deploy}
-    
-    # Pre-renewal hook: stop nginx
-    cat > /etc/letsencrypt/renewal-hooks/pre/stop-nginx.sh << 'PRE_HOOK_EOF'
-#!/bin/bash
-systemctl stop nginx 2>/dev/null || true
-PRE_HOOK_EOF
-    chmod +x /etc/letsencrypt/renewal-hooks/pre/stop-nginx.sh
-    
-    # Post-renewal hook: start nginx
-    cat > /etc/letsencrypt/renewal-hooks/post/start-nginx.sh << 'POST_HOOK_EOF'
-#!/bin/bash
-systemctl start nginx
-logger "SSL certificate renewed and nginx restarted for $RENEWED_DOMAINS"
-POST_HOOK_EOF
-    chmod +x /etc/letsencrypt/renewal-hooks/post/start-nginx.sh
-    
-    # Test renewal process (dry run)
-    log "Testing certificate renewal process..."
-    if certbot renew --dry-run; then
-        log "Certificate renewal test successful"
-    else
-        warn "Certificate renewal test failed - manual intervention may be needed"
-    fi
-    
-    log "Configured renewal hooks for HTTPS-only setup"
-    
-    # Show certificate expiry information
-    if openssl x509 -in "/etc/letsencrypt/live/$domain/cert.pem" -noout -dates 2>/dev/null; then
-        local expiry_date
-        expiry_date=$(openssl x509 -in "/etc/letsencrypt/live/$domain/cert.pem" -noout -enddate | cut -d= -f2)
-        log "Certificate expires on: $expiry_date"
-    fi
-    
-    log "SSL certificates configured successfully with automatic renewal"
+    log "Self-signed certificates do not require renewal"
+    log "Certificates are valid for extended periods and regenerated as needed"
     return 0
 }
 
@@ -150,42 +57,34 @@ create_ssl_monitoring_script() {
     cat > /usr/local/bin/check-ssl-cert << MONITOR_EOF
 #!/bin/bash
 DOMAIN="$domain"
-CERT_PATH="/etc/letsencrypt/live/\${DOMAIN}/cert.pem"
+CERT_PATH="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+
+echo "=== SSL Certificate Status for \$DOMAIN ==="
+echo "Certificate type: Self-signed (private network)"
+echo "Certificate path: \$CERT_PATH"
+echo
 
 if [[ -f "\$CERT_PATH" ]]; then
-    echo "=== SSL Certificate Status for \$DOMAIN ==="
-    echo "Certificate path: \$CERT_PATH"
+    echo "✅ Self-signed certificate is available"
+    echo "🔒 Provides encryption for private Tailscale network"
+    echo "⚠️  Browser will show security warning (expected for self-signed)"
     echo
-    
-    # Show expiry date
-    expiry_date=\$(openssl x509 -in "\$CERT_PATH" -noout -enddate | cut -d= -f2)
-    echo "Expires: \$expiry_date"
-    
-    # Calculate days until expiry
-    expiry_epoch=\$(date -d "\$expiry_date" +%s)
-    current_epoch=\$(date +%s)
-    days_until_expiry=\$(( (expiry_epoch - current_epoch) / 86400 ))
-    
-    echo "Days until expiry: \$days_until_expiry"
-    
-    if [ \$days_until_expiry -lt 7 ]; then
-        echo "🚨 CRITICAL: Certificate expires in less than 7 days!"
-    elif [ \$days_until_expiry -lt 30 ]; then
-        echo "⚠️  WARNING: Certificate expires in less than 30 days!"
-    else
-        echo "✅ Certificate is valid"
-    fi
-    
-    echo
-    echo "=== Automatic Renewal Status ==="
-    systemctl is-active certbot.timer && echo "✅ Renewal timer is active" || echo "❌ Renewal timer is inactive"
-    
-    echo
-    echo "=== Last Renewal Attempts ==="
-    journalctl -u certbot.timer --since "7 days ago" --no-pager | tail -10
+    echo "Certificate details:"
+    openssl x509 -in "\$CERT_PATH" -noout -subject -issuer -dates 2>/dev/null || echo "Unable to read certificate details"
 else
-    echo "❌ No Let's Encrypt certificate found for \$DOMAIN"
-    echo "Using self-signed certificates"
+    echo "❌ Self-signed certificate not found"
+    echo "Run: sudo infra nginx --configure"
+fi
+
+echo
+echo "=== Tailscale Network Status ==="
+if command -v tailscale &> /dev/null && tailscale status --json &>/dev/null; then
+    local ts_ip=\$(tailscale ip -4 2>/dev/null)
+    echo "✅ Tailscale connected: \$ts_ip"
+    echo "🌐 Access URL: https://\$DOMAIN (via Tailscale)"
+else
+    echo "❌ Tailscale not connected"
+    echo "Run: sudo infra tailscale --connect"
 fi
 MONITOR_EOF
     

@@ -10,10 +10,10 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Configuration with sensible defaults
+# Configuration with sensible defaults for private network access via Tailscale
 readonly DOMAIN_NAME="${DOMAIN_NAME:-manager.jterrazz.com}"
 readonly PORTAINER_VERSION="${PORTAINER_VERSION:-latest}"
-readonly USE_REAL_SSL="${USE_REAL_SSL:-true}"
+readonly USE_REAL_SSL="${USE_REAL_SSL:-false}"  # Private Tailscale networks use self-signed certificates
 
 # State management
 readonly STATE_DIR="/var/lib/jterrazz-infra"
@@ -155,6 +155,29 @@ is_port_open() {
 test_domain_resolution() {
     local domain="$1"
     nslookup "$domain" &>/dev/null
+}
+
+# Tailscale utilities
+is_tailscale_installed() {
+    command -v tailscale &> /dev/null
+}
+
+is_tailscale_connected() {
+    if ! is_tailscale_installed; then
+        return 1
+    fi
+    
+    local status
+    status=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null)
+    [[ "$status" == "Running" ]]
+}
+
+get_tailscale_ip() {
+    if ! is_tailscale_connected; then
+        return 1
+    fi
+    
+    tailscale ip -4 2>/dev/null | head -1
 }
 
 # SSL utilities

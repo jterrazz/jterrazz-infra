@@ -258,6 +258,127 @@ show_service_status() {
     else
         echo "  ❌ Service not running"
     fi
+    
+    # Tailscale status
+    echo
+    echo "Tailscale VPN:"
+    if is_tailscale_installed; then
+        echo "  ✅ Tailscale installed"
+        
+        if is_service_running tailscaled; then
+            echo "  ✅ Daemon running"
+            
+            if is_tailscale_connected; then
+                echo "  ✅ Connected to network"
+                
+                # Show Tailscale IP
+                local ts_ip
+                ts_ip=$(get_tailscale_ip)
+                if [[ -n "$ts_ip" ]]; then
+                    echo "  🔗 Tailscale IP: $ts_ip"
+                fi
+                
+                # Check if this enables private access to domain
+                if [[ -n "$ts_ip" ]]; then
+                    echo "  🏠 Private access: https://$DOMAIN_NAME (via Tailscale)"
+                fi
+            else
+                echo "  ❌ Not connected to network"
+            fi
+        else
+            echo "  ❌ Daemon not running"
+        fi
+    else
+        echo "  ❌ Not installed"
+        echo "     Run: infra tailscale --install"
+    fi
+}
+
+# Show detailed Tailscale status
+show_tailscale_status() {
+    print_section "Tailscale VPN Status"
+    
+    # Check if installed
+    if ! is_tailscale_installed; then
+        echo "❌ Tailscale is not installed"
+        echo "   Run: infra tailscale --install"
+        return 1
+    fi
+    
+    # Show version
+    echo "Version: $(tailscale version 2>/dev/null | head -1 || echo 'Unknown')"
+    
+    # Check daemon status
+    if is_service_running tailscaled; then
+        echo "✅ Tailscale daemon is running"
+        if is_service_enabled tailscaled; then
+            echo "✅ Service is enabled (auto-start)"
+        else
+            echo "⚠️  Service is not enabled"
+        fi
+    else
+        echo "❌ Tailscale daemon is not running"
+        if is_service_enabled tailscaled; then
+            echo "⚠️  Service is enabled but not running"
+        else
+            echo "❌ Service is not enabled"
+        fi
+        return 1
+    fi
+    
+    # Check connection status
+    if is_tailscale_connected; then
+        echo "✅ Connected to Tailscale network"
+        
+        # Show connection details
+        echo
+        echo "Connection Information:"
+        
+        # Get Tailscale IP
+        local ts_ip
+        ts_ip=$(get_tailscale_ip)
+        if [[ -n "$ts_ip" ]]; then
+            echo "  🔗 Tailscale IP: $ts_ip"
+        fi
+        
+        # Show hostname if available
+        if command -v jq &> /dev/null; then
+            local status_json hostname machine_name
+            status_json=$(tailscale status --json 2>/dev/null)
+            
+            if [[ -n "$status_json" ]]; then
+                hostname=$(echo "$status_json" | jq -r '.Self.HostName // empty')
+                machine_name=$(echo "$status_json" | jq -r '.Self.DNSName // empty')
+                
+                [[ -n "$hostname" ]] && echo "  🖥️  Hostname: $hostname"
+                [[ -n "$machine_name" ]] && echo "  📡 Machine name: $machine_name"
+                
+                # Check if routes are advertised
+                local advertised_routes
+                advertised_routes=$(echo "$status_json" | jq -r '.Self.PrimaryRoutes[]? // empty' 2>/dev/null)
+                if [[ -n "$advertised_routes" ]]; then
+                    echo "  🛣️  Advertised routes:"
+                    echo "$advertised_routes" | sed 's/^/     /'
+                fi
+            fi
+        fi
+        
+        # Show private access information
+        echo
+        echo "Private Network Access:"
+        echo "  🏠 Domain access: https://$DOMAIN_NAME"
+        echo "  🔒 Private access from any Tailscale device"
+        echo "  🌐 No public DNS/firewall configuration needed"
+        
+        # Show peer count
+        local peer_count
+        peer_count=$(tailscale status --peers=false 2>/dev/null | tail -n +2 | wc -l || echo "0")
+        echo "  👥 Network peers visible: $peer_count"
+        
+    else
+        echo "❌ Not connected to Tailscale network"
+        echo "   Run: infra tailscale --connect"
+    fi
 }
 
 # Show completed setup steps
@@ -284,16 +405,21 @@ show_setup_progress() {
             echo "  • infra install - Install dependencies and Docker"
         fi
         
-        if ! is_step_completed "portainer_container" && is_step_completed "docker_installation"; then
+        if ! is_tailscale_installed && is_step_completed "system_dependencies"; then
+            echo "  • infra tailscale --install - Setup VPN for private access"
+        fi
+        
+        if is_tailscale_installed && ! is_tailscale_connected && is_step_completed "system_dependencies"; then
+            echo "  • infra tailscale --connect - Connect to Tailscale network"
+        fi
+        
+        if is_tailscale_connected && ! is_step_completed "portainer_container"; then
+            echo "  • Configure DNS: Point $DOMAIN_NAME to $(get_tailscale_ip 2>/dev/null || echo 'your Tailscale IP')"
             echo "  • infra portainer --deploy - Deploy Portainer"
         fi
         
         if ! is_step_completed "nginx_configuration" && is_step_completed "portainer_container"; then
             echo "  • infra nginx --configure - Setup reverse proxy"
-        fi
-        
-        if is_step_completed "nginx_configuration" && ! has_certificates "$DOMAIN_NAME"; then
-            echo "  • Configure DNS and re-run: infra nginx --configure"
         fi
         
     else
@@ -302,8 +428,10 @@ show_setup_progress() {
         echo "Getting started:"
         echo "  1. infra upgrade    - Update system"
         echo "  2. infra install    - Install dependencies"
-        echo "  3. infra portainer  - Deploy Portainer"
-        echo "  4. infra nginx      - Setup reverse proxy"
+        echo "  3. infra tailscale  - Setup VPN network"
+        echo "  4. Configure DNS: Point domain to Tailscale IP"
+        echo "  5. infra portainer  - Deploy Portainer"
+        echo "  6. infra nginx      - Setup reverse proxy"
     fi
 }
 
@@ -350,6 +478,7 @@ cmd_status() {
     local show_services=false
     local show_progress=false
     local show_resources=false
+    local show_tailscale=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -389,6 +518,11 @@ cmd_status() {
                 show_resources=true
                 shift
                 ;;
+            --tailscale)
+                show_all=false
+                show_tailscale=true
+                shift
+                ;;
             --all|-a)
                 show_all=true
                 shift
@@ -423,6 +557,7 @@ cmd_status() {
         [[ "$show_services" == "true" ]] && show_service_status
         [[ "$show_progress" == "true" ]] && show_setup_progress
         [[ "$show_resources" == "true" ]] && show_resource_usage
+        [[ "$show_tailscale" == "true" ]] && show_tailscale_status
     fi
     
     echo
@@ -441,6 +576,7 @@ show_status_help() {
     echo "  --network     Network connectivity and ports"
     echo "  --security    Security services and updates"
     echo "  --services    Infrastructure service status"
+    echo "  --tailscale   Tailscale VPN network status"
     echo "  --progress    Setup progress and next steps"
     echo "  --resources   Detailed resource usage"
     echo "  --all, -a     Show all sections (default)"
@@ -449,5 +585,6 @@ show_status_help() {
     echo "Examples:"
     echo "  infra status              # Show all status information"
     echo "  infra status --services   # Show only service status"
+    echo "  infra status --tailscale  # Show only Tailscale status"
     echo "  infra status --security   # Show only security status"
 }

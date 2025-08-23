@@ -1,6 +1,6 @@
 # JTerrazz Infrastructure CLI
 
-Professional infrastructure management CLI for deploying and managing containerized applications with HTTPS-only reverse proxy, SSL certificates, and security hardening.
+Professional infrastructure management CLI for deploying and managing containerized applications with HTTPS-only reverse proxy, SSL certificates, and security hardening. Designed for private network access via Tailscale VPN.
 
 ## ✨ Features
 
@@ -9,6 +9,7 @@ Professional infrastructure management CLI for deploying and managing containeri
 - **🔒 SSL Certificates** - Automatic Let's Encrypt or self-signed certificates
 - **🐳 Docker Management** - Container deployment and management
 - **🌐 Reverse Proxy** - Nginx with security headers and optimizations
+- **🔗 Tailscale VPN** - Secure private network access from anywhere
 - **🛡️ Security Hardening** - UFW firewall, fail2ban, automatic updates
 - **📊 Status Monitoring** - Comprehensive system and service status reporting
 - **🔄 Resumable Operations** - State tracking and recovery from failures
@@ -39,13 +40,21 @@ sudo infra upgrade
 # 2. Install dependencies and Docker
 sudo infra install
 
-# 3. Deploy Portainer container manager
+# 3. Setup Tailscale VPN for private network access
+sudo infra tailscale --install
+sudo infra tailscale --connect
+
+# 4. Configure DNS to point your domain to your Tailscale IP
+# Get your Tailscale IP: tailscale ip -4  (e.g., 100.64.1.2)
+# Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
+
+# 5. Deploy Portainer container manager
 sudo infra portainer --deploy
 
-# 4. Configure Nginx reverse proxy with SSL
+# 6. Configure Nginx reverse proxy with SSL
 sudo infra nginx --configure
 
-# 5. Check overall status
+# 7. Check overall status
 infra status
 ```
 
@@ -92,6 +101,22 @@ sudo infra nginx [action]
   --status, -s           # Show status (default)
 ```
 
+### Tailscale VPN Management
+
+```bash
+# Manage Tailscale VPN for secure private network access
+sudo infra tailscale [action]
+  --install              # Install Tailscale
+  --connect              # Connect to network (interactive)
+  --connect --auth-key=xyz # Connect with auth key (non-interactive)
+  --disconnect           # Disconnect from network
+  --subnet-router [cidr] # Configure as subnet router
+  --ssh                  # Enable SSH access through Tailscale
+  --update               # Update to latest version
+  --generate-key         # Generate auth key for other machines
+  --status, -s           # Show connection status (default)
+```
+
 ### Monitoring & Status
 
 ```bash
@@ -102,6 +127,7 @@ infra status [section]
   --network     # Network and connectivity
   --security    # Security services
   --services    # Infrastructure services
+  --tailscale   # Tailscale VPN status
   --progress    # Setup progress
   --resources   # Resource usage
   --all, -a     # All sections (default)
@@ -141,25 +167,42 @@ jterrazz-infra/
 
 ## 🌐 Network Configuration
 
-### For Private Networks
+### Private Network Access via Tailscale (Default Setup)
+
+This infrastructure is designed for **private network access only** via Tailscale VPN. Your domain resolves to your server's Tailscale private IP, providing secure access from anywhere without exposing services to the public internet.
 
 ```bash
-# Configure for private access only
-export DOMAIN_NAME="manager.yourdomain.local"
-export USE_REAL_SSL=false
+# Setup private access via Tailscale VPN
+export DOMAIN_NAME="manager.jterrazz.com"     # Your private domain
+export USE_REAL_SSL=false                    # Self-signed certificates for private network
 
-# Run setup
+# Full setup process (in correct order)
+sudo infra upgrade
+sudo infra install
+sudo infra tailscale --install
+sudo infra tailscale --connect               # Follow authentication URL
+
+# IMPORTANT: Configure DNS before deploying services
+# Get your Tailscale IP: tailscale ip -4 (e.g., 100.64.1.2)
+# Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
+
+sudo infra portainer --deploy
 sudo infra nginx --configure
+
+# Access from any device on your Tailscale network:
+# https://manager.jterrazz.com (resolves to server's Tailscale private IP)
 ```
 
-### For Public Access with Let's Encrypt
+### Advanced Configuration Options
 
 ```bash
-# Configure for public access with real SSL
-export DOMAIN_NAME="manager.yourdomain.com"
-export USE_REAL_SSL=true
+# Configure as subnet router (route entire server network through Tailscale)
+sudo infra tailscale --subnet-router 192.168.1.0/24
 
-# Ensure DNS points to your server, then run
+# Enable SSH access through Tailscale
+sudo infra tailscale --ssh
+
+# SSL certificates (self-signed for private network security)
 sudo infra nginx --configure
 ```
 
@@ -167,23 +210,47 @@ sudo infra nginx --configure
 
 ### Environment Variables
 
-| Variable            | Default                | Description                      |
-| ------------------- | ---------------------- | -------------------------------- |
-| `DOMAIN_NAME`       | `manager.jterrazz.com` | Domain name for SSL certificates |
-| `USE_REAL_SSL`      | `true`                 | Use Let's Encrypt certificates   |
-| `PORTAINER_VERSION` | `latest`               | Portainer version to deploy      |
+| Variable            | Default                | Description                                            |
+| ------------------- | ---------------------- | ------------------------------------------------------ |
+| `DOMAIN_NAME`       | `manager.jterrazz.com` | Domain name for private network access                 |
+| `USE_REAL_SSL`      | `false`                | Use self-signed certificates (recommended for private networks) |
+| `PORTAINER_VERSION` | `latest`               | Portainer version to deploy                            |
 
 ### SSL Certificate Management
+
+For private Tailscale networks, this infrastructure uses **self-signed SSL certificates** by default. This provides strong encryption while being perfectly suited for private network access.
+
+#### **Why Self-Signed Certificates?**
+
+- ✅ **Perfect for private networks** - No external validation required
+- ✅ **Full encryption** - Same TLS security as paid certificates  
+- ✅ **No expiration hassle** - Long validity periods, no renewals
+- ✅ **Zero dependencies** - Works offline and in private networks
+- ⚠️ **Browser warning expected** - Browsers show security warning (safe to proceed)
+
+#### **Certificate Status**
 
 ```bash
 # Check certificate status
 check-ssl-cert
 
-# Manual certificate operations
-certbot certificates                    # List certificates
-certbot renew --dry-run                # Test renewal
-sudo infra nginx --renew-ssl --force-ssl # Force renewal
-journalctl -u certbot.timer            # View renewal logs
+# Example output:
+# ✅ Self-signed certificate is available
+# 🔒 Provides encryption for private Tailscale network  
+# ⚠️ Browser will show security warning (expected for self-signed)
+```
+
+#### **Advanced: Using Real SSL Certificates**
+
+If you specifically need trusted certificates (not recommended for private networks):
+
+```bash
+# Enable Let's Encrypt certificates (will likely fail for Tailscale IPs)
+export USE_REAL_SSL=true
+sudo infra nginx --configure
+
+# Note: Let's Encrypt requires publicly accessible domain validation
+# This typically won't work with Tailscale private IPs (100.x.x.x)
 ```
 
 ### State Management
@@ -202,7 +269,9 @@ sudo rm /var/lib/jterrazz-infra/state
 
 ### Network Security
 
+- **Private Network Only** - No public internet exposure
 - **HTTPS-Only** - No HTTP port 80 exposure
+- **Tailscale VPN** - Encrypted mesh network with device authentication
 - **UFW Firewall** - Default deny with SSH/HTTPS exceptions
 - **Fail2ban** - SSH brute-force protection
 
@@ -268,6 +337,33 @@ journalctl -u nginx -f          # Nginx logs
 journalctl -u docker -f         # Docker logs
 docker logs portainer -f        # Portainer logs
 journalctl -u certbot.timer     # Certificate renewal logs
+journalctl -u tailscaled -f     # Tailscale daemon logs
+```
+
+### Tailscale Network Management
+
+```bash
+# Check Tailscale connection
+infra status --tailscale
+
+# View network peers
+tailscale status
+
+# Access services via Tailscale
+# Once connected, access your services from any Tailscale device:
+# https://manager.yourdomain.com (resolves to your server's Tailscale IP)
+
+# IMPORTANT: Configure your DNS provider to point your domain to your Tailscale IP:
+# 1. Get Tailscale IP: tailscale ip -4  (returns something like 100.x.x.x)
+# 2. Create DNS A record: manager.yourdomain.com → 100.x.x.x
+# 3. Access from any device on your Tailscale network
+
+# Subnet routing (to access entire server network)
+sudo infra tailscale --subnet-router 192.168.1.0/24
+
+# SSH through Tailscale
+sudo infra tailscale --ssh
+ssh username@machine-name  # No IP needed, use Tailscale machine name
 ```
 
 ## 🐛 Troubleshooting
@@ -277,13 +373,14 @@ journalctl -u certbot.timer     # Certificate renewal logs
 **SSL Certificate Issues:**
 
 ```bash
-# Test domain resolution
-nslookup manager.yourdomain.com
-
-# Check certificate status
+# Check certificate status (mostly self-signed for private access)
 check-ssl-cert
 
-# Force certificate renewal
+# Switch to real SSL if needed (requires publicly resolvable domain)
+export USE_REAL_SSL=true
+sudo infra nginx --configure
+
+# Force certificate renewal (only for real SSL certificates)
 sudo infra nginx --renew-ssl --force-ssl
 ```
 
@@ -312,6 +409,26 @@ sudo tail -f /var/log/nginx/error.log
 
 # Reload configuration
 sudo infra nginx --reload
+```
+
+**Tailscale Issues:**
+
+```bash
+# Check connection status
+infra status --tailscale
+
+# Restart Tailscale daemon
+sudo systemctl restart tailscaled
+
+# Reconnect to network
+sudo infra tailscale --disconnect
+sudo infra tailscale --connect
+
+# View detailed logs
+journalctl -u tailscaled -f
+
+# Access admin console
+# Visit: https://login.tailscale.com/admin/machines
 ```
 
 ## 🔧 Development

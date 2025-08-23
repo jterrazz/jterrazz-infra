@@ -9,6 +9,7 @@
 #   install     - Install dependencies and Docker
 #   portainer   - Setup Portainer container
 #   nginx       - Configure Nginx reverse proxy
+#   tailscale   - Setup Tailscale VPN network
 #   status      - Show system and service status
 #   --help      - Show this help message
 
@@ -35,6 +36,7 @@ show_help() {
     echo "  install     Install dependencies, Docker, and core utilities"
     echo "  portainer   Setup and deploy Portainer container manager"
     echo "  nginx       Configure Nginx reverse proxy with SSL"
+    echo "  tailscale   Setup and manage Tailscale VPN network"
     echo "  status      Show system status and service health"
     echo
     echo "Global Options:"
@@ -46,12 +48,13 @@ show_help() {
     echo "  ${CLI_NAME} install           # Install all dependencies"
     echo "  ${CLI_NAME} portainer         # Setup Portainer"
     echo "  ${CLI_NAME} nginx             # Configure Nginx proxy"
+    echo "  ${CLI_NAME} tailscale         # Setup VPN network"
     echo "  ${CLI_NAME} status            # Show service status"
     echo
     echo "Environment Variables:"
-    echo "  DOMAIN_NAME        Domain for SSL certificates (default: manager.jterrazz.com)"
-    echo "  USE_REAL_SSL       Use Let's Encrypt certificates (default: true)"
-    echo "  PORTAINER_VERSION  Portainer version to install (default: latest)"
+    echo "  DOMAIN_NAME        Domain for private access (default: manager.jterrazz.com)"
+    echo "  USE_REAL_SSL       Use Let's Encrypt certificates (default: false - private network)"
+    echo "  PORTAINER_VERSION  Portainer version to deploy (default: latest)"
 }
 
 # Show version
@@ -94,12 +97,23 @@ main() {
     
     # Check for root privileges for system commands
     local command="$1"
+    local action="${2:-}"
     case "$command" in
         upgrade|install|portainer|nginx)
             if [[ $EUID -ne 0 ]]; then
                 error "Command '$command' requires root privileges"
                 error "Please run: sudo $CLI_NAME $*"
                 exit 1
+            fi
+            ;;
+        tailscale)
+            # Allow status and help without root
+            if [[ "$action" != "--status" && "$action" != "-s" && "$action" != "--help" && "$action" != "-h" && "$action" != "" ]]; then
+                if [[ $EUID -ne 0 ]]; then
+                    error "Command '$command $action' requires root privileges"
+                    error "Please run: sudo $CLI_NAME $*"
+                    exit 1
+                fi
             fi
             ;;
     esac
