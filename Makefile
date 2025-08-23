@@ -2,7 +2,7 @@
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean nuke ansible kubeconfig shell logs status deploy deps
+.PHONY: help start stop clean nuke ansible kubeconfig dns dns-clean dns-status shell logs status deploy deps
 
 # Colors
 GREEN := \033[32m
@@ -28,6 +28,15 @@ ansible: ## ⚙️  Run Ansible playbook on VM
 kubeconfig: ## 📋 Get kubeconfig from VM
 	@echo "$(BLUE)Getting kubeconfig from VM...$(NC)"
 	./scripts/local-dev.sh kubeconfig
+
+dns: ## 🌐 Setup local DNS (/etc/hosts) for seamless access
+	@./scripts/setup-local-dns.sh setup
+
+dns-clean: ## 🧹 Remove local DNS entries from /etc/hosts
+	@./scripts/setup-local-dns.sh clean
+
+dns-status: ## ℹ️ Show current local DNS entries
+	@./scripts/setup-local-dns.sh status
 
 apps: ## 🚀 Deploy applications (Traefik configs + ArgoCD apps)
 	@echo "$(GREEN)Deploying applications via ArgoCD...$(NC)"

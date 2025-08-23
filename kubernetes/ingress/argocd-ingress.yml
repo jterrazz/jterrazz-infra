@@ -1,0 +1,23 @@
+# ArgoCD Ingress with HTTPS but no problematic middleware
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    # ArgoCD HTTPS configuration
+    traefik.ingress.kubernetes.io/backend-protocol: HTTP
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: argocd.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

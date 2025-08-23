@@ -1,0 +1,21 @@
+# Global HTTPS Redirect for Traefik
+# Ensures all HTTP traffic is redirected to HTTPS
+
+---
+# IngressRoute for global HTTP to HTTPS redirect
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: global-http-redirect
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: "HostRegexp(`{host:.+}`)"
+      kind: Rule
+      middlewares:
+        - name: https-redirect-global
+      services:
+        - name: default-landing
+          port: 80
