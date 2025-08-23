@@ -11,16 +11,17 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Download ArgoCD installation manifest
-  get_url:
+  ansible.builtin.get_url:
     url: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
     dest: "/tmp/argocd-install.yaml"
     mode: "0644"
 
 - name: Apply ArgoCD manifests to the argocd namespace
-  shell: |
+  ansible.builtin.shell: |
     kubectl apply -n {{ argocd_namespace }} -f /tmp/argocd-install.yaml
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: true # Always considered changed as it's an installation
 
 - name: Wait for ArgoCD server to be ready
   kubernetes.core.k8s_info:
@@ -46,24 +47,24 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Decode ArgoCD admin password
-  set_fact:
+  ansible.builtin.set_fact:
     argocd_admin_password: "{{ argocd_admin_secret.resources[0].data.password | b64decode }}"
   when: argocd_admin_secret.resources | length > 0
 
 - name: Create ArgoCD CLI configuration directory
-  file:
+  ansible.builtin.file:
     path: /root/.argocd
     state: directory
     mode: "0755"
 
 - name: Display ArgoCD access information
-  debug:
+  ansible.builtin.debug:
     msg: |
       ✅ ArgoCD installed successfully!
       • Namespace: {{ argocd_namespace }}
       • Username: admin
       • Password: {{ argocd_admin_password | default('Check secret: kubectl -n argocd get secret argocd-initial-admin-secret') }}
-      
+
       🔗 Access ArgoCD:
       • Port-forward: kubectl port-forward svc/argocd-server -n argocd 8080:443
       • Then open: https://localhost:8080 (accept self-signed cert)
@@ -74,18 +75,18 @@
       • Automatic sync from Git commits
 
 - name: Create sample application manifest directory
-  file:
+  ansible.builtin.file:
     path: /root/argocd-apps
     state: directory
     mode: "0755"
 
 - name: Clean up installation manifest
-  file:
+  ansible.builtin.file:
     path: /tmp/argocd-install.yaml
     state: absent
 
 - name: Create sample ArgoCD application
-  copy:
+  ansible.builtin.copy:
     content: |
       apiVersion: argoproj.io/v1alpha1
       kind: Application

@@ -1,16 +1,16 @@
 ---
 # Tailscale role handlers
 
-- name: restart tailscaled
-  systemd:
+- name: Restart tailscaled
+  ansible.builtin.systemd:
     name: tailscaled
     state: restarted
-    daemon_reload: yes
+    daemon_reload: true
   listen: "restart tailscaled"
 
-- name: reload tailscaled
-  systemd:
+- name: Reload tailscaled
+  ansible.builtin.systemd:
     name: tailscaled
     state: reloaded
-    daemon_reload: yes
+    daemon_reload: true
   listen: "reload tailscaled"

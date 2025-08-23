@@ -2,29 +2,29 @@
 # k3s installation and configuration tasks
 
 - name: Check if k3s is already installed
-  stat:
+  ansible.builtin.stat:
     path: /usr/local/bin/k3s
   register: k3s_binary
 
 - name: Debug k3s binary check
-  debug:
+  ansible.builtin.debug:
     msg: "k3s_binary.stat.exists = {{ k3s_binary.stat.exists | default('undefined') }}"
 
 - name: Get installed k3s version
-  command: k3s --version
+  ansible.builtin.command: k3s --version
   register: k3s_installed_version
   changed_when: false
   failed_when: false
   when: k3s_binary.stat.exists
 
 - name: Download k3s installation script
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ k3s_install_script_url }}"
     dest: /tmp/k3s-install.sh
     mode: '0755'
 
 - name: Create k3s configuration directory
-  file:
+  ansible.builtin.file:
     path: "{{ k3s_config_dir }}"
     state: directory
     mode: '0755'
@@ -32,22 +32,22 @@
     group: root
 
 - name: Generate secure k3s token for single-node cluster
-  shell: openssl rand -hex 32
-  register: generated_k3s_token
+  ansible.builtin.command: openssl rand -hex 32
+  register: k3s_generated_token
   when: k3s_token == ""
   changed_when: false
 
 - name: Set k3s token (auto-generated for single-node setup)
-  set_fact:
-    k3s_token: "{{ generated_k3s_token.stdout if (k3s_token == '' and generated_k3s_token.stdout is defined) else k3s_token }}"
+  ansible.builtin.set_fact:
+    k3s_token: "{{ k3s_generated_token.stdout if (k3s_token == '' and k3s_generated_token.stdout is defined) else k3s_token }}"
 
 - name: Display k3s token generation status
-  debug:
+  ansible.builtin.debug:
     msg: "✅ k3s cluster token auto-generated for single-node setup"
-  when: generated_k3s_token is defined and generated_k3s_token.stdout is defined and k3s_token == generated_k3s_token.stdout
+  when: k3s_generated_token is defined and k3s_generated_token.stdout is defined and k3s_token == k3s_generated_token.stdout
 
 - name: Generate k3s configuration file
-  template:
+  ansible.builtin.template:
     src: k3s-config.yaml.j2
     dest: "{{ k3s_config_dir }}/config.yaml"
     mode: '0640'
@@ -56,30 +56,31 @@
   notify: restart k3s
 
 - name: Test k3s installation debug
-  debug:
+  ansible.builtin.debug:
     msg: "About to install k3s version {{ k3s_version }}"
 
-- name: Force install k3s server
-  shell: "INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh"
+- name: Force install k3s server  # noqa command-instead-of-shell
+  ansible.builtin.shell: "INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh"
   environment:
     K3S_TOKEN: "{{ k3s_token }}"
+  changed_when: true  # Always considered changed as it's an installation
 
 - name: Ensure k3s service is started and enabled
-  systemd:
+  ansible.builtin.systemd:
     name: "{{ k3s_service_name }}"
     state: "{{ k3s_service_state }}"
     enabled: "{{ k3s_service_enabled }}"
-    daemon_reload: yes
+    daemon_reload: true
 
 - name: Wait for k3s to be ready
-  wait_for:
+  ansible.builtin.wait_for:
     port: 6443
     host: "{{ k3s_node_ip }}"
     delay: 10
     timeout: 300
 
 - name: Verify k3s cluster is running
-  command: k3s kubectl get nodes
+  ansible.builtin.command: k3s kubectl get nodes
   register: k3s_nodes
   changed_when: false
   retries: 5
@@ -87,31 +88,31 @@
   until: k3s_nodes.rc == 0
 
 - name: Create kubectl symlink
-  file:
+  ansible.builtin.file:
     src: /usr/local/bin/k3s
     dest: /usr/local/bin/kubectl
     state: link
 
 - name: Set kubeconfig permissions
-  file:
+  ansible.builtin.file:
     path: /etc/rancher/k3s/k3s.yaml
     mode: '0644'
 
 - name: Create .kube directory for root
-  file:
+  ansible.builtin.file:
     path: /root/.kube
     state: directory
     mode: '0755'
 
 - name: Copy kubeconfig for root user
-  copy:
+  ansible.builtin.copy:
     src: /etc/rancher/k3s/k3s.yaml
     dest: /root/.kube/config
-    remote_src: yes
+    remote_src: true
     mode: '0600'
 
 - name: Display k3s cluster status
-  debug:
+  ansible.builtin.debug:
     msg: |
       ✅ k3s cluster is ready!
       • Version: {{ k3s_version }}
@@ -120,6 +121,6 @@
       • Nodes: {{ k3s_nodes.stdout_lines | length }}
 
 - name: Clean up installation script
-  file:
+  ansible.builtin.file:
     path: /tmp/k3s-install.sh
     state: absent

@@ -2,32 +2,32 @@
 # Security hardening role default variables
 
 # SSH hardening configuration
-ssh_port: 22
-ssh_permit_root_login: "yes"  # We need root for initial setup
-ssh_password_authentication: "no"
-ssh_pubkey_authentication: "yes"
-ssh_challenge_response_auth: "no"
-ssh_gss_api_authentication: "no"
-ssh_x11_forwarding: "no"
-ssh_max_auth_tries: 3
-ssh_client_alive_interval: 300
-ssh_client_alive_count_max: 2
+security_ssh_port: 22
+security_ssh_permit_root_login: "yes"  # We need root for initial setup
+security_ssh_password_authentication: "no"
+security_ssh_pubkey_authentication: "yes"
+security_ssh_challenge_response_auth: "no"
+security_ssh_gss_api_authentication: "no"
+security_ssh_x11_forwarding: "no"
+security_ssh_max_auth_tries: 3
+security_ssh_client_alive_interval: 300
+security_ssh_client_alive_count_max: 2
 
 # fail2ban configuration
-fail2ban_enabled: true
-fail2ban_ignoreip: "127.0.0.1/8 ::1"
-fail2ban_bantime: "10m"
-fail2ban_findtime: "10m"  
-fail2ban_maxretry: 5
+security_fail2ban_enabled: true
+security_fail2ban_ignoreip: "127.0.0.1/8 ::1"
+security_fail2ban_bantime: "10m"
+security_fail2ban_findtime: "10m"
+security_fail2ban_maxretry: 5
 
 # UFW firewall configuration
-ufw_enabled: true
-ufw_default_incoming: "deny"
-ufw_default_outgoing: "allow"
-ufw_default_forward: "deny"
+security_ufw_enabled: true
+security_ufw_default_incoming: "deny"
+security_ufw_default_outgoing: "allow"
+security_ufw_default_forward: "deny"
 
 # Required firewall rules for our stack
-ufw_rules:
+security_ufw_rules:
   - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
   - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Lets Encrypt)" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
@@ -35,18 +35,18 @@ ufw_rules:
   - { port: "41641", proto: "udp", rule: "allow", comment: "Tailscale" }
 
 # Automatic updates configuration
-auto_updates_enabled: true
-unattended_upgrades_enabled: true
-auto_reboot_enabled: false  # Set to true if you want automatic reboots
-auto_reboot_time: "06:00"
+security_auto_updates_enabled: true
+security_unattended_upgrades_enabled: true
+security_auto_reboot_enabled: false  # Set to true if you want automatic reboots
+security_auto_reboot_time: "06:00"
 
 # System hardening
-disable_unused_services: true
-secure_shared_memory: true
-disable_uncommon_protocols: true
+security_disable_unused_services: true
+security_secure_shared_memory: true
+security_disable_uncommon_protocols: true
 
 # Kernel parameters for security
-kernel_parameters:
+security_kernel_parameters:
   # Disable IP forwarding (will be enabled by k3s if needed)
   - { name: "net.ipv4.ip_forward", value: "0" }
   # Disable IPv6 if not needed

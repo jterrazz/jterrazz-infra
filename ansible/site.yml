@@ -1,11 +1,11 @@
 ---
-# JTerrazz Infrastructure - Unified Ansible Playbook  
+# JTerrazz Infrastructure - Unified Ansible Playbook
 # Works for both production VPS and local Docker development
 
 - name: JTerrazz Infrastructure Setup
   hosts: all
-  become: yes
-  gather_facts: yes
+  become: true
+  gather_facts: true
 
   vars:
     # k3s configuration
@@ -26,7 +26,7 @@
 
   pre_tasks:
     - name: Display deployment environment information
-      debug:
+      ansible.builtin.debug:
         msg: |
           {% if environment_type == 'local' %}
           🏠 Starting LOCAL DEVELOPMENT deployment
@@ -34,14 +34,14 @@
           🔧 Environment: {{ environment_type | default('production') }}
           ⚠️  This is NOT a production deployment!
           {% else %}
-          🚀 Starting PRODUCTION deployment  
+          🚀 Starting PRODUCTION deployment
           🖥️  Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
           🔧 Environment: {{ environment_type | default('production') }}
           🛡️ Production security will be applied
           {% endif %}
 
     - name: Wait for system to be ready (local development)
-      wait_for_connection:
+      ansible.builtin.wait_for_connection:
         connect_timeout: 20
         sleep: 5
         delay: 5
@@ -49,31 +49,31 @@
       when: environment_type == 'local'
 
     - name: Update package cache
-      apt:
-        update_cache: yes
+      ansible.builtin.apt:
+        update_cache: true
         cache_valid_time: 3600
 
     - name: Install essential packages
-      apt:
+      ansible.builtin.apt:
         name:
-        - curl
-        - wget
-        - git
-        - vim
-        - htop
-        - unzip
-        - ca-certificates
-        - gnupg
-        - lsb-release
-        - python3-pip
-        - python3-yaml  # Required for Ansible Kubernetes modules
-        - python3-kubernetes  # Required for Ansible Kubernetes modules
-        - jq
-        - iptables  # Required for k3s networking
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - unzip
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - python3-pip
+          - python3-yaml  # Required for Ansible Kubernetes modules
+          - python3-kubernetes  # Required for Ansible Kubernetes modules
+          - jq
+          - iptables  # Required for k3s networking
         state: present
 
     - name: Create k3s directories
-      file:
+      ansible.builtin.file:
         path: "{{ item }}"
         state: directory
         mode: "0755"
@@ -85,19 +85,19 @@
   roles:
     - role: security
       when: not (skip_security | default(false))
-      
+
     - role: tailscale
       when: not (skip_tailscale | default(false))
-      
+
     - role: k3s
-    
+
     - role: helm
-    
+
     # Removed complex roles - using Traefik built-in instead!
     # - cert-manager: Not needed, Traefik has built-in ACME
     # - nginx-ingress: Not needed, k3s comes with Traefik
     # - argocd: Skip for now, focus on core functionality
-    
+
     - role: argocd
       when: not (skip_argocd | default(false))
 
@@ -105,44 +105,44 @@
     # Skip ArgoCD wait and deployment for now - focusing on core Traefik setup
 
     - name: Get Tailscale IP if connected
-      command: tailscale ip -4
+      ansible.builtin.command: tailscale ip -4
       register: tailscale_ip_result
       changed_when: false
       failed_when: false
       when: not (skip_tailscale | default(false))
 
     - name: Display cluster information
-      debug:
+      ansible.builtin.debug:
         msg: |
           🎉 JTerrazz Infrastructure Setup Complete!
-          
+
           📋 Summary:
           • Environment: {{ environment_type | default('local') }}
           • Target: {{ ansible_hostname }}
-          
+
           🔧 Installed Components:
           • ✅ k3s Kubernetes cluster
-          • ✅ Helm package manager  
+          • ✅ Helm package manager
           • ✅ Traefik ingress controller (built-in!)
-          
+
           🚀 Next Steps:
           1. Get kubeconfig: make kubeconfig
           2. Test cluster: kubectl get nodes
           3. Check Traefik: kubectl get pods -n kube-system
-          
+
           🎯 Much simpler setup with Traefik! 🚀
 
-    - name: Create kubeconfig copy  
-      fetch:
+    - name: Create kubeconfig copy
+      ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
         dest: "{% if environment_type == 'local' %}./local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
-        flat: yes
+        flat: true
       delegate_to: "{{ inventory_hostname }}"
 
-    - name: Update kubeconfig server address  
-      replace:
+    - name: Update kubeconfig server address
+      ansible.builtin.replace:
         path: "{% if environment_type == 'local' %}./local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "{% if environment_type == 'local' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
       delegate_to: localhost
-      become: no
+      become: false

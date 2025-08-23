@@ -22,11 +22,11 @@ argocd_config:
   accounts.admin: "apiKey, login"
   # Enable insecure mode for easier access (you can secure this later)
   server.insecure: "true"
-  
+
 # Redis configuration (embedded)
 argocd_redis:
   enabled: true
-  
+
 # High availability (disabled for single-node)
 argocd_ha:
   enabled: false

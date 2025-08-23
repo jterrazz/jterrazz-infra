@@ -3,12 +3,12 @@
 
 [DEFAULT]
 # Ignore IPs (whitelist)
-ignoreip = {{ fail2ban_ignoreip }}
+ignoreip = {{ security_fail2ban_ignoreip }}
 
 # Ban settings  
-bantime = {{ fail2ban_bantime }}
-findtime = {{ fail2ban_findtime }}
-maxretry = {{ fail2ban_maxretry }}
+bantime = {{ security_fail2ban_bantime }}
+findtime = {{ security_fail2ban_findtime }}
+maxretry = {{ security_fail2ban_maxretry }}
 
 # Backend for log parsing
 backend = auto
@@ -21,19 +21,19 @@ action = %(action_)s
 
 [sshd]
 enabled = true
-port = {{ ssh_port }}
+port = {{ security_ssh_port }}
 filter = sshd
 logpath = /var/log/auth.log
-maxretry = {{ fail2ban_maxretry }}
-bantime = {{ fail2ban_bantime }}
+maxretry = {{ security_fail2ban_maxretry }}
+bantime = {{ security_fail2ban_bantime }}
 
 [sshd-ddos]
 enabled = true
-port = {{ ssh_port }}
+port = {{ security_ssh_port }}
 filter = sshd-ddos
 logpath = /var/log/auth.log
 maxretry = 2
-bantime = {{ fail2ban_bantime }}
+bantime = {{ security_fail2ban_bantime }}
 
 # Web server protection (nginx)
 [nginx-http-auth]
@@ -41,21 +41,21 @@ enabled = true
 filter = nginx-http-auth
 logpath = /var/log/nginx/error.log
 maxretry = 5
-bantime = {{ fail2ban_bantime }}
+bantime = {{ security_fail2ban_bantime }}
 
 [nginx-limit-req]
 enabled = true
 filter = nginx-limit-req
 logpath = /var/log/nginx/error.log
 maxretry = 5
-bantime = {{ fail2ban_bantime }}
+bantime = {{ security_fail2ban_bantime }}
 
 [nginx-botsearch]
 enabled = true
 filter = nginx-botsearch
 logpath = /var/log/nginx/access.log
 maxretry = 5
-bantime = {{ fail2ban_bantime }}
+bantime = {{ security_fail2ban_bantime }}
 
 # Additional protections
 [recidive]

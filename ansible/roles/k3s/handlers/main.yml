@@ -1,16 +1,16 @@
 ---
 # k3s role handlers
 
-- name: restart k3s
-  systemd:
+- name: Restart k3s
+  ansible.builtin.systemd:
     name: k3s
     state: restarted
-    daemon_reload: yes
+    daemon_reload: true
   listen: "restart k3s"
 
-- name: reload k3s
-  systemd:
+- name: Reload k3s
+  ansible.builtin.systemd:
     name: k3s
     state: reloaded
-    daemon_reload: yes
+    daemon_reload: true
   listen: "reload k3s"

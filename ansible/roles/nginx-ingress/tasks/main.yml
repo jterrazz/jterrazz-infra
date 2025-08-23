@@ -89,7 +89,7 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Configure UFW for nginx-ingress NodePort
-  ufw:
+  ansible.posix.ufw:
     rule: allow
     port: "{{ item }}"
     proto: tcp
@@ -99,7 +99,7 @@
     - "{{ nginx_ingress_https_port }}"
 
 - name: Set up iptables redirect from port 80 to NodePort
-  iptables:
+  ansible.builtin.iptables:
     table: nat
     chain: PREROUTING
     protocol: tcp
@@ -109,7 +109,7 @@
     comment: "Redirect HTTP to nginx-ingress"
 
 - name: Set up iptables redirect from port 443 to NodePort
-  iptables:
+  ansible.builtin.iptables:
     table: nat
     chain: PREROUTING
     protocol: tcp
@@ -119,18 +119,18 @@
     comment: "Redirect HTTPS to nginx-ingress"
 
 - name: Save iptables rules
-  shell: |
+  ansible.builtin.shell: |
     iptables-save > /etc/iptables/rules.v4
   args:
     creates: /etc/iptables/rules.v4
 
 - name: Install iptables-persistent
-  apt:
+  ansible.builtin.apt:
     name: iptables-persistent
     state: present
 
 - name: Display nginx-ingress status
-  debug:
+  ansible.builtin.debug:
     msg: |
       ✅ nginx-ingress controller installed successfully!
       • Version: {{ nginx_ingress_version }}
@@ -138,7 +138,7 @@
       • Service Type: {{ nginx_ingress_service_type }}
       • HTTP Port: 80 → {{ nginx_ingress_http_port }}
       • HTTPS Port: 443 → {{ nginx_ingress_https_port }}
-      
+
       🌐 Traffic routing:
       • Port 80/443 → nginx-ingress controller → your apps
       • SSL termination handled automatically with cert-manager

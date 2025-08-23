@@ -2,35 +2,35 @@
 # Helm installation tasks
 
 - name: Check if Helm is already installed
-  stat:
+  ansible.builtin.stat:
     path: "{{ helm_install_dir }}/helm"
   register: helm_binary
 
 - name: Get installed Helm version
-  command: "{{ helm_install_dir }}/helm version --short"
+  ansible.builtin.command: "{{ helm_install_dir }}/helm version --short"
   register: helm_installed_version
   changed_when: false
   failed_when: false
   when: helm_binary.stat.exists
 
 - name: Download and install Helm
-  unarchive:
+  ansible.builtin.unarchive:
     src: "{{ helm_download_url }}"
     dest: /tmp
-    remote_src: yes
+    remote_src: true
     creates: "/tmp/linux-{{ helm_arch }}/helm"
   when: not helm_binary.stat.exists or helm_version not in helm_installed_version.stdout | default('')
 
 - name: Copy Helm binary to install directory
-  copy:
+  ansible.builtin.copy:
     src: "/tmp/linux-{{ helm_arch }}/helm"
     dest: "{{ helm_install_dir }}/helm"
     mode: '0755'
-    remote_src: yes
+    remote_src: true
   when: not helm_binary.stat.exists or helm_version not in helm_installed_version.stdout | default('')
 
 - name: Verify Helm installation
-  command: "{{ helm_install_dir }}/helm version --short"
+  ansible.builtin.command: "{{ helm_install_dir }}/helm version --short"
   register: helm_version_check
   changed_when: false
 
@@ -51,13 +51,13 @@
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Update Helm repositories
-  command: "{{ helm_install_dir }}/helm repo update"
+  ansible.builtin.command: "{{ helm_install_dir }}/helm repo update"
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
   changed_when: false
 
 - name: Display Helm installation info
-  debug:
+  ansible.builtin.debug:
     msg: |
       ✅ Helm installed successfully!
       • Version: {{ helm_version_check.stdout }}
@@ -65,6 +65,6 @@
       • Repositories: stable, bitnami
 
 - name: Clean up download files
-  file:
+  ansible.builtin.file:
     path: "/tmp/linux-{{ helm_arch }}"
     state: absent

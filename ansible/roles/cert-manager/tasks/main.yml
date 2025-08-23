@@ -65,9 +65,9 @@
           privateKeySecretRef:
             name: letsencrypt-staging
           solvers:
-          - http01:
-              ingress:
-                class: nginx
+            - http01:
+                ingress:
+                  class: nginx
     state: present
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
@@ -86,21 +86,21 @@
           privateKeySecretRef:
             name: letsencrypt-prod
           solvers:
-          - http01:
-              ingress:
-                class: nginx
+            - http01:
+                ingress:
+                  class: nginx
     state: present
   environment:
     KUBECONFIG: /etc/rancher/k3s/k3s.yaml
 
 - name: Display cert-manager status
-  debug:
+  ansible.builtin.debug:
     msg: |
       ✅ cert-manager installed successfully!
       • Version: {{ cert_manager_version }}
       • Namespace: {{ cert_manager_namespace }}
       • Email: {{ letsencrypt_email }}
       • ClusterIssuer: letsencrypt-prod (automatic SSL certificates)
-      
+
       🔒 SSL certificates will be automatically issued for Ingress resources
       with the annotation: cert-manager.io/cluster-issuer: letsencrypt-prod

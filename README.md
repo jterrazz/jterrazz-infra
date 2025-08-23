@@ -1,4 +1,4 @@
-# 🚀 JTerrazz Infrastructure
+# Jterrazz Infrastructure
 
 **Modern Infrastructure as Code** for VPS deployment on Hetzner Cloud with **Kubernetes (k3s)**, **GitOps (ArgoCD)**, and **cloud-native tooling**.
 
