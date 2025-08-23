@@ -178,11 +178,9 @@ get_ssl_cert_paths() {
     local domain="$1"
     
     if has_certificates "$domain"; then
-        echo "/etc/letsencrypt/live/$domain/fullchain.pem"
-        echo "/etc/letsencrypt/live/$domain/privkey.pem"
+        echo "/etc/letsencrypt/live/$domain/fullchain.pem /etc/letsencrypt/live/$domain/privkey.pem"
     else
-        echo "/etc/ssl/certs/ssl-cert-snakeoil.pem"
-        echo "/etc/ssl/private/ssl-cert-snakeoil.key"
+        echo "/etc/ssl/certs/ssl-cert-snakeoil.pem /etc/ssl/private/ssl-cert-snakeoil.key"
     fi
 }
 

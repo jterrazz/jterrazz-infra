@@ -37,10 +37,34 @@ disable_http_services() {
             fi
         done
         
-        # Check if it's a default Nginx default site still somehow active
+        # Check and remove default Nginx configurations that listen on port 80
         if [[ -f /etc/nginx/sites-enabled/default ]]; then
             rm -f /etc/nginx/sites-enabled/default
             log "Removed default Nginx site"
+        fi
+        
+        # Check for any remaining sites listening on port 80
+        if [[ -d /etc/nginx/sites-enabled ]]; then
+            for site in /etc/nginx/sites-enabled/*; do
+                if [[ -f "$site" ]] && grep -q "listen.*80" "$site" 2>/dev/null; then
+                    local site_name=$(basename "$site")
+                    warn "Found site listening on port 80: $site_name"
+                    # Comment out port 80 listen directives
+                    sed -i 's/^\s*listen.*80/# &/' "$site"
+                    log "Disabled port 80 listening in $site_name"
+                fi
+            done
+        fi
+        
+        # Check main nginx.conf for port 80 configurations
+        if [[ -f /etc/nginx/nginx.conf ]] && grep -q "listen.*80" /etc/nginx/nginx.conf 2>/dev/null; then
+            warn "Found port 80 configuration in main nginx.conf"
+        fi
+        
+        # Reload Nginx to apply changes
+        if systemctl is-active --quiet nginx; then
+            systemctl reload nginx || warn "Failed to reload Nginx"
+            log "Reloaded Nginx to apply HTTPS-only configuration"
         fi
         
         # Ensure UFW blocks port 80 if firewall is active
@@ -55,13 +79,78 @@ disable_http_services() {
         port_80_service=$(netstat -tlnp 2>/dev/null | grep ':80 ' | head -1)
         if [[ -n "$port_80_service" ]]; then
             warn "Port 80 still in use after cleanup: $port_80_service"
-            warn "Manual investigation may be required"
+            
+            # Last resort: create a minimal nginx configuration
+            if [[ "$port_80_service" == *nginx* ]]; then
+                warn "Attempting to create minimal HTTPS-only Nginx configuration"
+                create_minimal_nginx_config
+                systemctl reload nginx || warn "Failed to reload Nginx with minimal config"
+                sleep 1
+                port_80_service=$(netstat -tlnp 2>/dev/null | grep ':80 ' | head -1)
+                if [[ -z "$port_80_service" ]]; then
+                    log "✅ Port 80 closed with minimal configuration"
+                else
+                    warn "Manual investigation required - check: nginx -T | grep 'listen.*80'"
+                fi
+            else
+                warn "Manual investigation may be required"
+            fi
         else
             log "✅ Port 80 successfully closed - HTTPS-only setup confirmed"
         fi
     else
         log "✅ No services on port 80 - HTTPS-only setup confirmed"
     fi
+}
+
+# Create minimal HTTPS-only nginx configuration
+create_minimal_nginx_config() {
+    local backup_dir="/etc/nginx/backup-$(date +%Y%m%d-%H%M%S)"
+    
+    # Backup current configuration
+    mkdir -p "$backup_dir"
+    cp -r /etc/nginx/sites-enabled "$backup_dir/" 2>/dev/null || true
+    cp /etc/nginx/nginx.conf "$backup_dir/" 2>/dev/null || true
+    log "Nginx configuration backed up to $backup_dir"
+    
+    # Disable all sites temporarily
+    if [[ -d /etc/nginx/sites-enabled ]]; then
+        rm -f /etc/nginx/sites-enabled/*
+    fi
+    
+    # Create a minimal main configuration if needed
+    cat > /etc/nginx/nginx.conf << 'EOF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections 768;
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    server_tokens off;
+    
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+    
+    gzip on;
+    
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+EOF
+    
+    log "Created minimal HTTPS-only Nginx configuration"
 }
 
 # Configure Nginx for Portainer with SSL
