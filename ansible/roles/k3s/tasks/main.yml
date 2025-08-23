@@ -28,6 +28,21 @@
     owner: root
     group: root
 
+- name: Generate secure k3s token for single-node cluster
+  shell: openssl rand -hex 32
+  register: generated_k3s_token
+  when: k3s_token == ""
+  changed_when: false
+
+- name: Set k3s token (auto-generated for single-node setup)
+  set_fact:
+    k3s_token: "{{ generated_k3s_token.stdout if k3s_token == '' else k3s_token }}"
+
+- name: Display k3s token generation status
+  debug:
+    msg: "✅ k3s cluster token auto-generated for single-node setup"
+  when: k3s_token == generated_k3s_token.stdout
+
 - name: Generate k3s configuration file
   template:
     src: k3s-config.yaml.j2

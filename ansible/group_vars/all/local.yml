@@ -1,0 +1,111 @@
+# Local Development Configuration
+# Overrides for Docker container testing environment
+
+---
+# Environment identification
+environment_type: "local"
+deployment_method: "docker"
+is_local_development: true
+
+# Security settings (relaxed for local development)
+security_level: "development"
+skip_ssh_hardening: true
+skip_ufw_strict_rules: true
+enable_fail2ban: false
+enable_audit_logging: false
+allow_password_auth: true # For easy local access
+
+# Networking settings
+use_host_network: false
+local_testing: true
+
+# SSL/TLS settings (self-signed for local)
+use_self_signed_certs: true
+ssl_provider: "self-signed"
+local_domain: "jterrazz.local"
+skip_letsencrypt: true
+
+# k3s configuration for local development
+k3s_server: true
+k3s_token: "local-dev-token-insecure-but-fine"
+k3s_node_ip: "{{ ansible_default_ipv4.address }}"
+k3s_flannel_interface: "eth0"
+k3s_cluster_cidr: "10.42.0.0/16"
+k3s_service_cidr: "10.43.0.0/16"
+k3s_disable_network_policy: true # Simplify networking for local testing
+
+# Helm settings
+helm_add_stable_repo: true
+helm_repositories:
+  - name: stable
+    url: https://charts.helm.sh/stable
+  - name: ingress-nginx
+    url: https://kubernetes.github.io/ingress-nginx
+  - name: jetstack
+    url: https://charts.jetstack.io
+
+# cert-manager settings (self-signed only)
+cert_manager_version: "v1.13.0"
+cert_manager_enable_self_signed: true
+cert_manager_create_selfsigned_issuer: true
+cert_manager_skip_letsencrypt: true
+
+# Nginx Ingress settings for local
+nginx_ingress_version: "4.8.0"
+nginx_ingress_namespace: "ingress-nginx"
+nginx_ingress_controller_service_type: "NodePort"
+nginx_ingress_node_port_http: 80
+nginx_ingress_node_port_https: 443
+nginx_ingress_host_network: false
+
+# ArgoCD settings for local development
+argocd_version: "5.46.0"
+argocd_namespace: "argocd"
+argocd_server_insecure: true
+argocd_admin_password: "localdev123"
+argocd_create_ingress: false # Skip ingress for local testing
+
+# Portainer settings
+portainer_namespace: "portainer"
+portainer_admin_password: "localdev123"
+portainer_service_type: "NodePort"
+portainer_node_port: 9000
+
+# Skip external services in local environment
+skip_tailscale: true
+skip_external_dns: true
+skip_real_ssl: true
+
+# Local-specific features
+enable_local_registry: false # Could be useful for testing custom images
+enable_local_storage: true # Use local storage classes
+create_test_namespaces: true # Create additional namespaces for testing
+
+# Test namespaces to create
+test_namespaces:
+  - name: "development"
+    labels:
+      environment: "local"
+      purpose: "development"
+  - name: "testing"
+    labels:
+      environment: "local"
+      purpose: "testing"
+  - name: "staging"
+    labels:
+      environment: "local"
+      purpose: "staging"
+
+# Debug settings
+ansible_debug: true
+k3s_debug: true
+verbose_output: true
+
+# Local DNS settings (for /etc/hosts or local DNS server)
+local_dns_entries:
+  - hostname: "jterrazz.local"
+    ip: "127.0.0.1"
+  - hostname: "portainer.jterrazz.local"
+    ip: "127.0.0.1"
+  - hostname: "argocd.jterrazz.local"
+    ip: "127.0.0.1"

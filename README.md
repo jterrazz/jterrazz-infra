@@ -38,9 +38,13 @@ jterrazz-infra/
 ├── 🏗️ terraform/              # Infrastructure provisioning
 │   ├── main.tf                # Hetzner Cloud VPS
 │   ├── variables.tf           # Configuration options
-│   └── outputs.tf             # Connection details
+│   ├── outputs.tf             # Connection details
+│   └── backend.tf             # Remote state management
 ├── ⚙️ ansible/                # Server configuration
-│   ├── site.yml               # Main playbook
+│   ├── site.yml               # Unified playbook (local + production)
+│   ├── inventories/           # Environment-specific targeting
+│   │   ├── local/             # Docker containers
+│   │   └── production/        # VPS servers
 │   └── roles/                 # Component roles
 │       ├── security/          # VPS hardening & protection
 │       ├── tailscale/         # Private network
@@ -55,11 +59,42 @@ jterrazz-infra/
 │   └── ingress/              # Routing rules
 ├── 📚 docs/                   # Documentation
 │   └── GITHUB_ACTIONS_DEPLOYMENT.md # Deployment guide
-└── 📜 scripts/
-    └── bootstrap.sh          # Local deployment (alternative)
+├── 📜 scripts/
+│   ├── bootstrap.sh          # Local deployment (alternative)
+│   └── local-dev.sh          # Local Docker development
+└── 🔧 Makefile               # Convenient command shortcuts
 ```
 
 ## 🚀 Quick Start
+
+Choose your deployment method:
+
+### **🏠 Local Development (Test First!)**
+
+**Test everything locally before VPS deployment:**
+
+```bash
+# 🎯 Easy way (using Makefile):
+make dev-full        # Complete setup: clean -> start -> ansible -> test
+
+# 📜 Direct script way:
+./scripts/local-dev.sh start
+./scripts/local-dev.sh ansible
+./scripts/local-dev.sh get-kubeconfig
+./scripts/local-dev.sh test-k8s
+
+# 💡 More Makefile shortcuts:
+make local-start     # Start environment
+make local-ansible   # Run Ansible  
+make local-test      # Test Kubernetes
+make help           # See all commands
+```
+
+**⚡ Perfect for:** Testing changes, learning, debugging without VPS costs!
+
+**🎯 Key Feature:** Uses the **same unified Ansible playbook** as production - just different inventory and variables!
+
+📚 **[Complete Local Development Guide →](docs/LOCAL_DEVELOPMENT.md)**
 
 ### **🎯 Recommended: GitHub Actions Deployment**
 
@@ -69,8 +104,10 @@ jterrazz-infra/
 2. **Add secrets** in GitHub repo settings:
    - `HCLOUD_TOKEN` - Get from [Hetzner Console](https://console.hetzner.cloud/)
    - `SSH_PUBLIC_KEY` / `SSH_PRIVATE_KEY` - Your SSH key pair
-   - `K3S_TOKEN` - Generate with: `openssl rand -hex 32`
-3. **Deploy**: Go to **Actions** → **🚀 Deploy Infrastructure** → **Run workflow**
+   - ✅ `K3S_TOKEN` - **Auto-generated!** No setup needed
+   - `TF_CLOUD_TOKEN` - **Recommended** for state management
+3. **Configure backend.tf** - Set your Terraform Cloud organization/workspace
+4. **Deploy**: Go to **Actions** → **🚀 Deploy Infrastructure** → **Run workflow**
 
 **⏱️ 10 minutes later**: Enterprise-grade Kubernetes cluster ready! 🎉
 
@@ -147,7 +184,7 @@ ansible-vault encrypt group_vars/all/vault.yml
 ansible-vault edit group_vars/all/vault.yml
 
 # Add your secrets:
-vault_k3s_token: "your-secure-k3s-token"  # Generate: openssl rand -hex 32
+# vault_k3s_token: AUTO-GENERATED! No setup needed for single-node k3s
 vault_tailscale_auth_key: "tskey-auth-your-tailscale-key"  # From Tailscale admin
 ```
 

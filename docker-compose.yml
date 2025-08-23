@@ -1,0 +1,95 @@
+# Local Development Environment
+# Simulates the VPS environment using Docker containers
+
+version: '3.8'
+
+services:
+  # Main server container (simulates Hetzner VPS)
+  jterrazz-server:
+    image: ubuntu:22.04
+    hostname: jterrazz-local
+    container_name: jterrazz-infra-server
+    privileged: true  # Required for systemd and k3s
+    restart: unless-stopped
+    
+    # Port mappings (simulating VPS services)
+    ports:
+      - "2222:22"     # SSH (host:2222 -> container:22)
+      - "80:80"       # HTTP
+      - "443:443"     # HTTPS
+      - "6443:6443"   # k3s API server
+      - "9000:9000"   # Portainer (installed via Ansible/k3s)
+    
+    # Volumes for persistence
+    volumes:
+      - ./local-data/server:/data                    # Persistent data
+      - ./local-data/k3s:/etc/rancher/k3s           # k3s configuration
+      - ./local-data/ssh:/home/ubuntu/.ssh          # SSH keys
+      - /var/run/docker.sock:/var/run/docker.sock   # Docker socket (for k3s containers)
+      - /lib/modules:/lib/modules:ro                 # Kernel modules for k3s
+    
+    # Environment variables
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+      - TZ=Europe/Berlin
+      - CONTAINER_ENV=local  # Flag for Ansible to know it's local
+    
+    # Keep container running
+    command: >
+      bash -c "
+        # Install essential packages
+        apt-get update && apt-get install -y 
+          openssh-server 
+          systemd 
+          systemd-sysv 
+          sudo 
+          curl 
+          wget 
+          gnupg 
+          ca-certificates 
+          python3 
+          python3-pip &&
+        
+        # Configure SSH
+        mkdir -p /run/sshd &&
+        echo 'root:localdev' | chpasswd &&
+        sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config &&
+        sed -i 's/#PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config &&
+        
+        # Create ubuntu user (matching Hetzner VPS)
+        useradd -m -s /bin/bash ubuntu &&
+        usermod -aG sudo ubuntu &&
+        echo 'ubuntu:localdev' | chpasswd &&
+        echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/ubuntu &&
+        
+        # Start SSH service
+        service ssh start &&
+        
+        # Keep container running with systemd
+        exec /sbin/init
+      "
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "systemctl", "is-active", "ssh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    
+    networks:
+      - jterrazz-network
+
+
+
+# Network for all services
+networks:
+  jterrazz-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Persistent volumes
+volumes:
+  server-data:
+  k3s-data:

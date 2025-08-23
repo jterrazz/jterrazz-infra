@@ -32,12 +32,11 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 
 #### **🔐 Add these Repository Secrets:**
 
-| Secret Name       | Description                  | Example                               |
-| ----------------- | ---------------------------- | ------------------------------------- |
-| `HCLOUD_TOKEN`    | Hetzner Cloud API token      | `abcdef123456...`                     |
-| `SSH_PRIVATE_KEY` | Your SSH private key         | `-----BEGIN OPENSSH PRIVATE KEY-----` |
-| `SSH_PUBLIC_KEY`  | Your SSH public key          | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...` |
-| `K3S_TOKEN`       | Secure token for k3s cluster | Generate: `openssl rand -hex 32`      |
+| Secret Name       | Description             | Example                               |
+| ----------------- | ----------------------- | ------------------------------------- |
+| `HCLOUD_TOKEN`    | Hetzner Cloud API token | `abcdef123456...`                     |
+| `SSH_PRIVATE_KEY` | Your SSH private key    | `-----BEGIN OPENSSH PRIVATE KEY-----` |
+| `SSH_PUBLIC_KEY`  | Your SSH public key     | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...` |
 
 #### **🌐 Optional Domain Secrets:**
 
@@ -46,6 +45,16 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 | `DOMAIN_NAME`          | Your domain (e.g., `jterrazz.com`) | ✅ For custom domain       |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API token               | ✅ For automatic DNS       |
 | `CLOUDFLARE_ZONE_ID`   | Cloudflare zone ID                 | ✅ For automatic DNS       |
+
+#### **☁️ State Management Secret:**
+
+| Secret Name     | Description                    | Required for Reusability |
+| --------------- | ------------------------------ | ------------------------ |
+| `TF_CLOUD_TOKEN` | Terraform Cloud API token     | ✅ **Highly Recommended** |
+
+**⚠️ Important**: Without remote state, Terraform will try to create resources every time instead of reusing them!
+
+📚 **[Complete State Management Guide →](TERRAFORM_STATE_MANAGEMENT.md)**
 
 #### **🔗 Optional Tailscale Secret:**
 
@@ -89,11 +98,17 @@ cat ~/.ssh/hetzner-key.pub
 
 #### **⚡ k3s Token:**
 
-```bash
-# Generate secure random token
-openssl rand -hex 32
-# Add as K3S_TOKEN secret
-```
+✅ **Auto-generated!** Ansible creates a secure k3s token automatically for single-node clusters. No manual setup required!
+
+#### **☁️ Terraform Cloud Token (Recommended):**
+
+1. Sign up at [app.terraform.io](https://app.terraform.io)
+2. **Create Organization** → Choose a name (e.g., `yourname-infra`)
+3. **Create Workspace** → Name: `jterrazz-infra-production`
+4. **User Settings** → **Tokens** → **Create API token**
+5. Copy token → Add as `TF_CLOUD_TOKEN` secret
+
+**Why needed?** Ensures Terraform reuses existing resources instead of trying to create duplicates on each deployment!
 
 #### **🔗 Tailscale Auth Key (Optional):**
 
@@ -272,7 +287,8 @@ ssh root@your-server-ip 'tail -f /var/log/fail2ban.log'
 - 🔒 **Enterprise-grade security**
 - 👥 **Team collaboration** capabilities
 - 📊 **Full deployment history**
-- ⚡ **10-minute setup** → production infrastructure
+- ⚡ **Simplified setup** → Just 3 secrets needed (k3s token auto-generated!)
+- ⚡ **10-minute deployment** → production infrastructure
 - 💰 **€6/month** total cost (same as before!)
 
 **Your infrastructure deployment is now as easy as clicking a button!** 🎊

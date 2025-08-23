@@ -1,9 +1,9 @@
 ---
-# JTerrazz Infrastructure - Main Ansible Playbook
-# Complete server setup with k3s, Tailscale, and cloud-native applications
+# JTerrazz Infrastructure - Unified Ansible Playbook  
+# Works for both production VPS and local Docker development
 
 - name: JTerrazz Infrastructure Setup
-  hosts: k3s_cluster
+  hosts: all
   become: yes
   gather_facts: yes
 
@@ -26,6 +26,29 @@
     tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
 
   pre_tasks:
+    - name: Display deployment environment information
+      debug:
+        msg: |
+          {% if environment_type == 'local' %}
+          🏠 Starting LOCAL DEVELOPMENT deployment
+          📦 Target: Docker container ({{ ansible_hostname }})
+          🔧 Environment: {{ environment_type | default('production') }}
+          ⚠️  This is NOT a production deployment!
+          {% else %}
+          🚀 Starting PRODUCTION deployment  
+          🖥️  Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
+          🔧 Environment: {{ environment_type | default('production') }}
+          🛡️ Production security will be applied
+          {% endif %}
+
+    - name: Wait for system to be ready (local development)
+      wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 5
+        timeout: 300
+      when: environment_type == 'local'
+
     - name: Update package cache
       apt:
         update_cache: yes
@@ -58,13 +81,21 @@
         - /var/log/k3s
 
   roles:
-    - security
-    - tailscale
-    - k3s
-    - helm
-    - cert-manager
-    - nginx-ingress
-    - argocd
+    - role: security
+      when: not (skip_security | default(false))
+      
+    - role: tailscale
+      when: not (skip_tailscale | default(false))
+      
+    - role: k3s
+    
+    - role: helm
+    
+    - role: cert-manager
+    
+    - role: nginx-ingress
+    
+    - role: argocd
 
   post_tasks:
     - name: Wait for ArgoCD to be fully ready
@@ -87,17 +118,42 @@
       register: tailscale_ip_result
       changed_when: false
       failed_when: false
+      when: not (skip_tailscale | default(false))
 
     - name: Display cluster information
       debug:
         msg: |
           🎉 JTerrazz Infrastructure Setup Complete!
 
+          {% if environment_type == 'local' %}
+          🏠 Local Development Environment Ready!
+          
+          🔗 Local Access Points:
+          • SSH: localhost:2222 (ubuntu/localdev)
+          • k3s API: localhost:6443
+          • HTTP: localhost:80
+          • HTTPS: localhost:443  
+          • Portainer: localhost:9000 (when deployed)
+          
+          📋 Next Steps:
+          1. Get kubeconfig: ./scripts/local-dev.sh get-kubeconfig
+          2. Test k8s: ./scripts/local-dev.sh test-k8s
+          3. Access services via localhost ports
+          4. When ready, deploy to VPS with GitHub Actions
+          
+          ⚠️ Important: This is LOCAL DEVELOPMENT only!
+          • No real SSL certificates
+          • No Tailscale VPN  
+          • Relaxed security settings
+          • Fixed passwords (localdev123)
+          {% else %}
+          🚀 Production Infrastructure Ready!
+          
           🔗 Access Points:
           • Kubernetes API: https://{{ ansible_host }}:6443
           • ArgoCD: https://argocd.{{ domain_name }}
           • Portainer: https://portainer.{{ domain_name }} (Tailscale only)
-          {% if tailscale_ip_result.rc == 0 %}• Tailscale IP: {{ tailscale_ip_result.stdout }}{% endif %}
+          {% if tailscale_ip_result is defined and tailscale_ip_result.rc == 0 %}• Tailscale IP: {{ tailscale_ip_result.stdout }}{% endif %}
 
           🛡️ Security Status:
           • SSH hardened: Password auth disabled, key-only access
@@ -111,21 +167,22 @@
           2. Test connection: kubectl get nodes
           3. Access ArgoCD and deploy applications
           4. Check security: ssh root@{{ ansible_host }} '/usr/local/bin/security-status'
+          {% endif %}
 
           🔐 Default Credentials:
           • ArgoCD admin password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-    - name: Create local kubeconfig copy
+    - name: Create kubeconfig copy  
       fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: ./kubeconfig
+        dest: "{% if environment_type == 'local' %}./local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         flat: yes
       delegate_to: "{{ inventory_hostname }}"
 
-    - name: Update kubeconfig server address
+    - name: Update kubeconfig server address  
       replace:
-        path: ./kubeconfig
+        path: "{% if environment_type == 'local' %}./local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
-        replace: "https://{{ ansible_host }}:6443"
+        replace: "{% if environment_type == 'local' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
       delegate_to: localhost
       become: no

@@ -1,0 +1,51 @@
+# Operating System
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local development environment
+local-data/
+local-kubeconfig.yaml
+.local-env
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+
+# Ansible
+ansible/group_vars/all/vault.yml
+*.retry
+.ansible/
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Environment variables
+.env
+.env.local
