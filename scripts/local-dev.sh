@@ -107,18 +107,18 @@ setup_ssh() {
     echo "VM IP: $vm_ip"
 }
 
-# Update Ansible inventory for local VM
-update_inventory() {
-    info "Updating Ansible inventory..."
+# Verify dynamic inventory can discover VM
+verify_inventory() {
+    info "Verifying dynamic inventory can discover VM..."
     
-    local vm_ip
-    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
-    
-    # Update the multipass inventory with current VM IP
-    sed -i.bak "s/ansible_host: .*/ansible_host: $vm_ip/" "$PROJECT_DIR/ansible/inventories/multipass/hosts.yml"
-    
-    success "Ansible inventory updated"
-    info "VM accessible at: $vm_ip"
+    # Test the dynamic inventory script
+    if ansible/inventories/multipass/inventory.py --list | grep -q "jterrazz-multipass"; then
+        success "Dynamic inventory successfully discovered VM"
+        local vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+        info "VM accessible at: $vm_ip"
+    else
+        warning "Dynamic inventory couldn't discover VM. VM might not be ready yet."
+    fi
 }
 
 # Run Ansible playbook against VM
@@ -127,11 +127,11 @@ run_ansible() {
     
     cd "$PROJECT_DIR/ansible"
     
-    # Test connectivity first
-    ansible -i inventories/multipass/hosts.yml -m ping all
+    # Test connectivity first with dynamic inventory
+    ansible -i inventories/multipass/inventory.py -m ping all
     
-    # Run the full playbook
-    ansible-playbook -i inventories/multipass/hosts.yml site.yml -v
+    # Run the full playbook with dynamic inventory
+    ansible-playbook -i inventories/multipass/inventory.py site.yml -v
     
     success "Ansible playbook completed"
 }
@@ -254,7 +254,7 @@ case "${1:-help}" in
     full)
         create_vm
         setup_ssh
-        update_inventory
+        verify_inventory
         run_ansible
         status
         ;;
