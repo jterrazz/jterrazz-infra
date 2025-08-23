@@ -123,33 +123,7 @@ update_portainer() {
     return 0
 }
 
-# Remove Portainer installation
-remove_portainer() {
-    log "Removing Portainer installation..."
-    
-    # Stop and remove container
-    if docker ps -a --format 'table {{.Names}}' | grep -q '^portainer$'; then
-        log "Stopping and removing Portainer container..."
-        docker stop portainer 2>/dev/null || true
-        docker rm portainer 2>/dev/null || true
-    fi
-    
-    # Optionally remove volume (ask user)
-    if docker volume ls | grep -q portainer_data; then
-        echo
-        read -p "Remove Portainer data volume? This will delete all Portainer settings and configurations. (y/N): " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            docker volume rm portainer_data
-            log "Portainer data volume removed"
-        else
-            log "Portainer data volume preserved"
-        fi
-    fi
-    
-    log "Portainer removal completed"
-    return 0
-}
+
 
 # Show Portainer status and information
 show_portainer_status() {
@@ -324,10 +298,7 @@ cmd_portainer() {
                 action="update"
                 shift
                 ;;
-            --remove|-r)
-                action="remove"
-                shift
-                ;;
+
             --backup|-b)
                 action="backup"
                 backup_path="${2:-/backup/portainer}"
@@ -388,10 +359,7 @@ cmd_portainer() {
             print_header "Portainer Update"
             update_portainer || exit 1
             ;;
-        remove)
-            print_header "Portainer Removal"
-            remove_portainer || exit 1
-            ;;
+
         backup)
             print_header "Portainer Backup"
             backup_portainer "$backup_path" || exit 1
@@ -415,7 +383,7 @@ show_portainer_help() {
     echo "Actions:"
     echo "  --deploy, -d           Deploy Portainer container"
     echo "  --update, -u           Update Portainer to latest version"
-    echo "  --remove, -r           Remove Portainer installation"
+    echo "  --uninstall            Complete uninstallation (removes container, images, and optionally data)"
     echo "  --backup, -b [path]    Create backup of Portainer data"
     echo "  --restore <file>       Restore Portainer from backup"
     echo "  --status, -s           Show Portainer status (default)"
@@ -427,4 +395,227 @@ show_portainer_help() {
     echo "  infra portainer --backup             # Backup to /backup/portainer"
     echo "  infra portainer --backup /tmp        # Backup to /tmp"
     echo "  infra portainer --restore backup.tar.gz  # Restore from backup"
+}
+
+# Complete uninstallation of Portainer
+uninstall_portainer_complete() {
+    log "Starting complete Portainer uninstallation..."
+    
+    # Stop and remove Portainer container
+    if docker ps -a --format 'table {{.Names}}' | grep -q '^portainer$'; then
+        log "Stopping and removing Portainer container..."
+        docker stop portainer 2>/dev/null || warn "Failed to stop Portainer container"
+        docker rm portainer 2>/dev/null || warn "Failed to remove Portainer container"
+    else
+        log "Portainer container not found (may already be removed)"
+    fi
+    
+    # Remove Portainer data volume
+    if docker volume ls | grep -q portainer_data; then
+        log "Removing Portainer data volume..."
+        echo "WARNING: This will permanently delete all Portainer data including:"
+        echo "  • User accounts and settings"
+        echo "  • Stack configurations"
+        echo "  • Template customizations"
+        echo "  • All Portainer application data"
+        echo
+        read -p "Are you sure you want to delete the Portainer data volume? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            docker volume rm portainer_data 2>/dev/null || warn "Failed to remove Portainer data volume"
+            log "Portainer data volume removed"
+        else
+            log "Keeping Portainer data volume (can be reused on reinstall)"
+        fi
+    else
+        log "Portainer data volume not found"
+    fi
+    
+    # Remove any Portainer images
+    log "Removing Portainer Docker images..."
+    docker images --format "table {{.Repository}}:{{.Tag}}" | grep "portainer/portainer" | while read -r image; do
+        if [[ -n "$image" && "$image" != "REPOSITORY:TAG" ]]; then
+            docker rmi "$image" 2>/dev/null || warn "Failed to remove image: $image"
+        fi
+    done
+    
+    # Remove firewall rules for Portainer
+    log "Cleaning up firewall rules..."
+    if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+        ufw delete allow 9443/tcp 2>/dev/null || true
+        ufw delete allow 9000/tcp 2>/dev/null || true  # Legacy port
+        log "Removed Portainer UFW firewall rules"
+    fi
+    
+    # Remove any backup files (with confirmation)
+    if [[ -d /backup/portainer ]] && [[ -n "$(ls -A /backup/portainer 2>/dev/null)" ]]; then
+        echo
+        echo "Found Portainer backup files in /backup/portainer"
+        read -p "Do you want to remove backup files as well? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            rm -rf /backup/portainer 2>/dev/null || warn "Failed to remove backup directory"
+            log "Portainer backup files removed"
+        else
+            log "Keeping Portainer backup files"
+        fi
+    fi
+    
+    # Remove Portainer state from our tracking
+    if [[ -f /var/lib/jterrazz-infra/state ]]; then
+        sed -i '/portainer_/d' /var/lib/jterrazz-infra/state 2>/dev/null || true
+    fi
+    
+    # Clean up Docker system
+    log "Cleaning up Docker system..."
+    docker system prune -f &>/dev/null || true
+    
+    log "✅ Portainer completely uninstalled"
+    log "All Portainer containers, configurations, and firewall rules have been removed"
+    log "You can reinstall with: infra portainer --deploy"
+    
+    return 0
+}
+
+# Main command function
+cmd_portainer() {
+    local action="status"
+    local backup_path="/backup/portainer"
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --deploy|-d)
+                action="deploy"
+                shift
+                ;;
+            --update|-u)
+                action="update"
+                shift
+                ;;
+            --uninstall)
+                action="uninstall"
+                shift
+                ;;
+            --backup|-b)
+                action="backup"
+                if [[ -n "$2" && "$2" != --* ]]; then
+                    backup_path="$2"
+                    shift
+                fi
+                shift
+                ;;
+            --restore)
+                action="restore"
+                backup_path="$2"
+                if [[ -z "$backup_path" ]]; then
+                    error "Backup file path required for restore"
+                    show_portainer_help
+                    exit 1
+                fi
+                shift 2
+                ;;
+            --status|-s)
+                action="status"
+                shift
+                ;;
+            --help|-h)
+                show_portainer_help
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_portainer_help
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Execute action based on parsed arguments
+    case "$action" in
+        deploy)
+            print_header "Portainer Deployment"
+            
+            # Check prerequisites
+            if ! command -v docker &> /dev/null; then
+                error "Docker is not installed. Run: infra install"
+                exit 1
+            fi
+            
+            # Deploy Portainer
+            run_step "portainer_volume" "create_portainer_volume" || exit 1
+            run_step "portainer_deployment" "deploy_portainer_container" || exit 1
+            
+            print_section "Deployment Summary"
+            log "Portainer deployed successfully"
+            echo
+            show_portainer_access_info
+            ;;
+        update)
+            print_header "Portainer Update"
+            update_portainer || exit 1
+            ;;
+        uninstall)
+            print_header "Portainer Complete Uninstallation"
+            echo
+            echo "This will completely remove Portainer and optionally its data:"
+            echo "  • Stop and remove Portainer container"
+            echo "  • Optionally remove data volume (with confirmation)"
+            echo "  • Remove Docker images"
+            echo "  • Remove firewall rules"
+            echo "  • Optionally remove backup files"
+            echo
+            read -p "Are you sure you want to uninstall Portainer? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                uninstall_portainer_complete || exit 1
+            else
+                log "Uninstallation cancelled"
+            fi
+            ;;
+        backup)
+            print_header "Portainer Backup"
+            backup_portainer "$backup_path" || exit 1
+            ;;
+        restore)
+            print_header "Portainer Restore"
+            restore_portainer "$backup_path" || exit 1
+            ;;
+        status)
+            show_portainer_status
+            ;;
+    esac
+}
+
+# Show Portainer access information
+show_portainer_access_info() {
+    echo "🎉 Portainer deployed successfully!"
+    echo
+    echo -e "${BLUE}🌐 Access Information:${NC}"
+    
+    if is_tailscale_connected; then
+        local ts_ip
+        ts_ip=$(get_tailscale_ip)
+        if [[ -n "$ts_ip" ]]; then
+            echo "  • Private access: https://$DOMAIN_NAME:9443 (via Tailscale)"
+            echo "  • Direct IP access: https://$ts_ip:9443"
+        else
+            echo "  • Local access: https://127.0.0.1:9443"
+        fi
+    else
+        echo "  • Local access: https://127.0.0.1:9443"
+        echo "  • For remote access: Configure Tailscale with 'infra tailscale --connect'"
+    fi
+    
+    echo
+    echo -e "${YELLOW}⚠️  Important Notes:${NC}"
+    echo "  • Initial setup timeout: 5 minutes"
+    echo "  • Management tool - private access only"
+    echo "  • Create admin user on first visit"
+    
+    if is_tailscale_connected; then
+        echo "  • Access via Tailscale network for security"
+    else
+        echo "  • Connect Tailscale for remote private access"
+    fi
 }

@@ -88,7 +88,7 @@ sudo infra portainer [action]
   --update, -u           # Update to latest version
   --backup [path]        # Create backup of data
   --restore <file>       # Restore from backup
-  --remove               # Remove installation
+  --uninstall            # Complete uninstallation
   --status, -s           # Show status (default)
 ```
 
@@ -157,7 +157,6 @@ jterrazz-infra/
 │   └── status.sh           # System monitoring
 ├── config/                 # Configuration templates
 │   └── nginx/
-│       └── portainer.conf.template
 └── README.md
 ```
 
@@ -422,7 +421,7 @@ sudo systemctl restart docker
 infra status --docker
 
 # Redeploy Portainer
-sudo infra portainer --remove
+sudo infra portainer --uninstall
 sudo infra portainer --deploy
 ```
 

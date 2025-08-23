@@ -358,33 +358,7 @@ update_tailscale() {
     return 0
 }
 
-# Remove Tailscale installation
-remove_tailscale() {
-    log "Removing Tailscale installation..."
-    
-    # Disconnect first
-    if is_tailscale_connected; then
-        disconnect_tailscale
-    fi
-    
-    # Stop and disable service
-    systemctl stop tailscaled 2>/dev/null || true
-    systemctl disable tailscaled 2>/dev/null || true
-    
-    # Remove package
-    apt remove --purge -y tailscale
-    
-    # Remove repository
-    rm -f /etc/apt/sources.list.d/tailscale.list
-    rm -f /usr/share/keyrings/tailscale-archive-keyring.gpg
-    
-    # Clean up
-    apt autoremove -y
-    apt autoclean
-    
-    log "Tailscale removed successfully"
-    return 0
-}
+
 
 # Generate Tailscale auth key (requires tailscale CLI authenticated)
 generate_auth_key() {
@@ -454,8 +428,8 @@ cmd_tailscale() {
                 action="update"
                 shift
                 ;;
-            --remove|-r)
-                action="remove"
+            --uninstall)
+                action="uninstall"
                 shift
                 ;;
             --generate-key)
@@ -534,15 +508,22 @@ cmd_tailscale() {
             print_header "Tailscale Update"
             update_tailscale || exit 1
             ;;
-        remove)
-            print_header "Tailscale Removal"
+        uninstall)
+            print_header "Tailscale Complete Uninstallation"
             echo
-            read -p "Are you sure you want to remove Tailscale? (y/N): " -n 1 -r
+            echo "This will completely remove Tailscale and all its data:"
+            echo "  • Stop and disable Tailscale service"
+            echo "  • Remove Tailscale package"
+            echo "  • Delete all configuration and state files"
+            echo "  • Remove firewall rules"
+            echo "  • Clean up system configurations"
+            echo
+            read -p "Are you sure you want to completely uninstall Tailscale? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                remove_tailscale || exit 1
+                uninstall_tailscale_complete || exit 1
             else
-                log "Removal cancelled"
+                log "Uninstallation cancelled"
             fi
             ;;
         generate-key)
@@ -553,6 +534,90 @@ cmd_tailscale() {
             show_tailscale_status
             ;;
     esac
+}
+
+# Complete uninstallation of Tailscale
+uninstall_tailscale_complete() {
+    log "Starting complete Tailscale uninstallation..."
+    
+    # Stop and disable Tailscale service
+    if systemctl is-active --quiet tailscaled 2>/dev/null; then
+        log "Stopping Tailscale service..."
+        systemctl stop tailscaled || warn "Failed to stop tailscaled service"
+    fi
+    
+    if systemctl is-enabled --quiet tailscaled 2>/dev/null; then
+        log "Disabling Tailscale service..."
+        systemctl disable tailscaled || warn "Failed to disable tailscaled service"
+    fi
+    
+    # Disconnect from Tailscale network
+    if command -v tailscale &> /dev/null; then
+        log "Disconnecting from Tailscale network..."
+        tailscale logout 2>/dev/null || true
+        tailscale down 2>/dev/null || true
+    fi
+    
+    # Remove Tailscale package
+    log "Removing Tailscale package..."
+    if command -v apt &> /dev/null; then
+        apt remove --purge -y tailscale 2>/dev/null || warn "Failed to remove Tailscale package"
+        apt autoremove -y 2>/dev/null || true
+    fi
+    
+    # Remove repository and GPG key
+    log "Cleaning up Tailscale repository..."
+    rm -f /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
+    rm -f /usr/share/keyrings/tailscale-archive-keyring.gpg 2>/dev/null || true
+    
+    # Remove configuration and state files
+    log "Removing Tailscale configuration and data..."
+    rm -rf /var/lib/tailscale 2>/dev/null || true
+    rm -rf /etc/default/tailscaled 2>/dev/null || true
+    rm -rf /etc/systemd/system/tailscaled.service 2>/dev/null || true
+    rm -rf /run/tailscale 2>/dev/null || true
+    
+    # Remove any user configuration
+    for user_home in /home/*/; do
+        if [[ -d "$user_home" ]]; then
+            rm -rf "${user_home}.config/tailscale" 2>/dev/null || true
+        fi
+    done
+    rm -rf /root/.config/tailscale 2>/dev/null || true
+    
+    # Remove firewall rules
+    log "Cleaning up firewall rules..."
+    if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+        # Remove common Tailscale ports
+        ufw delete allow 41641/udp 2>/dev/null || true
+        ufw delete allow from 100.64.0.0/10 2>/dev/null || true
+        ufw delete allow to 100.64.0.0/10 2>/dev/null || true
+        log "Removed Tailscale UFW firewall rules"
+    fi
+    
+    # Clean up IP forwarding if it was enabled for subnet routing
+    if [[ -f /etc/sysctl.d/99-tailscale.conf ]]; then
+        log "Removing IP forwarding configuration..."
+        rm -f /etc/sysctl.d/99-tailscale.conf
+        sysctl -p 2>/dev/null || true
+    fi
+    
+    # Remove any systemd reload
+    systemctl daemon-reload 2>/dev/null || true
+    
+    # Clean up package cache
+    apt update 2>/dev/null || true
+    
+    # Remove Tailscale state from our tracking
+    if [[ -f /var/lib/jterrazz-infra/state ]]; then
+        sed -i '/tailscale_installation/d' /var/lib/jterrazz-infra/state 2>/dev/null || true
+    fi
+    
+    log "✅ Tailscale completely uninstalled"
+    log "All Tailscale components, configurations, and data have been removed"
+    log "You can reinstall with: infra tailscale --install"
+    
+    return 0
 }
 
 # Show tailscale command help
@@ -568,7 +633,7 @@ show_tailscale_help() {
     echo "  --subnet-router [subnet] Configure as subnet router"
     echo "  --ssh                  Enable SSH access through Tailscale"
     echo "  --update, -u           Update Tailscale to latest version"
-    echo "  --remove, -r           Remove Tailscale installation"
+    echo "  --uninstall            Complete uninstallation (removes all data and configs)"
     echo "  --generate-key         Generate auth key for other machines"
     echo "  --status, -s           Show Tailscale status (default)"
     echo "  --help, -h             Show this help message"

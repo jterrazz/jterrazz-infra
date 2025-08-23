@@ -219,23 +219,4 @@ force_certificate_renewal() {
     return 0
 }
 
-# Remove certificates for domain
-remove_certificates() {
-    local domain="$1"
-    
-    if ! has_certificates "$domain"; then
-        warn "No certificates found for $domain"
-        return 0
-    fi
-    
-    log "Removing certificates for $domain..."
-    
-    if certbot delete --cert-name "$domain" --non-interactive; then
-        log "Certificates removed successfully"
-    else
-        error "Failed to remove certificates"
-        return 1
-    fi
-    
-    return 0
-}
+

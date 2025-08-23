@@ -177,9 +177,9 @@ repair_nginx_config() {
         log "Removed broken available site configuration"
     fi
     
-    # Force regeneration
+    # Force regeneration with current architecture (API-ready)
     log "Regenerating Nginx configuration..."
-    configure_nginx_portainer || return 1
+    configure_nginx_basic || return 1
     validate_nginx_config || return 1
     manage_nginx_service restart || return 1
     
@@ -298,55 +298,7 @@ show_nginx_basic_info() {
     echo "  • Port 443 is ready for your public services"
 }
 
-# Configure Nginx for Portainer with SSL (legacy - now optional)
-configure_nginx_portainer() {
-    log "Configuring Nginx reverse proxy for Portainer..."
-    
-    # Generate SSL certificates first
-    generate_ssl_certificates "$DOMAIN_NAME" || return 1
-    
-    # Determine which SSL certificates to use
-    local ssl_cert ssl_key
-    read -r ssl_cert ssl_key < <(get_ssl_cert_paths "$DOMAIN_NAME")
-    
-    if has_certificates "$DOMAIN_NAME"; then
-        log "Using Let's Encrypt certificates for $DOMAIN_NAME"
-    else
-        log "Using self-signed certificates for $DOMAIN_NAME"
-    fi
-    
-    # Generate Nginx configuration from template
-    local template_path="${CLI_DIR}/config/nginx/portainer.conf.template"
-    
-    if [[ ! -f "$template_path" ]]; then
-        error "Nginx configuration template not found: $template_path"
-        return 1
-    fi
-    
-    # Replace template variables
-    sed \
-        -e "s|__DOMAIN_NAME__|$DOMAIN_NAME|g" \
-        -e "s|__SSL_CERT__|$ssl_cert|g" \
-        -e "s|__SSL_KEY__|$ssl_key|g" \
-        "$template_path" > "$NGINX_CONFIG_PATH"
-    
-    if [[ $? -ne 0 ]]; then
-        error "Failed to generate Nginx configuration"
-        return 1
-    fi
-    
-    # Enable the site
-    ln -sf "$NGINX_CONFIG_PATH" "$NGINX_ENABLED_PATH"
-    
-    # Remove default site if it exists
-    rm -f /etc/nginx/sites-enabled/default
-    
-    # Ensure no HTTP (port 80) services are running - HTTPS-only setup
-    disable_http_services
-    
-    log "Nginx configuration generated successfully"
-    return 0
-}
+
 
 # Validate Nginx configuration
 validate_nginx_config() {
@@ -547,31 +499,7 @@ test_nginx() {
     fi
 }
 
-# Remove Nginx configuration
-remove_nginx_config() {
-    log "Removing Nginx configuration for Portainer..."
-    
-    # Disable site
-    if [[ -L "$NGINX_ENABLED_PATH" ]]; then
-        rm "$NGINX_ENABLED_PATH"
-        log "Site disabled"
-    fi
-    
-    # Remove configuration file
-    if [[ -f "$NGINX_CONFIG_PATH" ]]; then
-        rm "$NGINX_CONFIG_PATH"
-        log "Configuration file removed"
-    fi
-    
-    # Reload nginx if running
-    if is_service_running nginx; then
-        systemctl reload nginx
-        log "Nginx configuration reloaded"
-    fi
-    
-    log "Nginx configuration removed successfully"
-    return 0
-}
+
 
 # Main nginx command
 cmd_nginx() {
@@ -597,8 +525,8 @@ cmd_nginx() {
                 action="restart"
                 shift
                 ;;
-            --remove)
-                action="remove"
+            --uninstall)
+                action="uninstall"
                 shift
                 ;;
             --renew-ssl)
@@ -609,10 +537,7 @@ cmd_nginx() {
                 action="repair"
                 shift
                 ;;
-            --secure|--https-only)
-                action="secure"
-                shift
-                ;;
+
             --force-ssl)
                 force_ssl_renewal=true
                 shift
@@ -673,10 +598,25 @@ cmd_nginx() {
             check_root || exit 1
             manage_nginx_service restart || exit 1
             ;;
-        remove)
+        uninstall)
             check_root || exit 1
-            print_header "Nginx Configuration Removal"
-            remove_nginx_config || exit 1
+            print_header "Nginx Complete Uninstallation"
+            echo
+            echo "This will completely remove Nginx and all its data:"
+            echo "  • Stop and disable Nginx service"
+            echo "  • Remove Nginx package and dependencies"
+            echo "  • Delete all configuration files"
+            echo "  • Remove SSL certificates"
+            echo "  • Remove firewall rules"
+            echo "  • Clean up all related data"
+            echo
+            read -p "Are you sure you want to completely uninstall Nginx? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                uninstall_nginx_complete || exit 1
+            else
+                log "Uninstallation cancelled"
+            fi
             ;;
         renew-ssl)
             check_root || exit 1
@@ -693,11 +633,7 @@ cmd_nginx() {
             print_header "Nginx Configuration Repair"
             repair_nginx_config
             ;;
-        secure|https-only)
-            check_root || exit 1
-            print_header "HTTPS-Only Security Check"
-            disable_http_services
-            ;;
+
         status)
             show_nginx_status
             ;;
@@ -759,6 +695,99 @@ show_final_info() {
     echo -e "${YELLOW}⚠️  Important: Complete Portainer setup within 5 minutes!${NC}"
 }
 
+# Complete uninstallation of Nginx
+uninstall_nginx_complete() {
+    log "Starting complete Nginx uninstallation..."
+    
+    # Stop and disable Nginx service
+    if systemctl is-active --quiet nginx 2>/dev/null; then
+        log "Stopping Nginx service..."
+        systemctl stop nginx || warn "Failed to stop Nginx service"
+    fi
+    
+    if systemctl is-enabled --quiet nginx 2>/dev/null; then
+        log "Disabling Nginx service..."
+        systemctl disable nginx || warn "Failed to disable Nginx service"
+    fi
+    
+    # Remove Nginx package and dependencies
+    log "Removing Nginx package and dependencies..."
+    if command -v apt &> /dev/null; then
+        apt remove --purge -y nginx nginx-common nginx-core nginx-full 2>/dev/null || warn "Failed to remove Nginx packages"
+        apt autoremove -y 2>/dev/null || true
+    fi
+    
+    # Remove all Nginx configuration files
+    log "Removing Nginx configuration files..."
+    rm -rf /etc/nginx 2>/dev/null || warn "Failed to remove /etc/nginx"
+    rm -rf /var/log/nginx 2>/dev/null || warn "Failed to remove /var/log/nginx"
+    rm -rf /var/lib/nginx 2>/dev/null || warn "Failed to remove /var/lib/nginx"
+    rm -rf /usr/share/nginx 2>/dev/null || warn "Failed to remove /usr/share/nginx"
+    
+    # Remove SSL certificates (Let's Encrypt)
+    log "Removing SSL certificates..."
+    if [[ -d /etc/letsencrypt ]]; then
+        echo
+        echo "Found Let's Encrypt SSL certificates"
+        read -p "Do you want to remove SSL certificates as well? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Stop certbot renewal timer
+            systemctl stop certbot.timer 2>/dev/null || true
+            systemctl disable certbot.timer 2>/dev/null || true
+            
+            # Remove certbot and certificates
+            apt remove --purge -y certbot python3-certbot-dns-cloudflare 2>/dev/null || true
+            rm -rf /etc/letsencrypt 2>/dev/null || warn "Failed to remove /etc/letsencrypt"
+            rm -rf /var/lib/letsencrypt 2>/dev/null || warn "Failed to remove /var/lib/letsencrypt"
+            rm -rf /var/log/letsencrypt 2>/dev/null || warn "Failed to remove /var/log/letsencrypt"
+            rm -f /usr/local/bin/check-ssl-cert 2>/dev/null || true
+            
+            log "SSL certificates and certbot removed"
+        else
+            log "Keeping SSL certificates (can be reused)"
+        fi
+    fi
+    
+    # Remove firewall rules
+    log "Cleaning up firewall rules..."
+    if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
+        ufw delete allow 80/tcp 2>/dev/null || true
+        ufw delete allow 443/tcp 2>/dev/null || true
+        ufw delete allow 'Nginx Full' 2>/dev/null || true
+        ufw delete allow 'Nginx HTTP' 2>/dev/null || true
+        ufw delete allow 'Nginx HTTPS' 2>/dev/null || true
+        log "Removed Nginx UFW firewall rules"
+    fi
+    
+    # Remove systemd service files
+    log "Cleaning up systemd configurations..."
+    rm -f /etc/systemd/system/nginx.service 2>/dev/null || true
+    rm -f /lib/systemd/system/nginx.service 2>/dev/null || true
+    systemctl daemon-reload 2>/dev/null || true
+    
+    # Remove our Nginx configuration template
+    rm -f /opt/jterrazz-infra/config/nginx/portainer.conf.template 2>/dev/null || true
+    
+    # Remove any backup configurations we created
+    find /etc/nginx/backup-* -maxdepth 0 -type d -exec rm -rf {} \; 2>/dev/null || true
+    
+    # Remove Nginx state from our tracking
+    if [[ -f /var/lib/jterrazz-infra/state ]]; then
+        sed -i '/nginx_/d' /var/lib/jterrazz-infra/state 2>/dev/null || true
+        sed -i '/ssl_certificates/d' /var/lib/jterrazz-infra/state 2>/dev/null || true
+    fi
+    
+    # Clean up package cache
+    apt update 2>/dev/null || true
+    
+    log "✅ Nginx completely uninstalled"
+    log "All Nginx components, configurations, and optionally SSL certificates have been removed"
+    log "You can reinstall with: infra install && infra nginx --configure"
+    
+    return 0
+}
+
 # Show nginx command help
 show_nginx_help() {
     echo "Usage: infra nginx [action] [options]"
@@ -770,11 +799,10 @@ show_nginx_help() {
     echo "  --test, -t           Test Nginx configuration"
     echo "  --reload, -r         Reload Nginx configuration"
     echo "  --restart            Restart Nginx service"
-    echo "  --remove             Remove Nginx configuration for Portainer"
+    echo "  --uninstall          Complete uninstallation (removes package, configs, and optionally SSL)"
     echo "  --renew-ssl          Force SSL certificate renewal (requires --force-ssl)"
     echo "  --repair, --fix      Repair broken Nginx configuration (reset and regenerate)"
-    echo "  --secure             Ensure HTTPS-only setup (disable port 80 services)"
-    echo "  --https-only         Alias for --secure"
+
     echo "  --status, -s         Show Nginx status and configuration (default)"
     echo "  --help, -h           Show this help message"
     echo
@@ -785,7 +813,7 @@ show_nginx_help() {
     echo "  infra nginx                          # Show status"
     echo "  infra nginx --configure              # Setup reverse proxy with SSL"
     echo "  infra nginx --repair                 # Fix broken configuration"
-    echo "  infra nginx --secure                 # Ensure HTTPS-only (disable port 80)"
+
     echo "  infra nginx --test                   # Test configuration"
     echo "  infra nginx --renew-ssl --force-ssl  # Force certificate renewal"
 }
