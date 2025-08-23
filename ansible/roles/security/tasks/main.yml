@@ -63,7 +63,6 @@
     comment: "{{ item.comment | default('') }}"
   loop: "{{ security_ufw_rules }}"
   when: security_ufw_enabled
- 
 
 - name: Enable UFW
   ufw:
@@ -116,7 +115,20 @@
   when: security_unattended_upgrades_enabled
 
 # Kernel Parameter Tuning
-- name: Configure kernel parameters for security
+- name: Check if k3s is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_installed_check
+
+- name: Configure IP forwarding (only if k3s is not installed)
+  sysctl:
+    name: "net.ipv4.ip_forward"
+    value: "0"
+    state: present
+    reload: yes
+  when: not k3s_installed_check.stat.exists
+
+- name: Configure other kernel parameters for security
   sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"

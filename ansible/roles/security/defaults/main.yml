@@ -47,8 +47,8 @@ security_disable_uncommon_protocols: true
 
 # Kernel parameters for security
 security_kernel_parameters:
-  # Disable IP forwarding (will be enabled by k3s if needed)
-  - { name: "net.ipv4.ip_forward", value: "0" }
+  # Note: IP forwarding will be handled separately to avoid conflicts with k3s
+  # k3s requires IP forwarding for container networking
   # Disable IPv6 if not needed
   - { name: "net.ipv6.conf.all.disable_ipv6", value: "1" }
   - { name: "net.ipv6.conf.default.disable_ipv6", value: "1" }
