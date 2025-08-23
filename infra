@@ -18,7 +18,22 @@ set -euo pipefail
 # Configuration
 readonly CLI_NAME="infra"
 readonly CLI_VERSION="1.0.0"
-readonly CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Resolve symlinks to get the real script directory
+get_script_dir() {
+    local script_path="${BASH_SOURCE[0]}"
+    # Follow symlinks to get the real script path
+    while [[ -L "$script_path" ]]; do
+        script_path="$(readlink "$script_path")"
+        # Handle relative symlinks
+        if [[ "$script_path" != /* ]]; then
+            script_path="$(dirname "${BASH_SOURCE[0]}")/$script_path"
+        fi
+    done
+    cd "$(dirname "$script_path")" && pwd
+}
+
+readonly CLI_DIR="$(get_script_dir)"
 readonly LIB_DIR="${CLI_DIR}/lib"
 readonly COMMANDS_DIR="${CLI_DIR}/commands"
 
