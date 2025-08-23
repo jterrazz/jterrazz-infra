@@ -53,7 +53,6 @@ show_help() {
     echo
     echo "Environment Variables:"
     echo "  DOMAIN_NAME        Domain for private access (default: manager.jterrazz.com)"
-    echo "  USE_REAL_SSL       Use Let's Encrypt certificates (default: false - private network)"
     echo "  PORTAINER_VERSION  Portainer version to deploy (default: latest)"
 }
 

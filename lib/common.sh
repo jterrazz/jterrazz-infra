@@ -13,7 +13,6 @@ readonly NC='\033[0m' # No Color
 # Configuration with sensible defaults for private network access via Tailscale
 readonly DOMAIN_NAME="${DOMAIN_NAME:-manager.jterrazz.com}"
 readonly PORTAINER_VERSION="${PORTAINER_VERSION:-latest}"
-readonly USE_REAL_SSL="${USE_REAL_SSL:-false}"  # Private Tailscale networks use self-signed certificates
 
 # State management
 readonly STATE_DIR="/var/lib/jterrazz-infra"
@@ -229,12 +228,7 @@ validate_config() {
         return 1
     fi
     
-    # Validate boolean values
-    if [[ "$USE_REAL_SSL" != "true" && "$USE_REAL_SSL" != "false" ]]; then
-        error "USE_REAL_SSL must be 'true' or 'false', got: $USE_REAL_SSL"
-        return 1
-    fi
-    
+
     return 0
 }
 

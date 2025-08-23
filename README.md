@@ -1,12 +1,12 @@
 # JTerrazz Infrastructure CLI
 
-Professional infrastructure management CLI for deploying and managing containerized applications with HTTPS-only reverse proxy, SSL certificates, and security hardening. Designed for private network access via Tailscale VPN.
+Professional infrastructure management CLI for deploying and managing containerized applications with HTTPS-only reverse proxy, trusted SSL certificates, and security hardening. Designed for private network access via Tailscale VPN with **no browser warnings**.
 
 ## ✨ Features
 
 - **🔧 Modular Architecture** - Clean separation of concerns with individual commands
 - **🔐 HTTPS-Only** - Port 443 only, no HTTP exposure
-- **🔒 SSL Certificates** - Automatic Let's Encrypt or self-signed certificates
+- **🔒 SSL Certificates** - Trusted Let's Encrypt certificates via DNS challenge
 - **🐳 Docker Management** - Container deployment and management
 - **🌐 Reverse Proxy** - Nginx with security headers and optimizations
 - **🔗 Tailscale VPN** - Secure private network access from anywhere
@@ -51,7 +51,7 @@ sudo infra tailscale --connect
 # 5. Deploy Portainer container manager
 sudo infra portainer --deploy
 
-# 6. Configure Nginx reverse proxy with SSL
+# 6. Configure Nginx reverse proxy with SSL (interactive - you'll add TXT records manually)
 sudo infra nginx --configure
 
 # 7. Check overall status
@@ -171,10 +171,12 @@ jterrazz-infra/
 
 This infrastructure is designed for **private network access only** via Tailscale VPN. Your domain resolves to your server's Tailscale private IP, providing secure access from anywhere without exposing services to the public internet.
 
+> 🎯 **The Perfect Setup**: Public DNS + Private Access + Trusted SSL  
+> Your domain (manager.jterrazz.com) points to your private Tailscale IP, Let's Encrypt validates ownership via DNS challenges, and you get **trusted SSL certificates with zero browser warnings** while keeping everything completely private!
+
 ```bash
-# Setup private access via Tailscale VPN
+# Setup private access via Tailscale VPN with trusted SSL certificates
 export DOMAIN_NAME="manager.jterrazz.com"     # Your private domain
-export USE_REAL_SSL=false                    # Self-signed certificates for private network
 
 # Full setup process (in correct order)
 sudo infra upgrade
@@ -183,8 +185,9 @@ sudo infra tailscale --install
 sudo infra tailscale --connect               # Follow authentication URL
 
 # IMPORTANT: Configure DNS before deploying services
-# Get your Tailscale IP: tailscale ip -4 (e.g., 100.64.1.2)
-# Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
+# 1. Get your Tailscale IP: tailscale ip -4 (e.g., 100.64.1.2)
+# 2. Point manager.jterrazz.com → 100.64.1.2 in your DNS provider
+# 3. SSL certificates will be generated interactively (manual DNS challenge)
 
 sudo infra portainer --deploy
 sudo infra nginx --configure
@@ -202,7 +205,7 @@ sudo infra tailscale --subnet-router 192.168.1.0/24
 # Enable SSH access through Tailscale
 sudo infra tailscale --ssh
 
-# SSL certificates (self-signed for private network security)
+# SSL certificates (Let's Encrypt via DNS challenge)
 sudo infra nginx --configure
 ```
 
@@ -210,23 +213,45 @@ sudo infra nginx --configure
 
 ### Environment Variables
 
-| Variable            | Default                | Description                                            |
-| ------------------- | ---------------------- | ------------------------------------------------------ |
-| `DOMAIN_NAME`       | `manager.jterrazz.com` | Domain name for private network access                 |
-| `USE_REAL_SSL`      | `false`                | Use self-signed certificates (recommended for private networks) |
-| `PORTAINER_VERSION` | `latest`               | Portainer version to deploy                            |
+| Variable            | Default                | Description                            |
+| ------------------- | ---------------------- | -------------------------------------- |
+| `DOMAIN_NAME`       | `manager.jterrazz.com` | Domain name for private network access |
+| `PORTAINER_VERSION` | `latest`               | Portainer version to deploy            |
 
 ### SSL Certificate Management
 
-For private Tailscale networks, this infrastructure uses **self-signed SSL certificates** by default. This provides strong encryption while being perfectly suited for private network access.
+This infrastructure uses **trusted SSL certificates** via Let's Encrypt DNS challenge. This provides the best of both worlds: **private network access** with **no browser warnings**.
 
-#### **Why Self-Signed Certificates?**
+#### **How Manual DNS Challenge Works**
 
-- ✅ **Perfect for private networks** - No external validation required
-- ✅ **Full encryption** - Same TLS security as paid certificates  
-- ✅ **No expiration hassle** - Long validity periods, no renewals
-- ✅ **Zero dependencies** - Works offline and in private networks
-- ⚠️ **Browser warning expected** - Browsers show security warning (safe to proceed)
+- ✅ **Domain points to Tailscale IP** - Your DNS resolves to private 100.x.x.x address
+- ✅ **Let's Encrypt validates via DNS** - You manually add TXT records for validation
+- ✅ **No public server access needed** - Validation happens through DNS only
+- ✅ **Trusted certificates** - No browser warnings, full green lock
+- ✅ **No API access required** - Just manual DNS record management
+
+#### **Certificate Generation Process**
+
+1. **Run the SSL setup:**
+
+```bash
+sudo infra nginx --configure
+```
+
+2. **Follow the interactive prompts:**
+
+   - Certbot will show you a TXT record to create (e.g., `_acme-challenge.manager.jterrazz.com`)
+   - Copy the TXT record value
+
+3. **Add TXT record in Cloudflare:**
+
+   - Go to your Cloudflare DNS settings
+   - Add new TXT record with the name and value provided
+   - Wait ~30 seconds for propagation
+
+4. **Complete validation:**
+   - Press Enter in terminal to continue
+   - Let's Encrypt validates and issues certificate
 
 #### **Certificate Status**
 
@@ -235,22 +260,10 @@ For private Tailscale networks, this infrastructure uses **self-signed SSL certi
 check-ssl-cert
 
 # Example output:
-# ✅ Self-signed certificate is available
-# 🔒 Provides encryption for private Tailscale network  
-# ⚠️ Browser will show security warning (expected for self-signed)
-```
-
-#### **Advanced: Using Real SSL Certificates**
-
-If you specifically need trusted certificates (not recommended for private networks):
-
-```bash
-# Enable Let's Encrypt certificates (will likely fail for Tailscale IPs)
-export USE_REAL_SSL=true
-sudo infra nginx --configure
-
-# Note: Let's Encrypt requires publicly accessible domain validation
-# This typically won't work with Tailscale private IPs (100.x.x.x)
+# ✅ Let's Encrypt certificate (trusted, no browser warnings)
+# Expires: Mar 15 14:30:00 2024 GMT
+# Days until expiry: 75
+# ✅ Certificate is valid
 ```
 
 ### State Management
@@ -373,15 +386,24 @@ ssh username@machine-name  # No IP needed, use Tailscale machine name
 **SSL Certificate Issues:**
 
 ```bash
-# Check certificate status (mostly self-signed for private access)
+# Check certificate status
 check-ssl-cert
 
-# Switch to real SSL if needed (requires publicly resolvable domain)
-export USE_REAL_SSL=true
+# View certificate details
+certbot certificates
+
+# Test certificate renewal (dry run)
+certbot renew --dry-run
+
+# Force certificate renewal (interactive - you'll add new TXT records)
 sudo infra nginx --configure
 
-# Force certificate renewal (only for real SSL certificates)
-sudo infra nginx --renew-ssl --force-ssl
+# Check DNS configuration
+nslookup manager.jterrazz.com
+dig +short TXT _acme-challenge.manager.jterrazz.com
+
+# Check certificate expiry
+openssl x509 -in /etc/letsencrypt/live/manager.jterrazz.com/cert.pem -noout -dates
 ```
 
 **Docker Issues:**

@@ -402,9 +402,9 @@ show_final_info() {
     local ssl_status
     
     if has_certificates "$DOMAIN_NAME"; then
-        ssl_status="Let's Encrypt SSL certificate (valid and trusted)"
+        ssl_status="Let's Encrypt SSL certificate (trusted, no browser warnings)"
     else
-        ssl_status="Self-signed certificate (secure for private networks)"
+        ssl_status="Let's Encrypt SSL certificate (pending generation)"
     fi
     
     echo "🎉 Setup completed successfully!"
@@ -421,7 +421,7 @@ show_final_info() {
     echo
     echo -e "${BLUE}🏠 DNS Configuration for Private Access:${NC}"
     echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_TAILSCALE_IP (100.x.x.x)"
-    echo "  • Self-signed certificates (browser warning expected - safe to proceed)"
+    echo "  • Let's Encrypt certificates via DNS challenge (no browser warnings)"
     echo "  • Access only via Tailscale private network"
     echo "  • Port 443 only (no port 80 needed)"
     echo "  • Get Tailscale IP with: tailscale ip -4"
@@ -440,9 +440,13 @@ show_final_info() {
     
     echo -e "${BLUE}📊 Certificate Management:${NC}"
     echo "  • Check status: check-ssl-cert"
-    echo "  • Self-signed certificates (no renewal needed)"
-    echo "  • Browser warning is expected and safe to proceed"
-    echo "  • Provides full TLS encryption for private network"
+    echo "  • Let's Encrypt certificates via manual DNS challenge"
+    echo "  • No browser warnings - trusted certificates"
+    echo "  • Manual renewal required before expiry"
+    if has_certificates "$DOMAIN_NAME"; then
+        echo "  • Certificates expire every 90 days"
+        echo "  • Renew with: sudo infra nginx --configure"
+    fi
     echo
     
     echo -e "${YELLOW}⚠️  Important: Complete Portainer setup within 5 minutes!${NC}"
