@@ -144,5 +144,6 @@
         path: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "{% if environment_type == 'local' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
+        backup: false
       delegate_to: localhost
       become: false
