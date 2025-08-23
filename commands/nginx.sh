@@ -494,6 +494,14 @@ cmd_nginx() {
                 action="renew-ssl"
                 shift
                 ;;
+            --repair|--fix)
+                action="repair"
+                shift
+                ;;
+            --secure|--https-only)
+                action="secure"
+                shift
+                ;;
             --force-ssl)
                 force_ssl_renewal=true
                 shift
