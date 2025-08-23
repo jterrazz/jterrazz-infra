@@ -1,0 +1,483 @@
+#!/bin/bash
+
+# JTerrazz Infrastructure - Nginx Command
+# Configure Nginx reverse proxy with SSL
+
+# Source SSL utilities
+source "${LIB_DIR}/ssl.sh"
+
+readonly NGINX_CONFIG_PATH="/etc/nginx/sites-available/portainer"
+readonly NGINX_ENABLED_PATH="/etc/nginx/sites-enabled/portainer"
+
+# Configure Nginx for Portainer with SSL
+configure_nginx_portainer() {
+    log "Configuring Nginx reverse proxy for Portainer..."
+    
+    # Generate SSL certificates first
+    generate_ssl_certificates "$DOMAIN_NAME" || return 1
+    
+    # Determine which SSL certificates to use
+    local ssl_cert ssl_key
+    read -r ssl_cert ssl_key < <(get_ssl_cert_paths "$DOMAIN_NAME")
+    
+    if has_certificates "$DOMAIN_NAME"; then
+        log "Using Let's Encrypt certificates for $DOMAIN_NAME"
+    else
+        log "Using self-signed certificates for $DOMAIN_NAME"
+    fi
+    
+    # Generate Nginx configuration from template
+    local template_path="${CLI_DIR}/config/nginx/portainer.conf.template"
+    
+    if [[ ! -f "$template_path" ]]; then
+        error "Nginx configuration template not found: $template_path"
+        return 1
+    fi
+    
+    # Replace template variables
+    sed \
+        -e "s|__DOMAIN_NAME__|$DOMAIN_NAME|g" \
+        -e "s|__SSL_CERT__|$ssl_cert|g" \
+        -e "s|__SSL_KEY__|$ssl_key|g" \
+        "$template_path" > "$NGINX_CONFIG_PATH"
+    
+    if [[ $? -ne 0 ]]; then
+        error "Failed to generate Nginx configuration"
+        return 1
+    fi
+    
+    # Enable the site
+    ln -sf "$NGINX_CONFIG_PATH" "$NGINX_ENABLED_PATH"
+    
+    # Remove default site if it exists
+    rm -f /etc/nginx/sites-enabled/default
+    
+    log "Nginx configuration generated successfully"
+    return 0
+}
+
+# Validate Nginx configuration
+validate_nginx_config() {
+    log "Validating Nginx configuration..."
+    
+    if ! nginx -t; then
+        error "Nginx configuration validation failed"
+        return 1
+    fi
+    
+    log "Nginx configuration is valid"
+    return 0
+}
+
+# Setup SSL certificates and renewal
+setup_ssl_certificates() {
+    generate_ssl_certificates "$DOMAIN_NAME" || return 1
+    setup_certificate_renewal "$DOMAIN_NAME" || return 1
+    create_ssl_monitoring_script "$DOMAIN_NAME" || return 1
+    return 0
+}
+
+# Start/restart Nginx service
+manage_nginx_service() {
+    local action="$1"
+    
+    case "$action" in
+        start)
+            log "Starting Nginx service..."
+            systemctl enable nginx
+            systemctl start nginx
+            ;;
+        restart)
+            log "Restarting Nginx service..."
+            systemctl restart nginx
+            ;;
+        reload)
+            log "Reloading Nginx configuration..."
+            systemctl reload nginx
+            ;;
+        stop)
+            log "Stopping Nginx service..."
+            systemctl stop nginx
+            ;;
+        *)
+            error "Unknown nginx action: $action"
+            return 1
+            ;;
+    esac
+    
+    if [[ $? -eq 0 ]]; then
+        log "Nginx $action completed successfully"
+    else
+        error "Failed to $action Nginx"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Show Nginx status and configuration
+show_nginx_status() {
+    print_section "Nginx Status"
+    
+    # Service status
+    if is_service_running nginx; then
+        echo "✅ Nginx service is running"
+        if is_service_enabled nginx; then
+            echo "✅ Nginx service is enabled (auto-start)"
+        else
+            echo "⚠️  Nginx service is not enabled"
+        fi
+    else
+        echo "❌ Nginx service is not running"
+        if is_service_enabled nginx; then
+            echo "⚠️  Nginx service is enabled but not running"
+        else
+            echo "❌ Nginx service is not enabled"
+        fi
+    fi
+    
+    # Configuration status
+    echo
+    echo "Configuration:"
+    if [[ -f "$NGINX_CONFIG_PATH" ]]; then
+        echo "  ✅ Portainer configuration exists"
+        
+        if [[ -L "$NGINX_ENABLED_PATH" ]]; then
+            echo "  ✅ Site is enabled"
+        else
+            echo "  ❌ Site is not enabled"
+        fi
+        
+        # Validate configuration
+        if nginx -t &>/dev/null; then
+            echo "  ✅ Configuration is valid"
+        else
+            echo "  ❌ Configuration has errors"
+        fi
+    else
+        echo "  ❌ Portainer configuration not found"
+    fi
+    
+    # SSL status
+    echo
+    echo "SSL Certificates:"
+    if has_certificates "$DOMAIN_NAME"; then
+        echo "  ✅ Let's Encrypt certificates for $DOMAIN_NAME"
+        local days_remaining
+        days_remaining=$(get_cert_expiry_days "$DOMAIN_NAME")
+        echo "  📅 Days until expiry: $days_remaining"
+        
+        if [[ "$days_remaining" -lt 30 ]]; then
+            echo "  ⚠️  Certificate expires soon!"
+        fi
+    else
+        echo "  ⚠️  Using self-signed certificates"
+        echo "     Domain: $DOMAIN_NAME"
+    fi
+    
+    # Port status
+    echo
+    echo "Network:"
+    if is_port_open 443; then
+        echo "  ✅ Port 443 (HTTPS) is listening"
+    else
+        echo "  ❌ Port 443 (HTTPS) is not listening"
+    fi
+    
+    if is_port_open 80; then
+        echo "  ⚠️  Port 80 (HTTP) is listening (should be blocked)"
+    else
+        echo "  ✅ Port 80 (HTTP) is not listening"
+    fi
+    
+    # Domain accessibility
+    echo
+    echo "Domain Access:"
+    if test_domain_resolution "$DOMAIN_NAME"; then
+        echo "  ✅ Domain $DOMAIN_NAME resolves"
+        
+        # Test HTTPS accessibility
+        if curl -k -s --connect-timeout 5 "https://$DOMAIN_NAME" &>/dev/null; then
+            echo "  ✅ HTTPS access to $DOMAIN_NAME is working"
+        else
+            echo "  ❌ HTTPS access to $DOMAIN_NAME failed"
+        fi
+    else
+        echo "  ❌ Domain $DOMAIN_NAME does not resolve"
+        echo "     Configure DNS: $DOMAIN_NAME → $(curl -s ifconfig.me 2>/dev/null || echo 'YOUR_SERVER_IP')"
+    fi
+}
+
+# Test Nginx configuration
+test_nginx() {
+    print_section "Nginx Configuration Test"
+    
+    log "Testing Nginx configuration..."
+    
+    if nginx -t; then
+        log "✅ Nginx configuration test passed"
+        
+        # Show configuration details
+        echo
+        echo "Active Configuration:"
+        if [[ -f "$NGINX_CONFIG_PATH" ]]; then
+            echo "  • Configuration file: $NGINX_CONFIG_PATH"
+            echo "  • Domain: $DOMAIN_NAME"
+            
+            # Extract SSL certificate paths
+            local cert_path key_path
+            cert_path=$(grep "ssl_certificate " "$NGINX_CONFIG_PATH" | head -1 | awk '{print $2}' | tr -d ';')
+            key_path=$(grep "ssl_certificate_key " "$NGINX_CONFIG_PATH" | head -1 | awk '{print $2}' | tr -d ';')
+            
+            echo "  • SSL certificate: $cert_path"
+            echo "  • SSL key: $key_path"
+            
+            # Check certificate validity
+            if [[ -f "$cert_path" ]]; then
+                echo "  ✅ SSL certificate file exists"
+            else
+                echo "  ❌ SSL certificate file missing"
+            fi
+            
+            if [[ -f "$key_path" ]]; then
+                echo "  ✅ SSL key file exists"
+            else
+                echo "  ❌ SSL key file missing"
+            fi
+        fi
+        
+        return 0
+    else
+        error "❌ Nginx configuration test failed"
+        echo
+        echo "To see detailed errors, run: nginx -t"
+        return 1
+    fi
+}
+
+# Remove Nginx configuration
+remove_nginx_config() {
+    log "Removing Nginx configuration for Portainer..."
+    
+    # Disable site
+    if [[ -L "$NGINX_ENABLED_PATH" ]]; then
+        rm "$NGINX_ENABLED_PATH"
+        log "Site disabled"
+    fi
+    
+    # Remove configuration file
+    if [[ -f "$NGINX_CONFIG_PATH" ]]; then
+        rm "$NGINX_CONFIG_PATH"
+        log "Configuration file removed"
+    fi
+    
+    # Reload nginx if running
+    if is_service_running nginx; then
+        systemctl reload nginx
+        log "Nginx configuration reloaded"
+    fi
+    
+    log "Nginx configuration removed successfully"
+    return 0
+}
+
+# Main nginx command
+cmd_nginx() {
+    local action="status"
+    local force_ssl_renewal=false
+    
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --configure|-c)
+                action="configure"
+                shift
+                ;;
+            --test|-t)
+                action="test"
+                shift
+                ;;
+            --reload|-r)
+                action="reload"
+                shift
+                ;;
+            --restart)
+                action="restart"
+                shift
+                ;;
+            --remove)
+                action="remove"
+                shift
+                ;;
+            --renew-ssl)
+                action="renew-ssl"
+                shift
+                ;;
+            --force-ssl)
+                force_ssl_renewal=true
+                shift
+                ;;
+            --status|-s)
+                action="status"
+                shift
+                ;;
+            --help|-h)
+                show_nginx_help
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1"
+                show_nginx_help
+                exit 1
+                ;;
+        esac
+    done
+    
+    # Validate system for non-status operations
+    if [[ "$action" != "status" && "$action" != "test" ]]; then
+        check_root || exit 1
+    fi
+    
+    # Execute action
+    case "$action" in
+        configure)
+            print_header "Nginx Configuration"
+            
+            # Check prerequisites
+            if ! command -v nginx &> /dev/null; then
+                error "Nginx is not installed. Run: infra install"
+                exit 1
+            fi
+            
+            if ! is_container_running portainer; then
+                warn "Portainer container is not running"
+                warn "Make sure to deploy Portainer first: infra portainer --deploy"
+            fi
+            
+            # Configure nginx and SSL
+            run_step "ssl_certificates" "setup_ssl_certificates" || exit 1
+            run_step "nginx_configuration" "configure_nginx_portainer" || exit 1
+            run_step "nginx_validation" "validate_nginx_config" || exit 1
+            run_step "nginx_service" "manage_nginx_service restart" || exit 1
+            
+            print_section "Configuration Summary"
+            log "Nginx reverse proxy configured successfully"
+            echo
+            show_final_info
+            ;;
+        test)
+            test_nginx || exit 1
+            ;;
+        reload)
+            check_root || exit 1
+            manage_nginx_service reload || exit 1
+            ;;
+        restart)
+            check_root || exit 1
+            manage_nginx_service restart || exit 1
+            ;;
+        remove)
+            check_root || exit 1
+            print_header "Nginx Configuration Removal"
+            remove_nginx_config || exit 1
+            ;;
+        renew-ssl)
+            check_root || exit 1
+            print_header "SSL Certificate Renewal"
+            if [[ "$force_ssl_renewal" == "true" ]]; then
+                force_certificate_renewal "$DOMAIN_NAME" || exit 1
+            else
+                error "Use --force-ssl to force certificate renewal"
+                exit 1
+            fi
+            ;;
+        status)
+            show_nginx_status
+            ;;
+    esac
+}
+
+# Show final configuration information
+show_final_info() {
+    local ssl_status
+    
+    if has_certificates "$DOMAIN_NAME"; then
+        ssl_status="Let's Encrypt SSL certificate (valid and trusted)"
+    else
+        ssl_status="Self-signed certificate (browser will show warning)"
+    fi
+    
+    echo "🎉 Setup completed successfully!"
+    echo
+    echo -e "${BLUE}📋 Configuration Summary:${NC}"
+    echo "  • Domain: $DOMAIN_NAME"
+    echo "  • Nginx: HTTPS-only on port 443 (no HTTP port 80)"
+    echo "  • SSL: $ssl_status"
+    echo "  • Proxy: Portainer on https://127.0.0.1:9443"
+    echo
+    echo -e "${BLUE}🌐 Access Information:${NC}"
+    echo "  • URL: https://$DOMAIN_NAME"
+    echo "  • Initial Portainer setup timeout: 5 minutes"
+    echo
+    echo -e "${BLUE}🏠 DNS Configuration:${NC}"
+    if [[ "$USE_REAL_SSL" == "true" ]]; then
+        echo "  • For Let's Encrypt certificates: Domain must resolve publicly"
+        echo "  • You can use private IP, but DNS must be publicly resolvable"
+        echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_IP_ADDRESS"
+        echo "  • Port 443 only (no port 80 needed)"
+    else
+        echo "  • Add DNS A record: $DOMAIN_NAME → YOUR_PRIVATE_IP_ADDRESS"
+        echo "  • Access will be limited to your private network"
+        echo "  • Port 443 only (no port 80 needed)"
+    fi
+    echo
+    
+    if has_certificates "$DOMAIN_NAME"; then
+        echo -e "${BLUE}🔄 Certificate Renewal Information:${NC}"
+        echo "  • Certificates expire every 90 days"
+        echo "  • Automatic renewal: enabled via systemd timer"
+        echo "  • Renewal checks: twice daily (random time)"
+        echo "  • Renewal threshold: 30 days before expiry"
+        echo
+        echo -e "${BLUE}📊 Certificate Management Commands:${NC}"
+        echo "  • Quick status: check-ssl-cert"
+        echo "  • Detailed info: certbot certificates"
+        echo "  • Test renewal: certbot renew --dry-run"
+        echo "  • Force renewal: infra nginx --renew-ssl --force-ssl"
+        echo "  • View logs: journalctl -u certbot.timer"
+        echo
+    elif [[ "$USE_REAL_SSL" == "true" ]]; then
+        echo -e "${YELLOW}💡 To get Let's Encrypt certificates later:${NC}"
+        echo "  1. Ensure $DOMAIN_NAME resolves to this server"
+        echo "  2. Run: infra nginx --configure"
+        echo
+    fi
+    
+    echo -e "${YELLOW}⚠️  Important: Complete Portainer setup within 5 minutes!${NC}"
+}
+
+# Show nginx command help
+show_nginx_help() {
+    echo "Usage: infra nginx [action] [options]"
+    echo
+    echo "Configure and manage Nginx reverse proxy with SSL"
+    echo
+    echo "Actions:"
+    echo "  --configure, -c      Configure Nginx reverse proxy and SSL certificates"
+    echo "  --test, -t           Test Nginx configuration"
+    echo "  --reload, -r         Reload Nginx configuration"
+    echo "  --restart            Restart Nginx service"
+    echo "  --remove             Remove Nginx configuration for Portainer"
+    echo "  --renew-ssl          Force SSL certificate renewal (requires --force-ssl)"
+    echo "  --status, -s         Show Nginx status and configuration (default)"
+    echo "  --help, -h           Show this help message"
+    echo
+    echo "Options:"
+    echo "  --force-ssl          Force SSL certificate renewal (use with --renew-ssl)"
+    echo
+    echo "Examples:"
+    echo "  infra nginx                          # Show status"
+    echo "  infra nginx --configure              # Setup reverse proxy with SSL"
+    echo "  infra nginx --test                   # Test configuration"
+    echo "  infra nginx --renew-ssl --force-ssl  # Force certificate renewal"
+}

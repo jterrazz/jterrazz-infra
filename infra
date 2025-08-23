@@ -1,0 +1,121 @@
+#!/bin/bash
+
+# JTerrazz Infrastructure CLI
+# Main dispatcher for infrastructure management commands
+#
+# Usage: infra <command> [options]
+# Commands:
+#   upgrade     - Update system packages
+#   install     - Install dependencies and Docker
+#   portainer   - Setup Portainer container
+#   nginx       - Configure Nginx reverse proxy
+#   status      - Show system and service status
+#   --help      - Show this help message
+
+set -euo pipefail
+
+# Configuration
+readonly CLI_NAME="infra"
+readonly CLI_VERSION="1.0.0"
+readonly CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LIB_DIR="${CLI_DIR}/lib"
+readonly COMMANDS_DIR="${CLI_DIR}/commands"
+
+# Source shared libraries
+source "${LIB_DIR}/common.sh"
+
+# Display help
+show_help() {
+    echo "${CLI_NAME} v${CLI_VERSION} - Infrastructure Management CLI"
+    echo
+    echo "Usage: ${CLI_NAME} <command> [options]"
+    echo
+    echo "Commands:"
+    echo "  upgrade     Update system packages and security patches"
+    echo "  install     Install dependencies, Docker, and core utilities"
+    echo "  portainer   Setup and deploy Portainer container manager"
+    echo "  nginx       Configure Nginx reverse proxy with SSL"
+    echo "  status      Show system status and service health"
+    echo
+    echo "Global Options:"
+    echo "  --help, -h  Show this help message"
+    echo "  --version   Show version information"
+    echo
+    echo "Examples:"
+    echo "  ${CLI_NAME} upgrade           # Update system packages"
+    echo "  ${CLI_NAME} install           # Install all dependencies"
+    echo "  ${CLI_NAME} portainer         # Setup Portainer"
+    echo "  ${CLI_NAME} nginx             # Configure Nginx proxy"
+    echo "  ${CLI_NAME} status            # Show service status"
+    echo
+    echo "Environment Variables:"
+    echo "  DOMAIN_NAME        Domain for SSL certificates (default: manager.jterrazz.com)"
+    echo "  USE_REAL_SSL       Use Let's Encrypt certificates (default: true)"
+    echo "  PORTAINER_VERSION  Portainer version to install (default: latest)"
+}
+
+# Show version
+show_version() {
+    echo "${CLI_NAME} version ${CLI_VERSION}"
+}
+
+# Validate command exists
+validate_command() {
+    local command="$1"
+    local command_file="${COMMANDS_DIR}/${command}.sh"
+    
+    if [[ ! -f "$command_file" ]]; then
+        error "Unknown command: $command"
+        echo
+        show_help
+        exit 1
+    fi
+}
+
+# Main execution
+main() {
+    # Handle no arguments
+    if [[ $# -eq 0 ]]; then
+        show_help
+        exit 0
+    fi
+    
+    # Handle global options
+    case "${1:-}" in
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        --version)
+            show_version
+            exit 0
+            ;;
+    esac
+    
+    # Check for root privileges for system commands
+    local command="$1"
+    case "$command" in
+        upgrade|install|portainer|nginx)
+            if [[ $EUID -ne 0 ]]; then
+                error "Command '$command' requires root privileges"
+                error "Please run: sudo $CLI_NAME $*"
+                exit 1
+            fi
+            ;;
+    esac
+    
+    # Validate and execute command
+    validate_command "$command"
+    
+    log "Executing: $CLI_NAME $*"
+    
+    # Source and execute the command
+    source "${COMMANDS_DIR}/${command}.sh"
+    
+    # Pass remaining arguments to the command
+    shift
+    "cmd_${command}" "$@"
+}
+
+# Execute main function
+main "$@"
