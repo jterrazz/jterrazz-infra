@@ -178,16 +178,49 @@ get_kubeconfig() {
     fi
 }
 
-# Delete VM
+# Delete VM with force
 delete_vm() {
     info "Deleting VM '$VM_NAME'..."
     
-    if multipass list | grep -q "$VM_NAME"; then
-        multipass delete "$VM_NAME"
-        multipass purge
-        success "VM deleted"
-    else
+    # Check if VM exists
+    if ! multipass list | grep -q "$VM_NAME"; then
         warn "VM '$VM_NAME' not found"
+        return 0
+    fi
+    
+    info "Attempting graceful shutdown..."
+    # Try to stop the VM first (with timeout)
+    timeout 30 multipass stop "$VM_NAME" 2>/dev/null || {
+        warn "Graceful stop failed or timed out, forcing..."
+    }
+    
+    info "Deleting VM (this may take a moment)..."
+    # Force delete with timeout
+    timeout 60 multipass delete "$VM_NAME" 2>/dev/null || {
+        error "Standard delete failed, trying force delete..."
+        # Try force delete
+        timeout 30 multipass delete --purge "$VM_NAME" 2>/dev/null || {
+            error "Force delete failed, killing multipass processes..."
+            # Nuclear option: kill multipass processes
+            pkill -f multipass 2>/dev/null || true
+            sleep 2
+            # Try again after killing processes
+            multipass delete --purge "$VM_NAME" 2>/dev/null || true
+        }
+    }
+    
+    info "Purging deleted instances..."
+    timeout 30 multipass purge 2>/dev/null || {
+        warn "Purge timed out, but VM should be deleted"
+    }
+    
+    # Verify deletion
+    if multipass list | grep -q "$VM_NAME"; then
+        error "VM still exists after deletion attempts!"
+        info "You may need to restart multipass: sudo launchctl stop com.canonical.multipassd"
+        return 1
+    else
+        success "VM deleted successfully"
     fi
 }
 
