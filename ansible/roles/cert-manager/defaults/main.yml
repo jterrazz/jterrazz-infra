@@ -1,0 +1,13 @@
+---
+# cert-manager role default variables
+
+cert_manager_version: "v1.13.3"
+cert_manager_namespace: "cert-manager"
+
+# Let's Encrypt configuration
+letsencrypt_email: "admin@{{ domain_name }}"
+letsencrypt_server: "https://acme-v02.api.letsencrypt.org/directory"
+letsencrypt_staging_server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+# Use staging for testing, production for real certificates
+letsencrypt_use_staging: false

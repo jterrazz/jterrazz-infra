@@ -1,0 +1,43 @@
+# JTerrazz Infrastructure - Terraform Variables Example
+# Copy this file to terraform.tfvars and customize for your setup
+
+# Project configuration
+project_name = "jterrazz-infra"
+environment  = "production"
+
+# Hetzner Cloud configuration
+hcloud_token = "your-hetzner-cloud-api-token-here"
+server_type  = "cx21"  # 2 vCPU, 4 GB RAM, 40 GB SSD (~€5/month)
+# Other options: cx11 (1 vCPU, 2 GB, €3/month), cx31 (2 vCPU, 8 GB, €9/month)
+
+server_image    = "ubuntu-24.04"
+server_location = "nbg1"  # Nuremberg, Germany
+# Other options: ash (Ashburn, VA), fsn1 (Falkenstein, Germany), hel1 (Helsinki, Finland)
+
+enable_floating_ip = true
+
+# SSH configuration
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKGXffmv69EOpZqZIWmzMgoCD5hCDR0k8iUKO2JJCdER hetzner-20250822"
+
+# Security: Restrict SSH access to your IP (recommended)
+allowed_ssh_ips = [
+  "0.0.0.0/0"  # CHANGE THIS to your IP address for security!
+  # Example: ["123.456.789.0/32"]
+]
+
+# Security: Restrict Kubernetes API access
+allowed_k8s_ips = [
+  "0.0.0.0/0"  # CHANGE THIS to your IP address for security!
+  # Example: ["123.456.789.0/32"]  
+]
+
+# DNS configuration (optional - leave empty if not using custom domain)
+domain_name           = "jterrazz.com"     # Your domain
+subdomain            = "manager"           # Subdomain for this server
+cloudflare_api_token = "your-cloudflare-api-token"
+cloudflare_zone_id   = "your-cloudflare-zone-id"
+
+# Leave these empty if you don't have a domain:
+# domain_name           = ""
+# cloudflare_api_token = ""
+# cloudflare_zone_id   = ""

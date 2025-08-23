@@ -1,0 +1,70 @@
+---
+# Helm installation tasks
+
+- name: Check if Helm is already installed
+  stat:
+    path: "{{ helm_install_dir }}/helm"
+  register: helm_binary
+
+- name: Get installed Helm version
+  command: "{{ helm_install_dir }}/helm version --short"
+  register: helm_installed_version
+  changed_when: false
+  failed_when: false
+  when: helm_binary.stat.exists
+
+- name: Download and install Helm
+  unarchive:
+    src: "{{ helm_download_url }}"
+    dest: /tmp
+    remote_src: yes
+    creates: /tmp/linux-amd64/helm
+  when: not helm_binary.stat.exists or helm_version not in helm_installed_version.stdout | default('')
+
+- name: Copy Helm binary to install directory
+  copy:
+    src: /tmp/linux-amd64/helm
+    dest: "{{ helm_install_dir }}/helm"
+    mode: '0755'
+    remote_src: yes
+  when: not helm_binary.stat.exists or helm_version not in helm_installed_version.stdout | default('')
+
+- name: Verify Helm installation
+  command: "{{ helm_install_dir }}/helm version --short"
+  register: helm_version_check
+  changed_when: false
+
+- name: Add stable Helm repository
+  kubernetes.core.helm_repository:
+    name: stable
+    repo_url: https://charts.helm.sh/stable
+    state: present
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Add bitnami Helm repository
+  kubernetes.core.helm_repository:
+    name: bitnami
+    repo_url: https://charts.bitnami.com/bitnami
+    state: present
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Update Helm repositories
+  command: "{{ helm_install_dir }}/helm repo update"
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Display Helm installation info
+  debug:
+    msg: |
+      ✅ Helm installed successfully!
+      • Version: {{ helm_version_check.stdout }}
+      • Location: {{ helm_install_dir }}/helm
+      • Repositories: stable, bitnami
+
+- name: Clean up download files
+  file:
+    path: /tmp/linux-amd64
+    state: absent

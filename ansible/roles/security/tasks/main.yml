@@ -1,0 +1,218 @@
+---
+# Security hardening tasks
+
+- name: Update package cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install security packages
+  apt:
+    name:
+      - ufw
+      - fail2ban
+      - unattended-upgrades
+      - apt-listchanges
+      - needrestart
+      - libpam-pwquality
+      - auditd
+      - rkhunter
+      - lynis
+    state: present
+
+# SSH Hardening
+- name: Configure SSH daemon
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    backup: yes
+    mode: '0600'
+    owner: root
+    group: root
+  notify: restart sshd
+
+# UFW Firewall Configuration
+- name: Reset UFW to defaults
+  ufw:
+    state: reset
+  when: ufw_enabled
+
+- name: Configure UFW defaults
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: '{{ ufw_default_incoming }}' }
+    - { direction: 'outgoing', policy: '{{ ufw_default_outgoing }}' }
+    - { direction: 'forward', policy: '{{ ufw_default_forward }}' }
+  when: ufw_enabled
+
+- name: Configure UFW rules
+  ufw:
+    rule: "{{ item.rule }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    comment: "{{ item.comment | default('') }}"
+  loop: "{{ ufw_rules }}"
+  when: ufw_enabled
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: deny
+  when: ufw_enabled
+
+# fail2ban Configuration  
+- name: Configure fail2ban jail.local
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    backup: yes
+    mode: '0644'
+  notify: restart fail2ban
+  when: fail2ban_enabled
+
+- name: Enable and start fail2ban
+  systemd:
+    name: fail2ban
+    enabled: yes
+    state: started
+  when: fail2ban_enabled
+
+# Automatic Updates Configuration
+- name: Configure unattended upgrades
+  template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: '0644'
+  when: auto_updates_enabled
+
+- name: Configure unattended upgrades settings
+  template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: '0644'
+  when: unattended_upgrades_enabled
+
+- name: Enable and start unattended-upgrades
+  systemd:
+    name: unattended-upgrades
+    enabled: yes
+    state: started
+  when: unattended_upgrades_enabled
+
+# Kernel Parameter Tuning
+- name: Configure kernel parameters for security
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop: "{{ kernel_parameters }}"
+
+# System Hardening
+- name: Secure shared memory
+  mount:
+    path: /run/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: defaults,noexec,nosuid
+    state: present
+  when: secure_shared_memory
+
+- name: Disable unused network protocols
+  blockinfile:
+    path: /etc/modprobe.d/blacklist-rare-protocols.conf
+    create: yes
+    block: |
+      # Disable rare network protocols for security
+      install dccp /bin/true
+      install sctp /bin/true
+      install rds /bin/true
+      install tipc /bin/true
+  when: disable_uncommon_protocols
+
+# Audit and Monitoring Setup
+- name: Enable auditd service
+  systemd:
+    name: auditd
+    enabled: yes
+    state: started
+
+- name: Configure basic audit rules
+  copy:
+    content: |
+      # Basic audit rules for security monitoring
+      -w /etc/passwd -p wa -k identity
+      -w /etc/group -p wa -k identity
+      -w /etc/shadow -p wa -k identity
+      -w /etc/sudoers -p wa -k identity
+      -w /etc/ssh/sshd_config -p wa -k sshd
+      -w /etc/fail2ban/ -p wa -k fail2ban
+      -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
+      -a always,exit -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change
+    dest: /etc/audit/rules.d/audit.rules
+    mode: '0640'
+  notify: restart auditd
+
+# Security Status and Monitoring
+- name: Create security status script
+  copy:
+    content: |
+      #!/bin/bash
+      # Security status check script
+      
+      echo "=== Security Status Report ==="
+      echo "Generated: $(date)"
+      echo
+      
+      echo "🔥 Firewall Status:"
+      ufw status numbered
+      echo
+      
+      echo "🛡️ fail2ban Status:"  
+      fail2ban-client status
+      echo
+      
+      echo "📊 Login Attempts (last 100):"
+      journalctl -u ssh -n 100 --no-pager | grep -i "failed\|accept" | tail -10
+      echo
+      
+      echo "🔍 System Updates:"
+      apt list --upgradable 2>/dev/null | wc -l | xargs echo "Upgradable packages:"
+      
+      echo
+      echo "📈 System Load:"
+      uptime
+      
+      echo
+      echo "💾 Disk Usage:"
+      df -h / | tail -1
+    dest: /usr/local/bin/security-status
+    mode: '0755'
+
+- name: Create security update check cron job
+  cron:
+    name: "Security status check"
+    minute: "0"
+    hour: "6"
+    job: "/usr/local/bin/security-status > /var/log/security-status.log 2>&1"
+    user: root
+
+# Final security verification
+- name: Display security setup summary
+  debug:
+    msg: |
+      🛡️ Security hardening completed!
+      
+      ✅ SSH hardening: Disabled password auth, configured timeouts
+      ✅ UFW firewall: Enabled with k3s/web ports allowed
+      ✅ fail2ban: Protection against brute force attacks
+      ✅ Automatic updates: Security patches applied automatically
+      ✅ Kernel hardening: TCP/IP stack security parameters
+      ✅ Audit logging: System changes monitored
+      ✅ Security monitoring: Daily status reports
+      
+      🔍 Security status: /usr/local/bin/security-status
+      📊 Log monitoring: tail -f /var/log/fail2ban.log
+      🛡️ Firewall status: ufw status

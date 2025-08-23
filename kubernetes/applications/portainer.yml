@@ -1,0 +1,164 @@
+---
+# Portainer for Kubernetes - Management UI
+# Accessible via Tailscale IP only (private access)
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portainer
+
+---
+# Portainer ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: portainer-sa
+  namespace: portainer
+
+---
+# Portainer ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: portainer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: portainer-sa
+  namespace: portainer
+
+---
+# Portainer Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: portainer-data
+  namespace: portainer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Portainer Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portainer
+  namespace: portainer
+  labels:
+    app: portainer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portainer
+  template:
+    metadata:
+      labels:
+        app: portainer
+    spec:
+      serviceAccountName: portainer-sa
+      containers:
+      - name: portainer
+        image: portainer/portainer-ce:latest
+        ports:
+        - containerPort: 9000
+          name: http
+        - containerPort: 9443
+          name: https
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        env:
+        - name: PORTAINER_K8S_MODE
+          value: "true"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: portainer-data
+
+---
+# Portainer Service (ClusterIP - internal only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: portainer
+  namespace: portainer
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: http
+  - port: 9443
+    targetPort: 9443
+    protocol: TCP
+    name: https
+  selector:
+    app: portainer
+
+---
+# Portainer NodePort Service (for Tailscale access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: portainer-nodeport
+  namespace: portainer
+  annotations:
+    # This service is only accessible via Tailscale IP
+    service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "false"
+spec:
+  type: NodePort
+  ports:
+  - port: 9443
+    targetPort: 9443
+    nodePort: 30943
+    protocol: TCP
+    name: https
+  selector:
+    app: portainer
+
+---
+# Portainer Ingress (optional - for domain access)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portainer-ingress
+  namespace: portainer
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Restrict to Tailscale IPs only
+    nginx.ingress.kubernetes.io/whitelist-source-range: "100.64.0.0/10"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - portainer.{{ domain_name | default('localhost') }}
+    secretName: portainer-tls
+  rules:
+  - host: portainer.{{ domain_name | default('localhost') }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: portainer
+            port:
+              number: 9443

@@ -1,0 +1,73 @@
+---
+# Tailscale installation and configuration tasks
+
+- name: Check if Tailscale is already installed
+  stat:
+    path: /usr/bin/tailscale
+  register: tailscale_binary
+
+- name: Add Tailscale GPG key
+  apt_key:
+    url: https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg
+    keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    state: present
+  when: not tailscale_binary.stat.exists
+
+- name: Add Tailscale repository
+  apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu focal main"
+    state: present
+    update_cache: yes
+  when: not tailscale_binary.stat.exists
+
+- name: Install Tailscale
+  apt:
+    name: tailscale
+    state: present
+  when: not tailscale_binary.stat.exists
+
+- name: Check if Tailscale is already connected
+  command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Connect to Tailscale (if auth key provided and not connected)
+  command: >
+    tailscale up
+    --auth-key={{ tailscale_auth_key }}
+    --hostname={{ tailscale_hostname }}
+    {% if tailscale_advertise_routes %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
+    {% if tailscale_accept_routes %}--accept-routes{% endif %}
+    {% if tailscale_accept_dns %}--accept-dns{% endif %}
+    {% if tailscale_shields_up %}--shields-up{% endif %}
+  when:
+    - tailscale_auth_key != ""
+    - tailscale_status.rc != 0 or "Stopped" in tailscale_status.stdout
+
+- name: Enable and start Tailscale service
+  systemd:
+    name: tailscaled
+    enabled: "{{ tailscale_service_enabled }}"
+    state: "{{ tailscale_service_state }}"
+
+- name: Get Tailscale IP address
+  command: tailscale ip -4
+  register: tailscale_ip
+  changed_when: false
+  failed_when: false
+
+- name: Display Tailscale connection info
+  debug:
+    msg: |
+      {% if tailscale_ip.rc == 0 %}
+      ✅ Tailscale connected successfully!
+      • Tailscale IP: {{ tailscale_ip.stdout }}
+      • Hostname: {{ tailscale_hostname }}
+      • Status: Connected to Tailscale network
+      {% else %}
+      ⚠️  Tailscale installed but not connected
+      • Run 'tailscale up' with an auth key to connect
+      • Or connect via web interface: https://login.tailscale.com
+      {% endif %}
+  when: tailscale_auth_key != "" or tailscale_ip.rc == 0

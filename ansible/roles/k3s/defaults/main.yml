@@ -1,0 +1,35 @@
+---
+# k3s role default variables
+
+k3s_version: "v1.28.5+k3s1"
+k3s_data_dir: "/var/lib/rancher/k3s"
+k3s_config_dir: "/etc/rancher/k3s"
+k3s_token: "{{ vault_k3s_token | default('change-me-secure-token') }}"
+k3s_node_ip: "{{ ansible_default_ipv4.address }}"
+
+# k3s installation configuration
+k3s_install_script_url: "https://get.k3s.io"
+k3s_install_mode: "server"
+k3s_disable_components:
+  - traefik  # We'll use nginx-ingress instead
+  - local-storage  # We'll configure our own storage
+
+# k3s server configuration
+k3s_server_config:
+  bind-address: "{{ k3s_node_ip }}"
+  https-listen-port: 6443
+  cluster-init: true
+  disable:
+    - traefik
+    - local-storage
+  write-kubeconfig-mode: "0644"
+  tls-san:
+    - "{{ ansible_host }}"
+    - "{{ k3s_node_ip }}"
+    - "localhost"
+    - "127.0.0.1"
+
+# Service configuration
+k3s_service_name: "k3s"
+k3s_service_enabled: true
+k3s_service_state: "started"

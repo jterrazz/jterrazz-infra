@@ -1,0 +1,146 @@
+---
+# nginx-ingress installation and configuration
+
+- name: Create nginx-ingress namespace
+  kubernetes.core.k8s:
+    name: "{{ nginx_ingress_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Add nginx-ingress Helm repository
+  kubernetes.core.helm_repository:
+    name: ingress-nginx
+    repo_url: https://kubernetes.github.io/ingress-nginx
+    state: present
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Install nginx-ingress with Helm
+  kubernetes.core.helm:
+    name: ingress-nginx
+    chart_ref: ingress-nginx/ingress-nginx
+    release_namespace: "{{ nginx_ingress_namespace }}"
+    create_namespace: false
+    chart_version: "{{ nginx_ingress_version }}"
+    values:
+      controller:
+        replicaCount: "{{ nginx_ingress_replica_count }}"
+        service:
+          type: "{{ nginx_ingress_service_type }}"
+          nodePorts:
+            http: "{{ nginx_ingress_http_port }}"
+            https: "{{ nginx_ingress_https_port }}"
+        config: "{{ nginx_ingress_config }}"
+        metrics:
+          enabled: false
+        admissionWebhooks:
+          enabled: true
+          failurePolicy: Ignore
+        resources:
+          requests:
+            cpu: 100m
+            memory: 90Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      defaultBackend:
+        enabled: true
+        image:
+          repository: k8s.gcr.io/defaultbackend-amd64
+          tag: "1.5"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 20Mi
+          limits:
+            cpu: 20m
+            memory: 30Mi
+    state: present
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 300
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Wait for nginx-ingress controller to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: ingress-nginx-controller
+    namespace: "{{ nginx_ingress_namespace }}"
+    wait_condition:
+      type: Available
+      status: "True"
+    wait_timeout: 300
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Get nginx-ingress service details
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: ingress-nginx-controller
+    namespace: "{{ nginx_ingress_namespace }}"
+  register: nginx_service
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+
+- name: Configure UFW for nginx-ingress NodePort
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: "nginx-ingress {{ item }}"
+  loop:
+    - "{{ nginx_ingress_http_port }}"
+    - "{{ nginx_ingress_https_port }}"
+
+- name: Set up iptables redirect from port 80 to NodePort
+  iptables:
+    table: nat
+    chain: PREROUTING
+    protocol: tcp
+    destination_port: "80"
+    jump: REDIRECT
+    to_ports: "{{ nginx_ingress_http_port }}"
+    comment: "Redirect HTTP to nginx-ingress"
+
+- name: Set up iptables redirect from port 443 to NodePort
+  iptables:
+    table: nat
+    chain: PREROUTING
+    protocol: tcp
+    destination_port: "443"
+    jump: REDIRECT
+    to_ports: "{{ nginx_ingress_https_port }}"
+    comment: "Redirect HTTPS to nginx-ingress"
+
+- name: Save iptables rules
+  shell: |
+    iptables-save > /etc/iptables/rules.v4
+  args:
+    creates: /etc/iptables/rules.v4
+
+- name: Install iptables-persistent
+  apt:
+    name: iptables-persistent
+    state: present
+
+- name: Display nginx-ingress status
+  debug:
+    msg: |
+      ✅ nginx-ingress controller installed successfully!
+      • Version: {{ nginx_ingress_version }}
+      • Namespace: {{ nginx_ingress_namespace }}
+      • Service Type: {{ nginx_ingress_service_type }}
+      • HTTP Port: 80 → {{ nginx_ingress_http_port }}
+      • HTTPS Port: 443 → {{ nginx_ingress_https_port }}
+      
+      🌐 Traffic routing:
+      • Port 80/443 → nginx-ingress controller → your apps
+      • SSL termination handled automatically with cert-manager

@@ -1,0 +1,168 @@
+---
+# Default Ingress Configuration
+# This provides a default landing page and routing examples
+
+# Default backend service (landing page)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: default-landing-page
+  namespace: default
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>🚀 JTerrazz Infrastructure</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {
+                font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+                margin: 0;
+                padding: 0;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container {
+                text-align: center;
+                max-width: 600px;
+                padding: 2rem;
+            }
+            h1 { font-size: 3rem; margin-bottom: 1rem; }
+            .subtitle { font-size: 1.2rem; margin-bottom: 2rem; opacity: 0.9; }
+            .services { display: grid; gap: 1rem; margin: 2rem 0; }
+            .service {
+                background: rgba(255,255,255,0.1);
+                padding: 1rem;
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
+                transition: transform 0.2s;
+            }
+            .service:hover { transform: translateY(-2px); }
+            .service a {
+                color: white;
+                text-decoration: none;
+                font-weight: 500;
+            }
+            .status {
+                background: rgba(0,255,0,0.2);
+                padding: 0.5rem 1rem;
+                border-radius: 20px;
+                display: inline-block;
+                margin: 1rem 0;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🚀 JTerrazz Infrastructure</h1>
+            <p class="subtitle">Modern Kubernetes cluster running on Hetzner Cloud</p>
+            
+            <div class="status">✅ Infrastructure Online</div>
+            
+            <div class="services">
+                <div class="service">
+                    <h3>🔄 ArgoCD</h3>
+                    <p>GitOps continuous deployment</p>
+                    <a href="https://argocd.{{ domain_name | default('localhost') }}">Access ArgoCD →</a>
+                </div>
+                
+                <div class="service">
+                    <h3>🐳 Portainer</h3>
+                    <p>Kubernetes management UI</p>
+                    <a href="https://portainer.{{ domain_name | default('localhost') }}">Access Portainer →</a>
+                </div>
+            </div>
+            
+            <div style="margin-top: 2rem; opacity: 0.7; font-size: 0.9rem;">
+                <p>📊 Stack: k3s + ArgoCD + cert-manager + nginx-ingress + Tailscale</p>
+                <p>☁️ Hosted on Hetzner Cloud</p>
+            </div>
+        </div>
+    </body>
+    </html>
+
+---
+# Default landing page deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: default-landing
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: default-landing
+  template:
+    metadata:
+      labels:
+        app: default-landing
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 50m
+            memory: 64Mi
+      volumes:
+      - name: html
+        configMap:
+          name: default-landing-page
+
+---
+# Default landing page service
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-landing
+  namespace: default
+spec:
+  selector:
+    app: default-landing
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+# Main ingress with SSL
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: main-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - "{{ domain_name | default('localhost') }}"
+    secretName: main-tls
+  rules:
+  - host: "{{ domain_name | default('localhost') }}"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: default-landing
+            port:
+              number: 80

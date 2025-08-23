@@ -1,0 +1,28 @@
+---
+# Security role handlers
+
+- name: restart sshd
+  systemd:
+    name: sshd
+    state: restarted
+    daemon_reload: yes
+  listen: "restart sshd"
+
+- name: restart fail2ban
+  systemd:
+    name: fail2ban
+    state: restarted
+    daemon_reload: yes
+  listen: "restart fail2ban"
+
+- name: restart auditd
+  systemd:
+    name: auditd
+    state: restarted
+    daemon_reload: yes
+  listen: "restart auditd"
+
+- name: reload ufw
+  ufw:
+    state: reloaded
+  listen: "reload ufw"

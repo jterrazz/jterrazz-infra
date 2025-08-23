@@ -1,0 +1,32 @@
+---
+# argocd role default variables
+
+argocd_version: "5.51.6"  # Helm chart version
+argocd_namespace: "argocd"
+
+# ArgoCD server configuration
+argocd_server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hostname: "argocd.{{ domain_name }}"
+    tls: true
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+
+# ArgoCD configuration
+argocd_config:
+  # Allow local users (admin)
+  accounts.admin: "apiKey, login"
+  # Enable insecure mode for easier access (you can secure this later)
+  server.insecure: "true"
+  
+# Redis configuration (embedded)
+argocd_redis:
+  enabled: true
+  
+# High availability (disabled for single-node)
+argocd_ha:
+  enabled: false
