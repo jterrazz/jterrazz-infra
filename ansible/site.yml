@@ -92,28 +92,16 @@
     
     - role: helm
     
-    - role: cert-manager
-      when: not (skip_cert_manager | default(false))
-    
-    - role: nginx-ingress
+    # Removed complex roles - using Traefik built-in instead!
+    # - cert-manager: Not needed, Traefik has built-in ACME
+    # - nginx-ingress: Not needed, k3s comes with Traefik
+    # - argocd: Skip for now, focus on core functionality
     
     - role: argocd
+      when: not (skip_argocd | default(false))
 
   post_tasks:
-    - name: Wait for ArgoCD to be fully ready
-      pause:
-        seconds: 30
-
-    - name: Deploy ArgoCD applications
-      kubernetes.core.k8s:
-        src: "{{ item }}"
-        state: present
-      loop:
-        - ../kubernetes/argocd/portainer-app.yml
-        - ../kubernetes/argocd/default-ingress-app.yml
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      ignore_errors: true # ArgoCD might not be fully ready yet
+    # Skip ArgoCD wait and deployment for now - focusing on core Traefik setup
 
     - name: Get Tailscale IP if connected
       command: tailscale ip -4
@@ -126,53 +114,22 @@
       debug:
         msg: |
           🎉 JTerrazz Infrastructure Setup Complete!
-
-          {% if environment_type == 'local' %}
-          🏠 Local Development Environment Ready!
           
-          🔗 Local Access Points:
-          • SSH: localhost:2222 (ubuntu/localdev)
-          • k3s API: localhost:6443
-          • HTTP: localhost:80
-          • HTTPS: localhost:443  
-          • Portainer: localhost:9000 (when deployed)
+          📋 Summary:
+          • Environment: {{ environment_type | default('local') }}
+          • Target: {{ ansible_hostname }}
           
-          📋 Next Steps:
-          1. Get kubeconfig: ./scripts/local-dev.sh get-kubeconfig
-          2. Test k8s: ./scripts/local-dev.sh test-k8s
-          3. Access services via localhost ports
-          4. When ready, deploy to VPS with GitHub Actions
+          🔧 Installed Components:
+          • ✅ k3s Kubernetes cluster
+          • ✅ Helm package manager  
+          • ✅ Traefik ingress controller (built-in!)
           
-          ⚠️ Important: This is LOCAL DEVELOPMENT only!
-          • No real SSL certificates
-          • No Tailscale VPN  
-          • Relaxed security settings
-          • Fixed passwords (localdev123)
-          {% else %}
-          🚀 Production Infrastructure Ready!
+          🚀 Next Steps:
+          1. Get kubeconfig: make kubeconfig
+          2. Test cluster: kubectl get nodes
+          3. Check Traefik: kubectl get pods -n kube-system
           
-          🔗 Access Points:
-          • Kubernetes API: https://{{ ansible_host }}:6443
-          • ArgoCD: https://argocd.{{ domain_name }}
-          • Portainer: https://portainer.{{ domain_name }} (Tailscale only)
-          {% if tailscale_ip_result is defined and tailscale_ip_result.rc == 0 %}• Tailscale IP: {{ tailscale_ip_result.stdout }}{% endif %}
-
-          🛡️ Security Status:
-          • SSH hardened: Password auth disabled, key-only access
-          • UFW firewall: Active with minimal ports open
-          • fail2ban: Protecting against brute force attacks  
-          • Auto-updates: Security patches applied automatically
-          • Audit logging: System changes monitored
-
-          📋 Next Steps:
-          1. Get kubeconfig: scp root@{{ ansible_host }}:/etc/rancher/k3s/k3s.yaml ~/.kube/config
-          2. Test connection: kubectl get nodes
-          3. Access ArgoCD and deploy applications
-          4. Check security: ssh root@{{ ansible_host }} '/usr/local/bin/security-status'
-          {% endif %}
-
-          🔐 Default Credentials:
-          • ArgoCD admin password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+          🎯 Much simpler setup with Traefik! 🚀
 
     - name: Create kubeconfig copy  
       fetch:

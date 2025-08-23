@@ -12,8 +12,8 @@ k3s_node_ip: "{{ ansible_default_ipv4.address }}"
 k3s_install_script_url: "https://get.k3s.io"
 k3s_install_mode: "server"
 k3s_disable_components:
-  - traefik  # We'll use nginx-ingress instead
   - local-storage  # We'll configure our own storage
+  # traefik enabled - perfect for both local and production!
 
 # k3s server configuration
 k3s_server_config:
@@ -21,7 +21,6 @@ k3s_server_config:
   https-listen-port: 6443
   cluster-init: true
   disable:
-    - traefik
     - local-storage
   write-kubeconfig-mode: "0644"
   tls-san:

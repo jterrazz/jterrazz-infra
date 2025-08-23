@@ -35,6 +35,12 @@ node-external-ip: {{ k3s_node_ip }}
 # Kubelet configuration
 kubelet-arg:
   - "max-pods=250"
+{% if is_local_environment | default(false) %}
+
+# Local development configuration (Docker-in-Docker fixes)
+container-runtime-endpoint: unix:///run/containerd/containerd.sock
+snapshotter: "fuse-overlayfs"
+{% endif %}
 
 # Enable features
 kube-apiserver-arg:
