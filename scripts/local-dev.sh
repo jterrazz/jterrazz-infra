@@ -127,8 +127,11 @@ clean_environment() {
         # Stop and remove containers
         docker-compose down -v
         
-        # Remove local data
-        sudo rm -rf local-data/
+        # Remove local data using Docker (no sudo needed)
+        if [ -d "local-data" ]; then
+            docker run --rm -v "$PWD/local-data:/data" ubuntu:22.04 rm -rf /data/*
+            rm -rf local-data/
+        fi
         
         # Remove dangling images
         docker image prune -f
