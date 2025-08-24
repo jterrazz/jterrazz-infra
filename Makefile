@@ -2,7 +2,7 @@
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean nuke ansible kubeconfig dns dns-clean dns-status shell logs status deploy deps
+.PHONY: help start stop clean ansible kubeconfig dns dns-clean dns-status shell logs status deploy deps
 
 # Colors
 GREEN := \033[32m
@@ -81,25 +81,12 @@ deps: ## 🔍 Check dependencies
 	@echo "Optional tools:"
 	@command -v kubectl >/dev/null 2>&1 && echo "  ✅ kubectl" || echo "  ⚠️  kubectl (recommended)"
 
-clean: ## 🧹 Clean everything (delete VM and kubeconfig)
+clean: ## 🧹 Clean everything (force delete VM and cleanup)
 	@echo "$(RED)Cleaning everything...$(NC)"
-	@$(MAKE) stop || true
+	./scripts/local-dev.sh delete
 	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
 	@rm -rf local-data/
 	@echo "$(GREEN)Cleanup complete$(NC)"
-
-nuke: ## 💥 Nuclear clean (force kill multipass and clean everything)
-	@echo "$(RED)Nuclear cleanup - forcing multipass shutdown...$(NC)"
-	@sudo pkill -f multipass 2>/dev/null || true
-	@sleep 3
-	@sudo launchctl stop com.canonical.multipassd 2>/dev/null || true
-	@sleep 2
-	@sudo launchctl start com.canonical.multipassd 2>/dev/null || true
-	@sleep 3
-	@multipass delete --all --purge 2>/dev/null || true
-	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
-	@rm -rf local-data/
-	@echo "$(GREEN)Nuclear cleanup complete - multipass restarted$(NC)"
 
 ##@ Help
 
@@ -114,5 +101,4 @@ help: ## 💡 Display this help message
 	@echo "  make ssh                    # SSH into Ubuntu VM"
 	@echo "  make status                 # Check VM and K3s status"
 	@echo "  make clean                  # Clean everything (delete VM)"
-	@echo "  make nuke                   # Nuclear clean (if clean gets stuck)"
 	@echo "  make deploy                 # Deploy to production"
