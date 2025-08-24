@@ -87,7 +87,7 @@
   ansible.builtin.wait_for:
     port: 6443
     host: "{{ k3s_node_ip }}"
-    delay: 10
+    delay: 0
     timeout: 300
 
 - name: Verify k3s cluster is running
@@ -95,7 +95,7 @@
   register: k3s_nodes
   changed_when: false
   retries: 5
-  delay: 10
+  delay: 0
   until: k3s_nodes.rc == 0
 
 - name: Create kubectl symlink

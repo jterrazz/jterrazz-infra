@@ -72,7 +72,7 @@ wait_for_traefik_crds() {
         elif [[ $((attempt % 5)) -eq 0 ]]; then
             info "Still waiting for Traefik CRDs... (attempt $attempt/$max_attempts)"
         fi
-        sleep 2
+        sleep 1
     done
     
     warning "Traefik CRDs not available after $max_attempts attempts"
@@ -119,16 +119,34 @@ deploy_argocd_apps() {
 
 # Wait for ArgoCD to sync applications
 wait_for_sync() {
-    info "Waiting for ArgoCD to sync applications..."
-    sleep 10
+    info "Waiting for ArgoCD applications to be created..."
     
-    info "Checking ArgoCD application status..."
-    echo
-    kubectl get applications -n argocd || true
-    echo
+    local max_attempts=30
+    local attempt=0
     
-    success "ArgoCD applications are now managing your infrastructure!"
-    info "Visit ArgoCD dashboard to monitor deployments."
+    while [[ $attempt -lt $max_attempts ]]; do
+        if kubectl get applications -n argocd &>/dev/null; then
+            info "Checking ArgoCD application status..."
+            echo
+            kubectl get applications -n argocd || true
+            echo
+            
+            success "ArgoCD applications are now managing your infrastructure!"
+            info "Visit ArgoCD dashboard to monitor deployments."
+            return 0
+        fi
+        
+        ((attempt++))
+        if [[ $attempt -eq 1 ]]; then
+            info "Waiting for ArgoCD applications to appear... (attempt $attempt/$max_attempts)"
+        elif [[ $((attempt % 5)) -eq 0 ]]; then
+            info "Still waiting for applications... (attempt $attempt/$max_attempts)"
+        fi
+        sleep 1
+    done
+    
+    warning "ArgoCD applications not found after $max_attempts attempts"
+    return 1
 }
 
 # Wait for ArgoCD to be ready
@@ -150,7 +168,7 @@ wait_for_argocd() {
         elif [[ $((attempt % 10)) -eq 0 ]]; then
             info "Still waiting for ArgoCD... (attempt $attempt/$max_attempts)"
         fi
-        sleep 3
+        sleep 1
     done
     
     warning "ArgoCD not ready after $max_attempts attempts"
