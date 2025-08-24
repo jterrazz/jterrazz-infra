@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# JTerrazz Infrastructure - Bootstrap Script
+# Jterrazz Infrastructure - Bootstrap Script
 # One-click deployment of entire infrastructure
 
 set -euo pipefail
@@ -164,7 +164,7 @@ show_summary() {
 main() {
     local environment="${1:-production}"
     
-    print_header "JTerrazz Infrastructure Deployment"
+    print_header "Jterrazz Infrastructure Deployment"
     
     subsection "🎯 Deployment Configuration:"
     echo "    • Environment: $environment"
@@ -187,7 +187,7 @@ case "${1:-}" in
         main "$1"
         ;;
     --help|-h)
-        print_header "JTerrazz Infrastructure Bootstrap"
+        print_header "Jterrazz Infrastructure Bootstrap"
         
         subsection "📖 Usage:"
         echo "    $0 [environment]"

@@ -1,4 +1,4 @@
-# JTerrazz Infrastructure - Terraform Variables
+# Jterrazz Infrastructure - Terraform Variables
 # Configure your VPS and DNS settings here
 
 variable "project_name" {

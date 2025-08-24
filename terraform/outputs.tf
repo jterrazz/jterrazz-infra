@@ -1,4 +1,4 @@
-# JTerrazz Infrastructure - Terraform Outputs
+# Jterrazz Infrastructure - Terraform Outputs
 # Expose important information for Ansible and external use
 
 output "server_id" {

@@ -1,4 +1,4 @@
-## JTerrazz Infrastructure - Deployment Workflow
+## Jterrazz Infrastructure - Deployment Workflow
 # Deploys via Ansible with Tailscale for secure K8s API access
 
 name: 🚀 Deploy Infrastructure

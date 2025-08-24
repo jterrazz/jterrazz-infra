@@ -18,7 +18,8 @@ error() { echo -e "${RED}✗ $1${NC}"; }
 section() { echo -e "\n${GREEN}▶ $1${NC}"; }
 subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
-# Configuration
+# Configuration  
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VM_NAME="${VM_NAME:-jterrazz-infra}"
 HOSTS_MARKER="# jterrazz-infra-local"
 

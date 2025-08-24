@@ -1,5 +1,5 @@
 #cloud-config
-# JTerrazz Infrastructure - Cloud-init configuration
+# Jterrazz Infrastructure - Cloud-init configuration
 # Basic server setup before Ansible takes over
 
 hostname: ${hostname}

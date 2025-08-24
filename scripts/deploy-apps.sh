@@ -36,9 +36,11 @@ check_cluster() {
     
     if ! kubectl cluster-info &> /dev/null; then
         error "Cannot connect to Kubernetes cluster. Please check your kubeconfig."
-        info "Hint: Run 'make kubeconfig' to get the kubeconfig from your VM."
         if [[ -f "local-kubeconfig.yaml" ]]; then
-            info "Or set: export KUBECONFIG=$(pwd)/local-kubeconfig.yaml"
+            info "Local kubeconfig found. Set: export KUBECONFIG=$(pwd)/local-kubeconfig.yaml"
+        else
+            info "Hint: Run 'make start' to set up the complete environment first."
+            info "Or run './scripts/local-dev.sh kubeconfig' to get kubeconfig from existing VM."
         fi
         exit 1
     fi
@@ -230,6 +232,7 @@ show_access_info() {
     
     if [[ "$dns_configured" == "true" ]]; then
         # Local development with DNS configured - URLs already shown by DNS script
+        info "DNS automatically configured - no manual setup needed"
         success "All services are now accessible via HTTPS"
     else
         # Production or local fallback

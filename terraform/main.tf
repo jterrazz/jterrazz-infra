@@ -1,4 +1,4 @@
-# JTerrazz Infrastructure - Hetzner Cloud VPS
+# Jterrazz Infrastructure - Hetzner Cloud VPS
 # Modern Infrastructure as Code setup with Terraform + Ansible + k3s
 
 terraform {

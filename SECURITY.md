@@ -1,6 +1,6 @@
 # 🔐 Security Architecture & Implementation
 
-This document outlines the comprehensive security measures implemented in the JTerrazz Infrastructure project, covering both local development and production environments.
+This document outlines the comprehensive security measures implemented in the Jterrazz Infrastructure project, covering both local development and production environments.
 
 ## 🏗️ Security Architecture Overview
 

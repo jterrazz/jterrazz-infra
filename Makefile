@@ -1,8 +1,8 @@
-# JTerrazz Infrastructure - Simplified Makefile
+# Jterrazz Infrastructure - Simplified Makefile
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean ansible dns dns-clean dns-status shell logs status deploy deps infra apps
+.PHONY: help start stop clean ansible status deploy deps infra k8s vm reset ssh
 
 # Colors
 GREEN := \033[32m
@@ -11,9 +11,9 @@ BLUE := \033[34m
 RED := \033[31m
 NC := \033[0m
 
-##@ Local Development (Real K3s + Ansible)
+##@ Main Commands
 
-start: ## Complete local setup (VM + Ansible + K3s + Apps)
+start: ## Complete setup - VM, K3s cluster, and applications ready
 	@echo "$(GREEN)🚀 Starting Complete Local Environment Setup$(NC)"
 	@echo "$(BLUE)This will create VM, configure security, install K3s, and deploy apps$(NC)"
 	@echo
@@ -23,61 +23,49 @@ start: ## Complete local setup (VM + Ansible + K3s + Apps)
 	@echo "$(GREEN)✓ Local environment is ready!$(NC)"
 	@echo "$(BLUE)→ Check the service URLs above to access your applications$(NC)"
 
-infra: ## Infrastructure only (VM + Ansible + K3s)
-	@echo "$(GREEN)Setting up infrastructure (VM + K3s)...$(NC)"
-	./scripts/local-dev.sh full
-
-create: ## Create Ubuntu VM and setup SSH
-	@echo "$(GREEN)Creating Ubuntu VM...$(NC)"
-	./scripts/local-dev.sh create
-
-ansible: ## Run Ansible playbook on VM
-	@echo "$(GREEN)Running Ansible on VM...$(NC)"
-	./scripts/local-dev.sh ansible
-
-dns: ## Setup local DNS (/etc/hosts) for seamless access
-	@./scripts/setup-local-dns.sh setup
-
-dns-clean: ## Remove local DNS entries from /etc/hosts
-	@./scripts/setup-local-dns.sh clean
-
-dns-status: ## Show current local DNS entries
-	@./scripts/setup-local-dns.sh status
-
-apps: ## Deploy applications (Traefik configs + ArgoCD apps)
-	@echo "$(GREEN)Deploying applications via ArgoCD...$(NC)"
-	./scripts/deploy-apps.sh
-
-status: ## Show VM and K3s status
-	@echo "$(BLUE)Checking VM status...$(NC)"
-	./scripts/local-dev.sh status
-
-ssh: ## SSH into Ubuntu VM
-	@echo "$(GREEN)Connecting to VM...$(NC)"
-	./scripts/local-dev.sh ssh
-
-stop: ## Delete Ubuntu VM
+stop: ## Delete VM and cleanup everything
 	@echo "$(RED)Deleting VM...$(NC)"
 	./scripts/local-dev.sh delete
 
-##@ Production Deployment
+ssh: ## SSH into the development VM
+	@echo "$(GREEN)Connecting to VM...$(NC)"
+	./scripts/local-dev.sh ssh
 
-deploy: ## Deploy to production
-	@echo "$(GREEN)Deploying to production...$(NC)"
-	./scripts/bootstrap.sh
+status: ## Show VM health and service status
+	@echo "$(BLUE)Checking VM status...$(NC)"
+	./scripts/local-dev.sh status
 
-##@ Development Shortcuts
-
-dev: ## Full development cycle (same as start - VM + Apps)
-	@$(MAKE) start
-
-reset: ## Reset environment (clean → start)
+reset: ## Clean restart - delete everything and start fresh
 	@$(MAKE) clean || true
 	@$(MAKE) start
 
+##@ Sub-commands
+
+infra: ## Setup K3s cluster ready for applications
+	@echo "$(GREEN)Setting up infrastructure (VM + K3s)...$(NC)"
+	./scripts/local-dev.sh full
+
+vm: ## Create VM with SSH access
+	@echo "$(GREEN)Creating Ubuntu VM...$(NC)"
+	./scripts/local-dev.sh create
+
+ansible: ## Configure VM security and system setup
+	@echo "$(GREEN)Running Ansible on VM...$(NC)"
+	./scripts/local-dev.sh ansible
+
+k8s: ## Deploy applications to cluster via ArgoCD
+	@echo "$(GREEN)Deploying applications via ArgoCD...$(NC)"
+	./scripts/deploy-apps.sh
+
+##@ Production
+
+deploy: ## Deploy infrastructure and apps to production
+	@echo "$(GREEN)Deploying to production...$(NC)"
+	./scripts/bootstrap.sh
+
 ##@ Utilities
 
-deps: ## Check dependencies
+deps: ## Check required tools and dependencies
 	@echo "$(BLUE)Checking dependencies...$(NC)"
 	@echo "Local development:"
 	@command -v multipass >/dev/null 2>&1 && echo "  OK Multipass" || echo "  MISSING Multipass (required - brew install multipass)"
@@ -87,7 +75,7 @@ deps: ## Check dependencies
 	@echo "Optional tools:"
 	@command -v kubectl >/dev/null 2>&1 && echo "  OK kubectl" || echo "  MISSING kubectl (recommended)"
 
-clean: ## Clean everything (force delete VM and cleanup)
+clean: ## Force delete VM and cleanup all files
 	@echo "$(RED)Cleaning development environment...$(NC)"
 	./scripts/local-dev.sh delete
 	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
@@ -97,15 +85,19 @@ clean: ## Clean everything (force delete VM and cleanup)
 ##@ Help
 
 help: ## Display this help message
-	@echo "$(GREEN)JTerrazz Infrastructure - Essential Commands$(NC)"
+	@echo "$(GREEN)Jterrazz Infrastructure - Essential Commands$(NC)"
 	@echo ""
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_-]+:.*##/ { printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 	@echo ""
-	@echo "$(BLUE)Quick Examples:$(NC)"
-	@echo "  make start                  # Complete setup (VM + K3s + Apps) - everything ready!"
-	@echo "  make infra                  # Infrastructure only (VM + K3s, no apps)"
-	@echo "  make apps                   # Deploy/redeploy applications only"
-	@echo "  make ssh                    # SSH into Ubuntu VM"
-	@echo "  make status                 # Check VM and K3s status"
-	@echo "  make clean                  # Clean everything (delete VM)"
-	@echo "  make deploy                 # Deploy to production"
+	@echo "$(BLUE)Quick Start:$(NC)"
+	@echo "  make start                  # Complete setup - everything ready!"
+	@echo "  make ssh                    # SSH into your VM"
+	@echo "  make status                 # Check VM status"
+	@echo "  make stop                   # Delete VM"
+	@echo ""
+	@echo "$(BLUE)Advanced:$(NC)"
+	@echo "  make infra                  # Infrastructure only (no apps)"
+	@echo "  make vm                     # Create VM only"
+	@echo "  make k8s                    # Deploy/redeploy applications"
+	@echo "  make reset                  # Clean restart"
+	@echo "  make deploy                 # Production deployment"
