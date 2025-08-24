@@ -239,32 +239,354 @@ delete_vm() {
 
 # Show VM status
 status() {
-    info "Local Development VM Status:"
-    echo
+    section "🖥️ VM Infrastructure Status"
     
-    if multipass list | grep -q "$VM_NAME"; then
-        multipass info "$VM_NAME"
+    if ! multipass list | grep -q "$VM_NAME"; then
+        error "VM '$VM_NAME' not found"
+        subsection "💡 Quick fix:"
+        echo "    • Create VM: make start"
+        return 1
+    fi
+    
+    # Basic VM info
+    multipass info "$VM_NAME"
+    
+    local vm_ip
+    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+    
+    # System Health Check
+    section "🔍 System Health Check"
+    check_connectivity "$vm_ip"
+    check_kubernetes "$vm_ip"
+    
+    # Security Status
+    section "🛡️ Security Status"
+    check_security_services "$vm_ip"
+    check_firewall_status "$vm_ip"
+    check_exposed_ports "$vm_ip"
+    
+    # Network & Services
+    section "🌐 Network & Services"
+    check_tailscale_status "$vm_ip"
+    check_kubernetes_services "$vm_ip"
+    check_argocd_status "$vm_ip"
+    
+    # System Resources
+    section "📊 System Resources"
+    check_system_resources "$vm_ip"
+}
+
+# Helper functions for status checks
+check_connectivity() {
+    local vm_ip="$1"
+    
+    info "Testing SSH connectivity..."
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
+        success "SSH connection established"
+    else
+        error "SSH connection failed"
+        return 1
+    fi
+}
+
+check_kubernetes() {
+    local vm_ip="$1"
+    
+    info "Testing Kubernetes cluster..."
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get nodes --no-headers 2>/dev/null" | grep -q "Ready"; then
+        success "Kubernetes cluster is healthy"
         
-        local vm_ip
-        vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+        # Show node details
+        local node_info
+        node_info=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get nodes -o wide --no-headers 2>/dev/null" | head -1)
+        subsection "📋 Cluster details:"
+        echo "    • Node: $node_info"
+    else
+        error "Kubernetes cluster not responding"
+    fi
+}
+
+check_security_services() {
+    local vm_ip="$1"
+    
+    info "Checking security services..."
+    
+    # Check fail2ban
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo systemctl is-active fail2ban 2>/dev/null" | grep -q "active"; then
+        success "fail2ban is active"
+    else
+        warn "fail2ban is not active"
+    fi
+    
+    # Check UFW firewall
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo ufw status 2>/dev/null" | grep -q "Status: active"; then
+        success "UFW firewall is active"
+    else
+        warn "UFW firewall is not active"
+    fi
+    
+    # Check auditd
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo systemctl is-active auditd 2>/dev/null" | grep -q "active"; then
+        success "auditd is active"
+    else
+        warn "auditd is not active"
+    fi
+    
+    # Check unattended-upgrades
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo systemctl is-active unattended-upgrades 2>/dev/null" | grep -q "active"; then
+        success "unattended-upgrades is active"
+    else
+        warn "unattended-upgrades is not active"
+    fi
+}
+
+check_firewall_status() {
+    local vm_ip="$1"
+    
+    info "Checking firewall rules..."
+    local ufw_status
+    ufw_status=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo ufw status numbered 2>/dev/null")
+    
+    if echo "$ufw_status" | grep -q "Status: active"; then
+        success "Firewall is configured"
+        subsection "🔥 Active firewall rules:"
         
-        section "System Health Check"
+        # Parse and group the rules
+        local ipv4_rules=""
+        local ipv6_rules=""
         
-        info "Testing SSH connectivity..."
-        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
-            success "SSH connection established"
-        else
-            error "SSH connection failed"
+        while IFS= read -r line; do
+            if [[ "$line" =~ ^\[[[:space:]]*[0-9]+\] ]]; then
+                if [[ "$line" =~ \(v6\) ]]; then
+                    ipv6_rules+="$line"$'\n'
+                else
+                    ipv4_rules+="$line"$'\n'
+                fi
+            fi
+        done <<< "$ufw_status"
+        
+        # Display IPv4 rules
+        if [[ -n "$ipv4_rules" ]]; then
+            echo "    📡 IPv4 Rules:"
+            echo "$ipv4_rules" | while IFS= read -r line; do
+                if [[ -n "$line" ]]; then
+                    local rule_num=$(echo "$line" | grep -o '^\[[[:space:]]*[0-9]*\]' | tr -d '[]' | xargs)
+                    local port=$(echo "$line" | grep -o '[0-9]\+/[a-z]\+' | head -1)
+                    local comment=$(echo "$line" | grep -o '# .*' | sed 's/^# //')
+                    echo "      [$rule_num] $port - $comment"
+                fi
+            done
         fi
         
-        info "Testing Kubernetes cluster..."
-        if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get nodes" 2>/dev/null; then
-            success "Kubernetes cluster is healthy"
-        else
-            error "Kubernetes cluster not responding"
+        # Display IPv6 rules
+        if [[ -n "$ipv6_rules" ]]; then
+            echo "    📡 IPv6 Rules:"
+            echo "$ipv6_rules" | while IFS= read -r line; do
+                if [[ -n "$line" ]]; then
+                    local rule_num=$(echo "$line" | grep -o '^\[[[:space:]]*[0-9]*\]' | tr -d '[]' | xargs)
+                    local port=$(echo "$line" | grep -o '[0-9]\+/[a-z]\+' | head -1)
+                    local comment=$(echo "$line" | grep -o '# .*' | sed 's/^# //' | sed 's/ (v6)//')
+                    echo "      [$rule_num] $port - $comment"
+                fi
+            done
         fi
     else
-        error "VM: Not found"
+        warn "Firewall status unclear"
+    fi
+}
+
+check_exposed_ports() {
+    local vm_ip="$1"
+    
+    info "Checking exposed ports..."
+    local listening_ports
+    listening_ports=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo ss -tulpn | grep LISTEN | grep -E ':(22|80|443|6443|8080|9000)'" 2>/dev/null)
+    
+    if [[ -n "$listening_ports" ]]; then
+        success "Found listening services"
+        subsection "🔌 Exposed ports:"
+        echo "$listening_ports" | while read -r line; do
+            local port=$(echo "$line" | awk '{print $5}' | cut -d: -f2)
+            local service=""
+            case "$port" in
+                22) service=" (SSH)" ;;
+                80) service=" (HTTP)" ;;
+                443) service=" (HTTPS)" ;;
+                6443) service=" (Kubernetes API)" ;;
+                8080) service=" (ArgoCD)" ;;
+                9000) service=" (Portainer)" ;;
+            esac
+            echo "    • Port $port$service"
+        done
+    else
+        warn "No standard services detected"
+    fi
+}
+
+check_tailscale_status() {
+    local vm_ip="$1"
+    
+    info "Checking Tailscale status..."
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "command -v tailscale >/dev/null 2>&1"; then
+        local tailscale_status
+        tailscale_status=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo tailscale status --json 2>/dev/null" | jq -r '.BackendState' 2>/dev/null || echo "unknown")
+        
+        if [[ "$tailscale_status" == "Running" ]]; then
+            success "Tailscale is connected"
+            local tailscale_ip
+            tailscale_ip=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo tailscale ip 2>/dev/null" || echo "unknown")
+            subsection "🔗 Tailscale details:"
+            echo "    • Tailscale IP: $tailscale_ip"
+        else
+            warn "Tailscale is not connected (status: $tailscale_status)"
+        fi
+    else
+        info "Tailscale not installed (local development)"
+    fi
+}
+
+check_kubernetes_services() {
+    local vm_ip="$1"
+    
+    info "Checking Kubernetes services..."
+    
+    # Get all services
+    local all_services
+    all_services=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get svc --all-namespaces -o wide 2>/dev/null" || echo "")
+    
+    if [[ -n "$all_services" ]]; then
+        success "Kubernetes services running"
+        
+        # Show externally exposed services
+        local exposed_services
+        exposed_services=$(echo "$all_services" | grep -E '(LoadBalancer|NodePort)' || echo "")
+        
+        if [[ -n "$exposed_services" ]]; then
+            subsection "🌐 Externally exposed services:"
+            echo "$exposed_services" | while read -r line; do
+                local namespace=$(echo "$line" | awk '{print $1}')
+                local name=$(echo "$line" | awk '{print $2}')
+                local type=$(echo "$line" | awk '{print $3}')
+                local cluster_ip=$(echo "$line" | awk '{print $4}')
+                local external_ip=$(echo "$line" | awk '{print $5}')
+                local ports=$(echo "$line" | awk '{print $6}')
+                echo "    • $namespace/$name ($type)"
+                echo "      External: $external_ip | Cluster: $cluster_ip | Ports: $ports"
+            done
+        else
+            echo "    • No externally exposed services"
+        fi
+        
+        # Show internal services (ClusterIP)
+        local internal_services
+        internal_services=$(echo "$all_services" | grep -E 'ClusterIP' | grep -v '^default.*kubernetes' || echo "")
+        
+        if [[ -n "$internal_services" ]]; then
+            subsection "🔒 Internal cluster services:"
+            echo "$internal_services" | while read -r line; do
+                local namespace=$(echo "$line" | awk '{print $1}')
+                local name=$(echo "$line" | awk '{print $2}')
+                local type=$(echo "$line" | awk '{print $3}')
+                local cluster_ip=$(echo "$line" | awk '{print $4}')
+                local ports=$(echo "$line" | awk '{print $6}')
+                
+                # Group by namespace for better readability
+                case "$namespace" in
+                    "argocd")
+                        echo "    • ArgoCD: $name ($cluster_ip:$ports)"
+                        ;;
+                    "portainer")
+                        echo "    • Portainer: $name ($cluster_ip:$ports)"
+                        ;;
+                    "kube-system")
+                        echo "    • System: $name ($cluster_ip:$ports)"
+                        ;;
+                    "default")
+                        echo "    • Default: $name ($cluster_ip:$ports)"
+                        ;;
+                    *)
+                        echo "    • $namespace: $name ($cluster_ip:$ports)"
+                        ;;
+                esac
+            done
+        else
+            echo "    • No internal services found"
+        fi
+        
+        # Show service summary
+        local total_services
+        total_services=$(echo "$all_services" | grep -v '^NAMESPACE' | wc -l | xargs)
+        subsection "📊 Service summary:"
+        echo "    • Total services: $total_services"
+        
+        local exposed_count
+        exposed_count=$(echo "$exposed_services" | grep -c . 2>/dev/null || echo "0")
+        echo "    • Externally exposed: $exposed_count"
+        
+        local internal_count
+        internal_count=$(echo "$internal_services" | grep -c . 2>/dev/null || echo "0")
+        echo "    • Internal services: $internal_count"
+        
+    else
+        warn "No Kubernetes services found"
+    fi
+}
+
+check_argocd_status() {
+    local vm_ip="$1"
+    
+    info "Checking ArgoCD status..."
+    if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get pods -n argocd 2>/dev/null | grep -q 'argocd-server.*Running'"; then
+        success "ArgoCD is running"
+        
+        # Check ArgoCD applications
+        local apps_status
+        apps_status=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get applications -n argocd --no-headers 2>/dev/null | wc -l" || echo "0")
+        subsection "🚀 ArgoCD details:"
+        echo "    • Applications managed: $apps_status"
+        
+        # Show app sync status
+        local apps_info
+        apps_info=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get applications -n argocd --no-headers 2>/dev/null" || echo "")
+        if [[ -n "$apps_info" ]]; then
+            echo "$apps_info" | while read -r line; do
+                local app_name=$(echo "$line" | awk '{print $1}')
+                local sync_status=$(echo "$line" | awk '{print $2}')
+                local health_status=$(echo "$line" | awk '{print $3}')
+                echo "    • $app_name: $sync_status/$health_status"
+            done
+        fi
+    else
+        warn "ArgoCD is not running"
+    fi
+}
+
+check_system_resources() {
+    local vm_ip="$1"
+    
+    info "Checking system resources..."
+    local resource_info
+    resource_info=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "free -h | grep '^Mem:'; df -h / | tail -1; uptime" 2>/dev/null)
+    
+    if [[ -n "$resource_info" ]]; then
+        success "System resources available"
+        subsection "💾 Resource usage:"
+        echo "$resource_info" | while IFS= read -r line; do
+            if [[ "$line" =~ ^Mem: ]]; then
+                local used=$(echo "$line" | awk '{print $3}')
+                local total=$(echo "$line" | awk '{print $2}')
+                echo "    • Memory: $used / $total used"
+            elif [[ "$line" =~ ^/ ]]; then
+                local used=$(echo "$line" | awk '{print $5}')
+                local size=$(echo "$line" | awk '{print $2}')
+                echo "    • Disk: $used of $size used"
+            elif [[ "$line" =~ load ]]; then
+                local load=$(echo "$line" | awk -F'load average: ' '{print $2}')
+                echo "    • Load average: $load"
+            fi
+        done
+    else
+        warn "Could not retrieve resource information"
     fi
 }
 
