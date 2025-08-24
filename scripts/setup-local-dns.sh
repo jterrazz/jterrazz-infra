@@ -17,7 +17,7 @@ warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 error() { echo -e "${RED}❌ $1${NC}"; }
 
 # Configuration
-VM_NAME="${VM_NAME:-jterrazz-dev}"
+VM_NAME="${VM_NAME:-jterrazz-infra}"
 HOSTS_MARKER="# jterrazz-infra-local"
 
 # Get VM IP

@@ -82,11 +82,11 @@ deps: ## 🔍 Check dependencies
 	@command -v kubectl >/dev/null 2>&1 && echo "  ✅ kubectl" || echo "  ⚠️  kubectl (recommended)"
 
 clean: ## 🧹 Clean everything (force delete VM and cleanup)
-	@echo "$(RED)Cleaning everything...$(NC)"
+	@echo "$(RED)🧹 Cleaning development environment...$(NC)"
 	./scripts/local-dev.sh delete
 	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
 	@rm -rf local-data/
-	@echo "$(GREEN)Cleanup complete$(NC)"
+	@echo "$(GREEN)✅ Environment cleaned successfully$(NC)"
 
 ##@ Help
 

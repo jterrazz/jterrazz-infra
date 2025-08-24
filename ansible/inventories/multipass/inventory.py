@@ -33,10 +33,10 @@ def get_inventory():
     # Get multipass VM info
     multipass_data = get_multipass_vm_info()
     
-    # Find jterrazz-dev VM
+    # Find jterrazz-infra VM
     target_vm = None
     for vm in multipass_data.get("list", []):
-        if vm.get("name") == "jterrazz-dev":
+        if vm.get("name") == "jterrazz-infra":
             target_vm = vm
             break
     

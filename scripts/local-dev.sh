@@ -22,9 +22,9 @@ warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 error() { echo -e "${RED}❌ $1${NC}"; }
 
 # VM Configuration
-VM_NAME="jterrazz-dev"
-VM_CPUS="2"
-VM_MEMORY="4G"
+VM_NAME="jterrazz-infra"
+VM_CPUS="4"
+VM_MEMORY="8G"
 VM_DISK="20G"
 
 # Create Ubuntu VM
@@ -41,7 +41,7 @@ create_vm() {
         --cpus "$VM_CPUS" \
         --memory "$VM_MEMORY" \
         --disk "$VM_DISK" \
-        22.04
+        lts
     
     success "VM created successfully"
 }
@@ -180,39 +180,35 @@ get_kubeconfig() {
 
 # Delete VM with force
 delete_vm() {
-    info "Deleting VM '$VM_NAME'..."
+    info "Removing development VM '$VM_NAME'..."
     
     # Check if VM exists
     if ! multipass list | grep -q "$VM_NAME"; then
-        warn "VM '$VM_NAME' not found"
+        success "VM '$VM_NAME' already removed"
         return 0
     fi
     
-    info "Attempting graceful shutdown..."
-    # Try to stop the VM first (with timeout)
-    timeout 30 multipass stop "$VM_NAME" 2>/dev/null || {
-        warn "Graceful stop failed or timed out, forcing..."
-    }
+    # Try graceful shutdown first
+    if timeout 30 multipass stop "$VM_NAME" 2>/dev/null; then
+        info "VM stopped gracefully"
+    else
+        info "Forcing VM shutdown..."
+    fi
     
-    info "Deleting VM (this may take a moment)..."
-    # Force delete with timeout
-    timeout 60 multipass delete "$VM_NAME" 2>/dev/null || {
-        error "Standard delete failed, trying force delete..."
-        # Try force delete
-        timeout 30 multipass delete --purge "$VM_NAME" 2>/dev/null || {
-            error "Force delete failed, killing multipass processes..."
-            # Nuclear option: kill multipass processes
-            pkill -f multipass 2>/dev/null || true
-            sleep 2
-            # Try again after killing processes
-            multipass delete --purge "$VM_NAME" 2>/dev/null || true
-        }
-    }
+    # Delete VM with escalating force levels
+    if timeout 60 multipass delete "$VM_NAME" 2>/dev/null; then
+        info "VM deleted successfully"
+    elif timeout 30 multipass delete --purge "$VM_NAME" 2>/dev/null; then
+        info "VM force deleted"
+    else
+        info "Using advanced cleanup (killing multipass processes)..."
+        pkill -f multipass 2>/dev/null || true
+        sleep 2
+        multipass delete --purge "$VM_NAME" 2>/dev/null || true
+    fi
     
-    info "Purging deleted instances..."
-    timeout 30 multipass purge 2>/dev/null || {
-        warn "Purge timed out, but VM should be deleted"
-    }
+    # Clean up any remaining instances
+    timeout 30 multipass purge 2>/dev/null || true
     
     # Verify deletion
     if multipass list | grep -q "$VM_NAME"; then
@@ -267,7 +263,7 @@ case "${1:-help}" in
     create)
         create_vm
         setup_ssh
-        update_inventory
+        verify_inventory
         ;;
     ansible)
         run_ansible
