@@ -167,13 +167,34 @@ create_local_tls_certificates() {
     # Create temporary certificate files
     local temp_key="/tmp/local-tls.key"
     local temp_crt="/tmp/local-tls.crt"
+    local temp_cnf="/tmp/openssl.cnf"
     
-    # Generate certificate with SAN for .local domains
+    # Create proper OpenSSL config for browser compatibility
+    cat > "$temp_cnf" << 'EOF'
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+CN = *.local
+
+[v3_req]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = app.local
+DNS.2 = argocd.local
+DNS.3 = portainer.local
+DNS.4 = *.local
+EOF
+    
+    # Generate certificate with proper key usage for browser compatibility
     if openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout "$temp_key" -out "$temp_crt" \
-        -subj "/CN=*.local" \
-        -config <(echo '[req]'; echo 'distinguished_name=req_distinguished_name'; echo '[req_distinguished_name]'; echo '[v3_req]'; echo 'keyUsage=keyEncipherment,dataEncipherment'; echo 'extendedKeyUsage=serverAuth'; echo 'subjectAltName=@alt_names'; echo '[alt_names]'; echo 'DNS.1=app.local'; echo 'DNS.2=argocd.local'; echo 'DNS.3=portainer.local') \
-        -extensions v3_req &> /dev/null; then
+        -config "$temp_cnf" -extensions v3_req &> /dev/null; then
         
         # Create TLS secrets in all required namespaces
         kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n default &> /dev/null || true
@@ -181,10 +202,11 @@ create_local_tls_certificates() {
         kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n portainer &> /dev/null || true
         
         # Clean up temporary files
-        rm -f "$temp_key" "$temp_crt"
-        success "TLS certificates created for all namespaces"
+        rm -f "$temp_key" "$temp_crt" "$temp_cnf"
+        success "TLS certificates created with browser-compatible key usage"
     else
         warning "Failed to create TLS certificates"
+        rm -f "$temp_key" "$temp_crt" "$temp_cnf"
     fi
 }
 
