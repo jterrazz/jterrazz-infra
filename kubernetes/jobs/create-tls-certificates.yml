@@ -1,0 +1,94 @@
+---
+# Job to create TLS certificates for local development
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-tls-certificates
+  namespace: default
+spec:
+  template:
+    metadata:
+      name: create-tls-certificates
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: tls-certificate-creator
+      containers:
+        - name: certificate-creator
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Install openssl
+              apt-get update -qq && apt-get install -y openssl
+
+              # Check if certificates already exist
+              if kubectl get secret local-tls-secret -n default &> /dev/null; then
+                echo "TLS certificates already exist"
+                exit 0
+              fi
+
+                  # Create OpenSSL config for browser compatibility
+                  cat > /tmp/openssl.cnf << 'EOF'
+                  [req]
+                  distinguished_name = req_distinguished_name
+                  req_extensions = v3_req
+                  prompt = no
+
+                  [req_distinguished_name]
+                  CN = *.local
+
+                  [v3_req]
+                  keyUsage = critical, digitalSignature, keyEncipherment
+                  extendedKeyUsage = serverAuth
+                  subjectAltName = @alt_names
+
+                  [alt_names]
+                  DNS.1 = app.local
+                  DNS.2 = argocd.local
+                  DNS.3 = portainer.local
+                  DNS.4 = *.local
+                  EOF
+
+                  # Generate certificate
+                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                    -keyout /tmp/tls.key -out /tmp/tls.crt \
+                    -config /tmp/openssl.cnf -extensions v3_req
+
+                  # Create secrets in all namespaces (ignore errors if they already exist)
+                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n default || echo "Secret already exists in default"
+                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n argocd || echo "Secret already exists in argocd"
+                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n portainer || echo "Secret already exists in portainer"
+
+                  echo "TLS certificates created successfully"
+---
+# ServiceAccount for the Job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tls-certificate-creator
+  namespace: default
+---
+# Role for managing secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tls-certificate-creator
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create"]
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tls-certificate-creator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tls-certificate-creator
+subjects:
+  - kind: ServiceAccount
+    name: tls-certificate-creator
+    namespace: default

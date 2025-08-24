@@ -156,86 +156,7 @@ wait_for_argocd() {
     return 1
 }
 
-# Create TLS certificates for local .local domains
-create_local_tls_certificates() {
-    # Check if certificates already exist
-    if kubectl get secret local-tls-secret -n default &> /dev/null; then
-        success "TLS certificates already exist"
-        return 0
-    fi
-    
-    # Create temporary certificate files
-    local temp_key="/tmp/local-tls.key"
-    local temp_crt="/tmp/local-tls.crt"
-    local temp_cnf="/tmp/openssl.cnf"
-    
-    # Create proper OpenSSL config for browser compatibility
-    cat > "$temp_cnf" << 'EOF'
-[req]
-distinguished_name = req_distinguished_name
-req_extensions = v3_req
-prompt = no
 
-[req_distinguished_name]
-CN = *.local
-
-[v3_req]
-keyUsage = critical, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth
-subjectAltName = @alt_names
-
-[alt_names]
-DNS.1 = app.local
-DNS.2 = argocd.local
-DNS.3 = portainer.local
-DNS.4 = *.local
-EOF
-    
-    # Generate certificate with proper key usage for browser compatibility
-    if openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout "$temp_key" -out "$temp_crt" \
-        -config "$temp_cnf" -extensions v3_req &> /dev/null; then
-        
-        # Create TLS secrets in all required namespaces
-        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n default &> /dev/null || true
-        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n argocd &> /dev/null || true
-        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n portainer &> /dev/null || true
-        
-        # Clean up temporary files
-        rm -f "$temp_key" "$temp_crt" "$temp_cnf"
-        success "TLS certificates created with browser-compatible key usage"
-    else
-        warning "Failed to create TLS certificates"
-        rm -f "$temp_key" "$temp_crt" "$temp_cnf"
-    fi
-}
-
-# Create HTTPS redirect middleware required by ingresses
-create_https_redirect_middleware() {
-    # Check if middleware already exists
-    if kubectl get middleware https-redirect-global -n default &> /dev/null; then
-        success "HTTPS redirect middleware already exists"
-        return 0
-    fi
-    
-    # Create the middleware
-    if cat <<EOF | kubectl apply -f - &> /dev/null
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: https-redirect-global
-  namespace: default
-spec:
-  redirectScheme:
-    scheme: https
-    permanent: true
-EOF
-    then
-        success "HTTPS redirect middleware created"
-    else
-        warning "Failed to create HTTPS redirect middleware"
-    fi
-}
 
 # Configure local development setup
 configure_local_setup() {
@@ -273,13 +194,26 @@ configure_local_setup() {
         fi
     fi
     
-    # Create TLS certificates for .local domains
+    # Create TLS certificates using Kubernetes Job
     info "Creating TLS certificates for .local domains..."
-    create_local_tls_certificates
+    if kubectl apply -f kubernetes/jobs/create-tls-certificates.yml; then
+        # Wait for job to complete
+        if kubectl wait --for=condition=complete --timeout=60s job/create-tls-certificates; then
+            success "TLS certificates created"
+        else
+            warn "TLS certificate job is taking longer than expected"
+        fi
+    else
+        warn "Failed to create TLS certificate job"
+    fi
     
     # Create required middleware for ingresses
     info "Creating required middleware..."
-    create_https_redirect_middleware
+    if kubectl apply -f kubernetes/traefik/https-redirect-middleware.yml; then
+        success "HTTPS redirect middleware deployed"
+    else
+        warn "Failed to create HTTPS redirect middleware"
+    fi
     
     # Wait for ArgoCD and configure for insecure mode (required for ingress)
     info "Configuring ArgoCD for ingress compatibility..."
@@ -295,15 +229,14 @@ configure_local_setup() {
         warning "ArgoCD not ready - skipping insecure mode configuration"
     fi
     
-    # Set up ultra-simple DNS resolver
-    info "Configuring ultra-simple DNS resolver..."
-    if [[ -f "$PROJECT_DIR/scripts/setup-mdns-resolver.sh" ]]; then
-        "$PROJECT_DIR/scripts/setup-mdns-resolver.sh" > /dev/null 2>&1 || true
-        success "Ultra-simple DNS resolver configured (just like Docker!)"
+    # Deploy mDNS publisher for local development
+    info "Setting up mDNS for local DNS resolution..."
+    if kubectl apply -f kubernetes/services/mdns-publisher.yml; then
+        success "mDNS publisher deployed - domains will resolve automatically!"
+    else
+        warn "mDNS publisher deployment failed - DNS resolution may not work"
     fi
 }
-
-# Pure mDNS resolution via Kubernetes mDNS publisher pod
 
 # Display access information
 show_access_info() {

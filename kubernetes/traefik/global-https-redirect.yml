@@ -15,7 +15,7 @@ spec:
     - match: "HostRegexp(`{host:.+}`)"
       kind: Rule
       middlewares:
-        - name: https-redirect-global
+        - name: https-redirect
       services:
         - name: nginx-service
           port: 80

@@ -154,10 +154,10 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - "{{ domain_name | default('localhost') }}"
-      secretName: main-tls
+        - "app.local"
+      secretName: local-tls-secret
   rules:
-    - host: "{{ domain_name | default('localhost') }}"
+    - host: "app.local"
       http:
         paths:
           - path: /

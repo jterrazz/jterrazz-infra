@@ -29,6 +29,13 @@ spec:
           limits:
             memory: "64Mi"
             cpu: "100m"
+        volumeMounts:
+        - name: landing-page-content
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: landing-page-content
+        configMap:
+          name: default-landing-page
 
 ---
 # Service for Landing Page

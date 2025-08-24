@@ -3,10 +3,8 @@
 
 # Load utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-
 source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/vm-utils.sh" 
+source "$SCRIPT_DIR/lib/vm-utils.sh"
 source "$SCRIPT_DIR/lib/status-checks.sh"
 
 # Commands

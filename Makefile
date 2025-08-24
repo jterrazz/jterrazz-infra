@@ -77,10 +77,12 @@ deps: ## Check required tools and dependencies
 
 clean: ## Force delete VM and cleanup all files
 	@echo "$(RED)Cleaning development environment...$(NC)"
-	./scripts/local-dev.sh delete
+	@echo "$(BLUE)→ Force deleting VM 'jterrazz-infra'...$(NC)"
+	@multipass delete jterrazz-infra --purge 2>/dev/null || echo "VM already deleted or doesn't exist"
+	@echo "$(BLUE)→ Cleaning up local files...$(NC)"
 	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
 	@rm -rf local-data/
-	@echo "$(GREEN)Environment cleaned successfully$(NC)"
+	@echo "$(GREEN)✓ Environment cleaned successfully$(NC)"
 
 ##@ Help
 

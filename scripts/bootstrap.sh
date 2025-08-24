@@ -1,30 +1,12 @@
 #!/bin/bash
+# Production deployment bootstrap script
 
-# Jterrazz Infrastructure - Bootstrap Script
-# One-click deployment of entire infrastructure
-
-set -euo pipefail
+# Load common utilities
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 # Configuration
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-readonly TERRAFORM_DIR="$PROJECT_ROOT/terraform"
-readonly ANSIBLE_DIR="$PROJECT_ROOT/ansible"
-
-# Colors for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
-
-# Logging functions with better UX hierarchy
-info() { echo -e "${BLUE}→ $1${NC}"; }
-success() { echo -e "${GREEN}✓ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
-error() { echo -e "${RED}✗ $1${NC}" >&2; }
-section() { echo -e "\n${GREEN}▶ $1${NC}"; }
-subsection() { echo -e "\n${BLUE}  $1${NC}"; }
+readonly TERRAFORM_DIR="$PROJECT_DIR/terraform"
+readonly ANSIBLE_DIR="$PROJECT_DIR/ansible"
 
 print_header() {
     echo
@@ -124,9 +106,22 @@ configure_server() {
     
     cd "$ANSIBLE_DIR"
     
-    # Wait for server to be ready
+    # Wait for server SSH to be ready
     info "Waiting for server to be ready..."
-    sleep 30
+    local server_ip=$(cd "$TERRAFORM_DIR" && terraform output -raw server_ip 2>/dev/null || echo "")
+    if [[ -n "$server_ip" ]]; then
+        local attempts=0
+        while ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@"$server_ip" "echo 'SSH ready'" &>/dev/null; do
+            ((attempts++))
+            if [[ $attempts -gt 12 ]]; then
+                warn "Server may not be fully ready yet"
+                break
+            fi
+            sleep 5
+        done
+    else
+        sleep 30
+    fi
     
     info "Running Ansible playbook (security, K3s, ArgoCD)..."
     ansible-playbook -i inventory.yml site.yml
