@@ -214,11 +214,11 @@ show_access_info() {
         # Local development with mDNS - automatic .local domain resolution
         subsection "🌐 Access your applications:"
         echo "    • Landing Page:      https://jterrazz-infra.local/"
-        echo "    • ArgoCD:           https://jterrazz-infra.local/argocd/"
-        echo "    • Portainer:        https://jterrazz-infra.local/portainer/"
+        echo "    • ArgoCD:           https://argocd.jterrazz-infra.local/"
+        echo "    • Portainer:        https://portainer.jterrazz-infra.local/"
         echo ""
-        info "mDNS enabled - domains resolve automatically via Avahi"
-        success "All services accessible via single hostname with path routing"
+        info "mDNS enabled - all domains resolve automatically via Avahi"
+        success "Shared SSL certificate for all HTTPS services (accept once)"
     else
         # Production environment
         subsection "🌐 Access your applications:"

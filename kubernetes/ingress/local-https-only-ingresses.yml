@@ -1,15 +1,15 @@
-# HTTPS-Only Ingresses - Production Security
-# All HTTP traffic redirected to HTTPS, no insecure access allowed
+# HTTPS-Only Ingresses - Local Development with Subdomain Routing
+# All services use shared SSL certificate and mDNS
 
 ---
-# Main Application Ingress - HTTPS Only with Path Routing
+# Main Application Ingress - Landing Page
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: main-ingress
   namespace: default
   annotations:
-    # Force HTTPS redirect - no HTTP access allowed
+    # Force HTTPS redirect
     traefik.ingress.kubernetes.io/redirect-entry-point: https
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
@@ -18,6 +18,7 @@ spec:
   tls:
     - hosts:
         - jterrazz-infra.local
+      secretName: jterrazz-infra-tls
   rules:
     - host: jterrazz-infra.local
       http:
@@ -31,30 +32,29 @@ spec:
                   number: 80
 
 ---
-# ArgoCD Ingress - HTTPS Only with Subpath
+# ArgoCD Ingress - Subdomain Access
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
-    # Force HTTPS redirect - no HTTP access allowed
+    # Force HTTPS redirect
     traefik.ingress.kubernetes.io/redirect-entry-point: https
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/backend-protocol: HTTP
-    # Strip prefix for ArgoCD backend
-    traefik.ingress.kubernetes.io/router.middlewares: argocd-stripprefix@kubernetescrd
+    # ArgoCD server configuration
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - jterrazz-infra.local
+        - argocd.jterrazz-infra.local
+      secretName: jterrazz-infra-tls
   rules:
-    - host: jterrazz-infra.local
+    - host: argocd.jterrazz-infra.local
       http:
         paths:
-          - path: /argocd
+          - path: /
             pathType: Prefix
             backend:
               service:
@@ -63,60 +63,36 @@ spec:
                   number: 80
 
 ---
-# Portainer Ingress - HTTPS Only with Subpath
+# Portainer Ingress - Subdomain Access
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: portainer-ingress
   namespace: portainer
   annotations:
-    # Force HTTPS redirect - no HTTP access allowed
+    # Force HTTPS redirect
     traefik.ingress.kubernetes.io/redirect-entry-point: https
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
+    # Portainer specific configs
     traefik.ingress.kubernetes.io/backend-protocol: HTTP
-    # Strip prefix for Portainer backend
-    traefik.ingress.kubernetes.io/router.middlewares: portainer-stripprefix@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - jterrazz-infra.local
+        - portainer.jterrazz-infra.local
+      secretName: jterrazz-infra-tls
   rules:
-    - host: jterrazz-infra.local
+    - host: portainer.jterrazz-infra.local
       http:
         paths:
-          - path: /portainer
+          - path: /
             pathType: Prefix
             backend:
               service:
                 name: portainer
                 port:
                   number: 9000
-
----
-# ArgoCD StripPrefix Middleware
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: argocd-stripprefix
-  namespace: argocd
-spec:
-  stripPrefix:
-    prefixes:
-      - /argocd
-
----
-# Portainer StripPrefix Middleware
-apiVersion: traefik.containo.us/v1alpha1
-kind: Middleware
-metadata:
-  name: portainer-stripprefix
-  namespace: portainer
-spec:
-  stripPrefix:
-    prefixes:
-      - /portainer
 
 ---
 # Global HTTP to HTTPS Redirect Middleware
