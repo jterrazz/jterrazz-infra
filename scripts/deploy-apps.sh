@@ -95,6 +95,7 @@ deploy_traefik_configs() {
     fi
 }
 
+
 # ArgoCD is ready for your application deployments
 # Create ArgoCD applications for your actual apps (separate repositories)
 setup_argocd_for_apps() {
@@ -160,30 +161,7 @@ configure_local_setup() {
         fi
     fi
     
-    # Apply global HTTPS redirect
-    if [[ -f "kubernetes/traefik/global-https-redirect.yml" ]]; then
-        info "Deploying global HTTPS redirect..."
-        if kubectl apply -f kubernetes/traefik/global-https-redirect.yml; then
-            success "Global HTTPS redirect deployed"
-        else
-            warning "Failed to deploy global HTTPS redirect (Traefik CRDs may not be ready)"
-        fi
-    fi
-    
-    # Create TLS certificates using Kubernetes Job
-    info "Creating TLS certificates for .local domains..."
-    if kubectl apply -f kubernetes/jobs/create-tls-certificates.yml; then
-        # Wait for job to complete
-        if kubectl wait --for=condition=complete --timeout=120s job/create-tls-certificates; then
-            success "TLS certificates created"
-        else
-            warning "TLS certificate job is taking longer than expected - checking status..."
-            kubectl get job create-tls-certificates -o wide || true
-            kubectl describe job create-tls-certificates || true
-        fi
-    else
-        warning "Failed to create TLS certificate job"
-    fi
+    # Note: HTTPS redirect now deployed by Ansible
     
     # Middleware is already deployed as part of Traefik configuration
     success "Middleware configuration already applied"

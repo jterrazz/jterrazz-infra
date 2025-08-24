@@ -113,11 +113,30 @@
       when: not (skip_argocd | default(false))
       changed_when: true
 
-    # Development-only deployments
     - name: Deploy mDNS publisher for local DNS resolution
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', '../kubernetes/services/mdns-publisher.yml') | from_yaml_all }}"
+      when: is_local_development | default(false)
+
+    - name: Deploy global HTTPS redirect
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/traefik/global-https-redirect.yml') | from_yaml_all }}"
+      retries: 10
+      delay: 5
+      register: https_redirect_result
+      until: https_redirect_result is succeeded
+      failed_when: false # Don't fail if CRDs aren't ready yet
+
+    - name: Display HTTPS redirect status
+      ansible.builtin.debug:
+        msg: "{{ 'HTTPS redirect deployed successfully' if https_redirect_result is succeeded else 'HTTPS redirect will be applied later when Traefik CRDs are ready' }}"
+
+    - name: Create TLS certificates for .local domains
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/jobs/create-tls-certificates.yml') | from_yaml_all }}"
       when: is_local_development | default(false)
 
     - name: Get Tailscale IP if connected
