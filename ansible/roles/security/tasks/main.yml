@@ -58,6 +58,7 @@
     port: "{{ item.port }}"
     proto: "{{ item.proto | default('tcp') }}"
     comment: "{{ item.comment | default('') }}"
+    from_ip: "{{ item.from | default('any') }}"
   loop: "{{ security_ufw_rules }}"
   when: security_ufw_enabled
 

@@ -31,7 +31,37 @@ security_ufw_rules:
   - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
   - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Lets Encrypt)" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
-  - { port: "6443", proto: "tcp", rule: "allow", comment: "Kubernetes API" }
+  # Kubernetes API - SECURE: Tailscale VPN + Private Networks Only
+  # Allows: Tailscale mesh (100.64.0.0/10) + RFC1918 private networks
+  # Blocks: All public internet access to Kubernetes API
+  - {
+      port: "6443",
+      proto: "tcp",
+      rule: "allow",
+      comment: "Kubernetes API (Tailscale)",
+      from: "100.64.0.0/10",
+    }
+  - {
+      port: "6443",
+      proto: "tcp",
+      rule: "allow",
+      comment: "Kubernetes API (Private)",
+      from: "192.168.0.0/16",
+    }
+  - {
+      port: "6443",
+      proto: "tcp",
+      rule: "allow",
+      comment: "Kubernetes API (Private)",
+      from: "10.0.0.0/8",
+    }
+  - {
+      port: "6443",
+      proto: "tcp",
+      rule: "allow",
+      comment: "Kubernetes API (Private)",
+      from: "172.16.0.0/12",
+    }
   # Note: Tailscale doesn't need inbound ports - it uses NAT traversal and DERP relays
 
 # Automatic updates configuration

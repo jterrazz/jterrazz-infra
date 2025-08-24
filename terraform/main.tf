@@ -99,21 +99,22 @@ resource "hcloud_firewall" "main" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
   
-  # Kubernetes API (restricted)
+  # Kubernetes API - SECURE: Tailscale VPN + Private Networks Only
+  # Allows: Tailscale mesh (100.64.0.0/10) + RFC1918 private networks
+  # Blocks: All public internet access to Kubernetes API
   rule {
     direction = "in"
     port      = "6443"
     protocol  = "tcp"
-    source_ips = var.allowed_k8s_ips
+    source_ips = [
+      "100.64.0.0/10",    # Tailscale VPN
+      "192.168.0.0/16",   # Private Class C
+      "10.0.0.0/8",       # Private Class A
+      "172.16.0.0/12"     # Private Class B
+    ]
   }
   
-  # Tailscale
-  rule {
-    direction = "in"
-    port      = "41641"
-    protocol  = "udp"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
+  # Note: Tailscale doesn't need inbound ports - uses NAT traversal and DERP relays
 }
 
 # Apply firewall to server
