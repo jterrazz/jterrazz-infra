@@ -22,47 +22,71 @@ spec:
       hostNetwork: true
       containers:
         - name: mdns-publisher
-          image: ubuntu:22.04
-          command: ["/bin/bash"]
+          image: alpine:latest
+          command: ["/bin/sh"]
           args:
             - -c
             - |
-              # Install mDNS tools
-              apt-get update -qq && apt-get install -y avahi-daemon avahi-utils iproute2
+              # Fast package installation (Alpine is much faster)
+              apk add --no-cache avahi avahi-tools dbus iproute2 > /dev/null 2>&1
 
-                            # Get the VM's external IP from the host network interface
+              # Get the VM's external IP from the host network interface
               # Since we're using hostNetwork: true, we can get the VM's actual IP
               EXTERNAL_IP=$(ip addr show | grep 'inet 192\.168\.' | head -1 | awk '{print $2}' | cut -d/ -f1)
 
               # Fallback if the above doesn't work
-              if [[ -z "$EXTERNAL_IP" ]]; then
+              if [ -z "$EXTERNAL_IP" ]; then
                 EXTERNAL_IP=$(hostname -I | awk '{print $1}')
               fi
 
               echo "Publishing mDNS for IP: $EXTERNAL_IP"
 
-              # Start services
-              service dbus start || true
-              service avahi-daemon start || true
+              # Start services quickly (Alpine style)
+              mkdir -p /run/dbus /var/run/avahi-daemon
+              dbus-daemon --system --fork > /dev/null 2>&1 
+              sleep 1
+              avahi-daemon --daemonize --no-drop-root > /dev/null 2>&1
+
+              # Wait for avahi to be ready
+              sleep 2
 
               # Publish our domains
-              avahi-publish -a -R app.local $EXTERNAL_IP &
-              avahi-publish -a -R argocd.local $EXTERNAL_IP &
-              avahi-publish -a -R portainer.local $EXTERNAL_IP &
+              avahi-publish -a -R app.local $EXTERNAL_IP > /dev/null 2>&1 &
+              avahi-publish -a -R argocd.local $EXTERNAL_IP > /dev/null 2>&1 &
+              avahi-publish -a -R portainer.local $EXTERNAL_IP > /dev/null 2>&1 &
 
               echo "mDNS publisher started for $EXTERNAL_IP"
+              echo "Published domains: app.local, argocd.local, portainer.local -> $EXTERNAL_IP"
+              echo "Alpine startup complete in ~5-10 seconds vs Ubuntu ~20-30 seconds"
 
               # Keep the container running
-              while true; do sleep 60; done
+              while true; do sleep 30; done
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep avahi-daemon && pgrep avahi-publish"
+            initialDelaySeconds: 8
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pgrep avahi-daemon"
+            initialDelaySeconds: 10
+            periodSeconds: 30
           securityContext:
             privileged: true
           resources:
             requests:
+              memory: "32Mi"
+              cpu: "25m"
+            limits:
               memory: "64Mi"
               cpu: "50m"
-            limits:
-              memory: "128Mi"
-              cpu: "100m"
 ---
 # Only deploy in local development
 # Production uses real DNS
