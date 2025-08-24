@@ -1,0 +1,52 @@
+# Production Environment Configuration
+# Used for live VPS/cloud deployments
+
+---
+# Environment identification
+environment_type: "production"
+deployment_method: "terraform"
+is_production_environment: true
+
+# Security settings (strict for production)
+security_level: "production"
+skip_ssh_hardening: false
+skip_ufw_strict_rules: false
+enable_fail2ban: true
+enable_audit_logging: true
+allow_password_auth: false
+
+# Component configuration for production
+skip_security: false        # Enable full security hardening
+skip_tailscale: false       # Enable Tailscale for secure access
+skip_argocd: false          # Enable ArgoCD for GitOps
+
+# SSL/TLS settings (real certificates)
+use_self_signed_certs: false
+ssl_provider: "letsencrypt"
+skip_letsencrypt: false
+skip_external_dns: false
+skip_real_ssl: false
+
+# k3s configuration for production
+k3s_server: true
+k3s_disable_network_policy: false
+
+# Production networking
+use_host_network: false
+local_testing: false
+
+# Production features
+enable_local_storage: false  # Use cloud storage classes
+use_real_dns: true
+enable_external_dns: true
+
+# Domain configuration (set via vault or inventory)
+# domain_name: "{{ vault_domain_name | default('example.com') }}"
+
+# Tailscale configuration
+# tailscale_auth_key: "{{ vault_tailscale_auth_key }}"
+
+# Debug settings (minimal for production)
+ansible_debug: false
+k3s_debug: false
+verbose_output: false

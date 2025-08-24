@@ -43,13 +43,10 @@ def get_inventory():
     # Base inventory structure
     inventory = {
         "all": {
-            "children": ["jterrazz"]
+            "children": ["development"]
         },
-        "jterrazz": {
-            "hosts": [],
-            "vars": {
-                "ansible_python_interpreter": "/usr/bin/python3"
-            }
+        "development": {
+            "hosts": []
         },
         "_meta": {
             "hostvars": {}
@@ -67,22 +64,14 @@ def get_inventory():
         
         if vm_ip:
             # Add host to group
-            inventory["jterrazz"]["hosts"] = ["jterrazz-infra"]
+            inventory["development"]["hosts"] = ["jterrazz-infra"]
             
-            # Add host variables
+            # Add host variables - CONNECTION INFO ONLY
             inventory["_meta"]["hostvars"]["jterrazz-infra"] = {
                 "ansible_host": vm_ip,
                 "ansible_user": "ubuntu", 
                 "ansible_ssh_private_key_file": ssh_key_path,
-                "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
-                
-                # Environment configuration
-                "environment_type": "multipass",
-                
-                # Component configuration
-                "skip_security": False,
-                "skip_tailscale": True, 
-                "skip_argocd": False
+                "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
             }
     
     return inventory

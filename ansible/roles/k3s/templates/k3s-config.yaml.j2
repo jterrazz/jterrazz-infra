@@ -41,7 +41,7 @@ node-external-ip: {{ k3s_node_ip }}
 # Kubelet configuration
 kubelet-arg:
   - "max-pods=250"
-{% if is_local_environment | default(false) %}
+{% if is_local_development | default(false) %}
 
 # Local development configuration
 # Let K3s handle its own containerd runtime

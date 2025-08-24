@@ -8,19 +8,10 @@
   gather_facts: true
 
   vars:
-    # k3s configuration
-    k3s_data_dir: "/var/lib/rancher/k3s"
-    k3s_config_dir: "/etc/rancher/k3s"
-
-    # Domain configuration - will be set by inventory
-    # domain_name: set in inventory files
-
-    # Application versions
-    helm_version: "v3.13.3"
-    argocd_version: "v2.9.3"
-
-    # Tailscale
+    # Vault variables (sensitive data)
     tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
+
+    # Note: Other configuration is now properly organized in group_vars/
 
   pre_tasks:
     - name: Display deployment environment information

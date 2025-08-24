@@ -1,0 +1,52 @@
+# Development Environment Configuration
+# Used for local multipass VMs and development
+
+---
+# Environment identification
+environment_type: "multipass"
+deployment_method: "multipass"
+is_local_development: true
+
+# Security settings (relaxed for local development)
+security_level: "development"
+skip_ssh_hardening: true
+skip_ufw_strict_rules: true
+enable_fail2ban: false
+enable_audit_logging: false
+allow_password_auth: true
+
+# Component configuration for local development
+skip_security: false        # Enable basic security (but relaxed)
+skip_tailscale: true        # Skip Tailscale in local dev
+skip_argocd: false          # Enable ArgoCD for GitOps
+
+# Networking settings
+use_host_network: false
+local_testing: true
+
+# SSL/TLS settings (self-signed for local)
+use_self_signed_certs: true
+ssl_provider: "self-signed"
+local_domain: "jterrazz.local"
+skip_letsencrypt: true
+skip_external_dns: true
+skip_real_ssl: true
+
+# k3s configuration for development
+k3s_server: true
+k3s_token: "local-dev-token-insecure-but-fine"
+k3s_disable_network_policy: true
+
+# Helm settings
+helm_add_stable_repo: true
+helm_repositories:
+  - name: stable
+    url: https://charts.helm.sh/stable
+
+# Local-specific features
+enable_local_storage: true
+
+# Debug settings
+ansible_debug: true
+k3s_debug: true
+verbose_output: true

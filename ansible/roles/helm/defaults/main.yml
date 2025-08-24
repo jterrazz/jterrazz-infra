@@ -1,7 +1,7 @@
 ---
 # Helm role default variables
 
-helm_version: "v3.13.3"
+# helm_version: defined in group_vars/all/common.yml
 helm_install_dir: "/usr/local/bin"
 
 # Architecture mapping
