@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# Script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -200,6 +204,13 @@ configure_local_setup() {
         fi
     else
         warning "ArgoCD not ready - skipping insecure mode configuration"
+    fi
+    
+    # Set up local DNS for subdomain access
+    info "Setting up local DNS for subdomain access..."
+    if [[ -f "$PROJECT_DIR/scripts/setup-local-dns.sh" ]]; then
+        "$PROJECT_DIR/scripts/setup-local-dns.sh" > /dev/null 2>&1 || true
+        success "Local DNS configured"
     fi
 }
 

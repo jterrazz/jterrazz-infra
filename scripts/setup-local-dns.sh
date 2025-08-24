@@ -25,10 +25,9 @@ HOSTS_MARKER="# jterrazz-infra-local"
 
 # Default services (can be overridden)
 DEFAULT_SERVICES=(
-    "app.local"
-    "argocd.local"
-    "portainer.local"
-    "traefik.local"
+    "jterrazz-infra.local"
+    "argocd.jterrazz-infra.local"
+    "portainer.jterrazz-infra.local"
 )
 
 # Get VM IP (supports both bridged and regular networking)
@@ -190,10 +189,9 @@ show_urls() {
     section "🌐 Local Services Ready"
     
     subsection "Access your applications:"
-    echo "    • Landing Page:      https://app.local"
-    echo "    • ArgoCD:           https://argocd.local"
-    echo "    • Portainer:        https://portainer.local"
-    echo "    • Traefik Dashboard: https://traefik.local (if configured)"
+    echo "    • Landing Page:      https://jterrazz-infra.local/"
+    echo "    • ArgoCD:           https://argocd.jterrazz-infra.local/"
+    echo "    • Portainer:        https://portainer.jterrazz-infra.local/"
     
     subsection "💡 Development notes:"
     echo "    • VM IP: $vm_ip"

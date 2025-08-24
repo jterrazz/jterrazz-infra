@@ -235,8 +235,8 @@
 - name: Configure Avahi hostname
   lineinfile:
     path: /etc/avahi/avahi-daemon.conf
-    regexp: '^#?host-name='
-    line: 'host-name={{ inventory_hostname }}'
+    regexp: "^#?host-name="
+    line: "host-name={{ inventory_hostname }}"
     backup: yes
   notify: restart avahi-daemon
 
