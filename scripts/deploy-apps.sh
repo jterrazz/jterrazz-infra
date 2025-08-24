@@ -203,39 +203,24 @@ configure_local_setup() {
     fi
 }
 
-# Setup local DNS with setup-local-dns.sh
-setup_local_dns() {
-    # Check if we're in local development (multipass available)
-    if command -v multipass &> /dev/null; then
-        if [[ -f "scripts/setup-local-dns.sh" ]]; then
-            ./scripts/setup-local-dns.sh setup
-            return $?
-        else
-            warning "DNS setup script not found, skipping local DNS setup"
-            return 1
-        fi
-    else
-        info "Production environment detected - skipping local DNS setup"
-        return 1
-    fi
-}
+# mDNS is now handled automatically by Avahi via Ansible
+# No manual DNS setup required
 
 # Display access information
 show_access_info() {
     section "🎉 Deployment Complete!"
     
-    # Try to setup local DNS first
-    local dns_configured=false
-    if setup_local_dns; then
-        dns_configured=true
-    fi
-    
-    if [[ "$dns_configured" == "true" ]]; then
-        # Local development with DNS configured - URLs already shown by DNS script
-        info "DNS automatically configured - no manual setup needed"
-        success "All services are now accessible via HTTPS"
+    if command -v multipass &> /dev/null; then
+        # Local development with mDNS - automatic .local domain resolution
+        subsection "🌐 Access your applications:"
+        echo "    • Landing Page:      https://jterrazz-infra.local/"
+        echo "    • ArgoCD:           https://jterrazz-infra.local/argocd/"
+        echo "    • Portainer:        https://jterrazz-infra.local/portainer/"
+        echo ""
+        info "mDNS enabled - domains resolve automatically via Avahi"
+        success "All services accessible via single hostname with path routing"
     else
-        # Production or local fallback
+        # Production environment
         subsection "🌐 Access your applications:"
         echo "    • Landing Page:      https://yourdomain.com"
         echo "    • ArgoCD:           https://argocd.yourdomain.com"

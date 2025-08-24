@@ -67,10 +67,10 @@ def get_inventory():
         
         if vm_ip:
             # Add host to group
-            inventory["jterrazz"]["hosts"] = ["jterrazz-multipass"]
+            inventory["jterrazz"]["hosts"] = ["jterrazz-infra"]
             
             # Add host variables
-            inventory["_meta"]["hostvars"]["jterrazz-multipass"] = {
+            inventory["_meta"]["hostvars"]["jterrazz-infra"] = {
                 "ansible_host": vm_ip,
                 "ansible_user": "ubuntu", 
                 "ansible_ssh_private_key_file": ssh_key_path,

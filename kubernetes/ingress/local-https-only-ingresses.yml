@@ -2,7 +2,7 @@
 # All HTTP traffic redirected to HTTPS, no insecure access allowed
 
 ---
-# Landing Page Ingress - HTTPS Only
+# Main Application Ingress - HTTPS Only with Path Routing
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -17,9 +17,9 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - app.local
+        - jterrazz-infra.local
   rules:
-    - host: app.local
+    - host: jterrazz-infra.local
       http:
         paths:
           - path: /
@@ -31,7 +31,7 @@ spec:
                   number: 80
 
 ---
-# ArgoCD Ingress - HTTPS Only
+# ArgoCD Ingress - HTTPS Only with Subpath
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -43,16 +43,18 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/backend-protocol: HTTP
+    # Strip prefix for ArgoCD backend
+    traefik.ingress.kubernetes.io/router.middlewares: argocd-stripprefix@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - argocd.local
+        - jterrazz-infra.local
   rules:
-    - host: argocd.local
+    - host: jterrazz-infra.local
       http:
         paths:
-          - path: /
+          - path: /argocd
             pathType: Prefix
             backend:
               service:
@@ -61,7 +63,7 @@ spec:
                   number: 80
 
 ---
-# Portainer Ingress - HTTPS Only
+# Portainer Ingress - HTTPS Only with Subpath
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -73,22 +75,48 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
     traefik.ingress.kubernetes.io/backend-protocol: HTTP
+    # Strip prefix for Portainer backend
+    traefik.ingress.kubernetes.io/router.middlewares: portainer-stripprefix@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - portainer.local
+        - jterrazz-infra.local
   rules:
-    - host: portainer.local
+    - host: jterrazz-infra.local
       http:
         paths:
-          - path: /
+          - path: /portainer
             pathType: Prefix
             backend:
               service:
                 name: portainer
                 port:
                   number: 9000
+
+---
+# ArgoCD StripPrefix Middleware
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: argocd-stripprefix
+  namespace: argocd
+spec:
+  stripPrefix:
+    prefixes:
+      - /argocd
+
+---
+# Portainer StripPrefix Middleware
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: portainer-stripprefix
+  namespace: portainer
+spec:
+  stripPrefix:
+    prefixes:
+      - /portainer
 
 ---
 # Global HTTP to HTTPS Redirect Middleware

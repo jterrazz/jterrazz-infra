@@ -223,6 +223,29 @@
     job: "/usr/local/bin/security-status > /var/log/security-status.log 2>&1"
     user: root
 
+# mDNS Configuration for automatic .local domain resolution
+- name: Install Avahi for mDNS
+  apt:
+    name:
+      - avahi-daemon
+      - avahi-utils
+    state: present
+    update_cache: yes
+
+- name: Configure Avahi hostname
+  lineinfile:
+    path: /etc/avahi/avahi-daemon.conf
+    regexp: '^#?host-name='
+    line: 'host-name={{ inventory_hostname }}'
+    backup: yes
+  notify: restart avahi-daemon
+
+- name: Ensure Avahi daemon is running
+  systemd:
+    name: avahi-daemon
+    state: started
+    enabled: yes
+
 # Final security verification
 - name: Display security setup summary
   debug:
@@ -240,3 +263,4 @@
       🔍 Security status: /usr/local/bin/security-status
       📊 Log monitoring: tail -f /var/log/fail2ban.log
       🛡️ Firewall status: ufw status
+      🌐 mDNS hostname: {{ inventory_hostname }}.local

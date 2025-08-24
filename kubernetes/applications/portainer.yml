@@ -111,34 +111,5 @@ spec:
   selector:
     app: portainer
 
----
-# Portainer Ingress using Traefik (built-in with k3s)
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: portainer-ingress
-  namespace: portainer
-  annotations:
-    # Traefik automatic HTTPS redirect
-    traefik.ingress.kubernetes.io/redirect-entry-point: https
-    # Traefik backend protocol (HTTP backend) 
-    traefik.ingress.kubernetes.io/service.serversscheme: http
-    # Restrict to Tailscale IPs only using Traefik middleware
-    traefik.ingress.kubernetes.io/router.middlewares: default-tailscale-whitelist@kubernetescrd
-spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - portainer.local
-      secretName: portainer-tls
-  rules:
-    - host: portainer.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: portainer
-                port:
-                  number: 9000
+# Portainer Ingress is now managed in kubernetes/ingress/local-https-only-ingresses.yml
+# with path-based routing under jterrazz-infra.local/portainer

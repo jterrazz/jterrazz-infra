@@ -156,8 +156,10 @@ add_hosts_entries() {
     info "Adding new /etc/hosts entries for $vm_ip..."
     
     # Get services (auto-detected or defaults)
-    local services
-    mapfile -t services < <(get_kubernetes_services)
+    local services=()
+    while IFS= read -r service; do
+        [[ -n "$service" ]] && services+=("$service")
+    done < <(get_kubernetes_services)
     
     info "Configuring ${#services[@]} services: ${services[*]}"
     
