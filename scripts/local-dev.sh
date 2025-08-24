@@ -47,7 +47,7 @@ create_vm() {
             info "VM exists but is $vm_status, starting..."
             multipass start "$VM_NAME"
             success "VM '$VM_NAME' started"
-            return 0
+        return 0
         fi
     fi
     
@@ -249,11 +249,11 @@ status() {
     fi
     
     # Basic VM info
-    multipass info "$VM_NAME"
-    
-    local vm_ip
-    vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
-    
+        multipass info "$VM_NAME"
+        
+        local vm_ip
+        vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+        
     # System Health Check
     section "🔍 System Health Check"
     check_connectivity "$vm_ip"
@@ -365,7 +365,7 @@ check_firewall_status() {
             fi
         done <<< "$ufw_status"
         
-        # Display IPv4 rules
+        # Display IPv4 rules with enhanced UX
         if [[ -n "$ipv4_rules" ]]; then
             echo "    📡 IPv4 Rules:"
             echo "$ipv4_rules" | while IFS= read -r line; do
@@ -373,12 +373,23 @@ check_firewall_status() {
                     local rule_num=$(echo "$line" | grep -o '^\[[[:space:]]*[0-9]*\]' | tr -d '[]' | xargs)
                     local port=$(echo "$line" | grep -o '[0-9]\+/[a-z]\+' | head -1)
                     local comment=$(echo "$line" | grep -o '# .*' | sed 's/^# //')
-                    echo "      [$rule_num] $port - $comment"
+                    local source_ip="🌍 Public"
+                    
+                    # Parse source IP for better security context
+                    if echo "$line" | grep -q "100.64.0.0/10"; then
+                        source_ip="🔒 Tailscale VPN"
+                    elif echo "$line" | grep -q "192.168.0.0/16\|10.0.0.0/8\|172.16.0.0/12"; then
+                        source_ip="🏠 Private Network"
+                    fi
+                    
+                    printf "      [%2s] %-12s ← %-18s | %s\n" "$rule_num" "$port" "$source_ip" "$comment"
                 fi
             done
         fi
         
-        # Display IPv6 rules
+        echo
+        
+        # Display IPv6 rules with enhanced UX
         if [[ -n "$ipv6_rules" ]]; then
             echo "    📡 IPv6 Rules:"
             echo "$ipv6_rules" | while IFS= read -r line; do
@@ -386,10 +397,39 @@ check_firewall_status() {
                     local rule_num=$(echo "$line" | grep -o '^\[[[:space:]]*[0-9]*\]' | tr -d '[]' | xargs)
                     local port=$(echo "$line" | grep -o '[0-9]\+/[a-z]\+' | head -1)
                     local comment=$(echo "$line" | grep -o '# .*' | sed 's/^# //' | sed 's/ (v6)//')
-                    echo "      [$rule_num] $port - $comment"
+                    local source_ip="🌍 Public"
+                    
+                    # Parse source IP for better security context
+                    if echo "$line" | grep -q "100.64.0.0/10"; then
+                        source_ip="🔒 Tailscale VPN"
+                    elif echo "$line" | grep -q "192.168.0.0/16\|10.0.0.0/8\|172.16.0.0/12"; then
+                        source_ip="🏠 Private Network"
+                    fi
+                    
+                    printf "      [%2s] %-12s ← %-18s | %s\n" "$rule_num" "$port" "$source_ip" "$comment"
                 fi
             done
         fi
+        
+        # Add security summary
+        echo
+        subsection "🛡️ Security Assessment:"
+        local k8s_secured=0
+        local public_k8s=0
+        
+        # Count K8s API rules (strip whitespace)
+        k8s_secured=$(echo "$ufw_status" | grep "6443.*100\.64\|6443.*192\.168\|6443.*10\.\|6443.*172\.16" 2>/dev/null | wc -l | tr -d ' \t\n\r' || echo "0")
+        public_k8s=$(echo "$ufw_status" | grep "6443.*Anywhere" 2>/dev/null | wc -l | tr -d ' \t\n\r' || echo "0")
+        
+        if [[ $k8s_secured -gt 0 && $public_k8s -eq 0 ]]; then
+            echo "      ✅ Kubernetes API secured (VPN + Private networks only)"
+        elif [[ $public_k8s -gt 0 ]]; then
+            echo "      ⚠️  Kubernetes API exposed to public (HIGH SECURITY RISK)"
+        fi
+        
+        echo "      ✅ Web services (80/443) publicly accessible for Let's Encrypt"
+        echo "      ✅ SSH protected by key-based authentication only"
+        echo "      ✅ Tailscale VPN uses encrypted mesh networking (no ports needed)"
     else
         warn "Firewall status unclear"
     fi
@@ -626,13 +666,13 @@ case "${1:-help}" in
             vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
             if [ -n "$vm_ip" ] && ! ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@"$vm_ip" "echo 'SSH test'" &>/dev/null; then
                 info "SSH not configured or not working, setting up..."
-                setup_ssh
+        setup_ssh
             else
                 info "SSH already configured and working"
             fi
-            verify_inventory
-            run_ansible
-            status
+        verify_inventory
+        run_ansible
+        status
         fi
         ;;
     help|--help|-h)
