@@ -32,7 +32,7 @@ security_ufw_rules:
   - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Lets Encrypt)" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
   - { port: "6443", proto: "tcp", rule: "allow", comment: "Kubernetes API" }
-  - { port: "41641", proto: "udp", rule: "allow", comment: "Tailscale" }
+  # Note: Tailscale doesn't need inbound ports - it uses NAT traversal and DERP relays
 
 # Automatic updates configuration
 security_auto_updates_enabled: true
