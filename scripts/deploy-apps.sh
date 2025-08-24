@@ -95,59 +95,18 @@ deploy_traefik_configs() {
     fi
 }
 
-# Deploy ArgoCD applications for GitOps
-deploy_argocd_apps() {
-    section "Setting up GitOps with ArgoCD"
-    info "Deploying application manifests..."
-    
-    # Deploy the ArgoCD applications that will manage everything else
-    for app in kubernetes/argocd/*.yml; do
-        if [[ -f "$app" ]]; then
-            app_name=$(basename "$app")
-            info "Deploying ArgoCD app: $app_name"
-            if kubectl apply -f "$app"; then
-                success "Applied $app_name"
-            else
-                warning "Failed to apply $app_name"
-            fi
-        fi
-    done
-    
-    info "ArgoCD will now automatically sync and deploy your applications!"
-    info "Check status at: kubectl get applications -n argocd"
+# ArgoCD is ready for your application deployments
+# Create ArgoCD applications for your actual apps (separate repositories)
+setup_argocd_for_apps() {
+    section "🎯 ArgoCD Ready for Applications"
+    info "ArgoCD is installed and ready!"
+    info "Create applications for your separate app repositories:"
+    echo "  • kubectl apply -f your-app-argocd.yml"
+    echo "  • kubectl apply -f your-website-argocd.yml"
+    info "Check status: kubectl get applications -n argocd"
 }
 
-# Wait for ArgoCD to sync applications
-wait_for_sync() {
-    info "Waiting for ArgoCD applications to be created..."
-    
-    local max_attempts=30
-    local attempt=0
-    
-    while [[ $attempt -lt $max_attempts ]]; do
-        if kubectl get applications -n argocd &>/dev/null; then
-            info "Checking ArgoCD application status..."
-            echo
-            kubectl get applications -n argocd || true
-            echo
-            
-            success "ArgoCD applications are now managing your infrastructure!"
-            info "Visit ArgoCD dashboard to monitor deployments."
-            return 0
-        fi
-        
-        ((attempt++))
-        if [[ $attempt -eq 1 ]]; then
-            info "Waiting for ArgoCD applications to appear... (attempt $attempt/$max_attempts)"
-        elif [[ $((attempt % 5)) -eq 0 ]]; then
-            info "Still waiting for applications... (attempt $attempt/$max_attempts)"
-        fi
-        sleep 1
-    done
-    
-    warning "ArgoCD applications not found after $max_attempts attempts"
-    return 1
-}
+# Note: wait_for_sync removed - no longer deploying infrastructure via ArgoCD
 
 # Wait for ArgoCD to be ready
 wait_for_argocd() {
@@ -181,10 +140,8 @@ wait_for_argocd() {
 configure_local_setup() {
     section "Configuring Local Development"
     
-    # Create necessary namespaces
-    info "Setting up namespaces..."
-    kubectl create namespace portainer --dry-run=client -o yaml | kubectl apply -f -
-    
+
+
     # Deploy simple landing page
     info "Deploying landing page..."
     kubectl apply -f kubernetes/services/landing-page.yml
@@ -284,8 +241,7 @@ main() {
     
     check_cluster
     deploy_traefik_configs
-    deploy_argocd_apps
-    wait_for_sync
+    setup_argocd_for_apps
     
     # Only configure local setup if we're in local development
     if command -v multipass &> /dev/null; then

@@ -1,4 +1,0 @@
----
-# argocd role default variables
-
-# argocd_namespace: defined in group_vars/all/common.yml

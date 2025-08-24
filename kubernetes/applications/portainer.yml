@@ -110,6 +110,3 @@ spec:
       name: https
   selector:
     app: portainer
-
-# Portainer Ingress is now managed in kubernetes/ingress/local-https-only-ingresses.yml
-# with path-based routing under jterrazz-infra.local/portainer
