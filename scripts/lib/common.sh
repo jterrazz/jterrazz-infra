@@ -80,10 +80,15 @@ ssh_vm() {
         return 1
     fi
     
+    # Create SSH directory if it doesn't exist
+    mkdir -p "$PROJECT_DIR/local-data/ssh"
+    
+    # Use SSH with suppressed warnings but functional authentication
     ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
         -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
+        -o UserKnownHostsFile="$PROJECT_DIR/local-data/ssh/known_hosts" \
         -o PasswordAuthentication=no \
         -o ConnectTimeout=5 \
-        ubuntu@"$vm_ip" "$@"
+        -o LogLevel=QUIET \
+        ubuntu@"$vm_ip" "$@" 2>/dev/null
 }

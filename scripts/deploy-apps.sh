@@ -103,11 +103,12 @@ deploy_argocd_apps() {
     # Deploy the ArgoCD applications that will manage everything else
     for app in kubernetes/argocd/*.yml; do
         if [[ -f "$app" ]]; then
-            info "Deploying ArgoCD app: $(basename "$app")"
+            app_name=$(basename "$app")
+            info "Deploying ArgoCD app: $app_name"
             if kubectl apply -f "$app"; then
-                success "Applied $(basename "$app")"
+                success "Applied $app_name"
             else
-                warning "Failed to apply $(basename "$app")"
+                warning "Failed to apply $app_name"
             fi
         fi
     done
@@ -198,13 +199,15 @@ configure_local_setup() {
     info "Creating TLS certificates for .local domains..."
     if kubectl apply -f kubernetes/jobs/create-tls-certificates.yml; then
         # Wait for job to complete
-        if kubectl wait --for=condition=complete --timeout=60s job/create-tls-certificates; then
+        if kubectl wait --for=condition=complete --timeout=120s job/create-tls-certificates; then
             success "TLS certificates created"
         else
-            warn "TLS certificate job is taking longer than expected"
+            warning "TLS certificate job is taking longer than expected - checking status..."
+            kubectl get job create-tls-certificates -o wide || true
+            kubectl describe job create-tls-certificates || true
         fi
     else
-        warn "Failed to create TLS certificate job"
+        warning "Failed to create TLS certificate job"
     fi
     
     # Middleware is already deployed as part of Traefik configuration
@@ -229,7 +232,7 @@ configure_local_setup() {
     if kubectl apply -f kubernetes/services/mdns-publisher.yml; then
         success "mDNS publisher deployed - domains will resolve automatically!"
     else
-        warn "mDNS publisher deployment failed - DNS resolution may not work"
+        warning "mDNS publisher deployment failed - DNS resolution may not work"
     fi
 }
 

@@ -19,7 +19,8 @@ spec:
             - /bin/bash
             - -c
             - |
-              # Install openssl
+              # Install openssl (with proper apt setup)
+              mkdir -p /var/lib/apt/lists/partial
               apt-get update -qq && apt-get install -y openssl
 
               # Check if certificates already exist
@@ -28,39 +29,39 @@ spec:
                 exit 0
               fi
 
-                  # Create OpenSSL config for browser compatibility
-                  cat > /tmp/openssl.cnf << 'EOF'
-                  [req]
-                  distinguished_name = req_distinguished_name
-                  req_extensions = v3_req
-                  prompt = no
+              # Create OpenSSL config for browser compatibility
+              cat > /tmp/openssl.cnf << 'EOF'
+              [req]
+              distinguished_name = req_distinguished_name
+              req_extensions = v3_req
+              prompt = no
 
-                  [req_distinguished_name]
-                  CN = *.local
+              [req_distinguished_name]
+              CN = *.local
 
-                  [v3_req]
-                  keyUsage = critical, digitalSignature, keyEncipherment
-                  extendedKeyUsage = serverAuth
-                  subjectAltName = @alt_names
+              [v3_req]
+              keyUsage = critical, digitalSignature, keyEncipherment
+              extendedKeyUsage = serverAuth
+              subjectAltName = @alt_names
 
-                  [alt_names]
-                  DNS.1 = app.local
-                  DNS.2 = argocd.local
-                  DNS.3 = portainer.local
-                  DNS.4 = *.local
-                  EOF
+              [alt_names]
+              DNS.1 = app.local
+              DNS.2 = argocd.local
+              DNS.3 = portainer.local
+              DNS.4 = *.local
+              EOF
 
-                  # Generate certificate
-                  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                    -keyout /tmp/tls.key -out /tmp/tls.crt \
-                    -config /tmp/openssl.cnf -extensions v3_req
+              # Generate certificate
+              openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /tmp/tls.key -out /tmp/tls.crt \
+                -config /tmp/openssl.cnf -extensions v3_req
 
-                  # Create secrets in all namespaces (ignore errors if they already exist)
-                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n default || echo "Secret already exists in default"
-                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n argocd || echo "Secret already exists in argocd"
-                  kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n portainer || echo "Secret already exists in portainer"
+              # Create secrets in all namespaces (ignore errors if they already exist)
+              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n default || echo "Secret already exists in default"
+              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n argocd || echo "Secret already exists in argocd"
+              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n portainer || echo "Secret already exists in portainer"
 
-                  echo "TLS certificates created successfully"
+              echo "TLS certificates created successfully"
 ---
 # ServiceAccount for the Job
 apiVersion: v1

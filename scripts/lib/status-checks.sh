@@ -5,7 +5,7 @@
 check_ssh_connectivity() {
     local vm_ip="$1"
     
-    if ssh_vm "echo 'SSH OK'" 2>/dev/null; then
+    if ssh_vm "true"; then
         success "SSH connection established"
         return 0
     else

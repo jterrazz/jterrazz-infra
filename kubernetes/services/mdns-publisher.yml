@@ -33,7 +33,7 @@ spec:
                             # Get the VM's external IP from the host network interface
               # Since we're using hostNetwork: true, we can get the VM's actual IP
               EXTERNAL_IP=$(ip addr show | grep 'inet 192\.168\.' | head -1 | awk '{print $2}' | cut -d/ -f1)
-              
+
               # Fallback if the above doesn't work
               if [[ -z "$EXTERNAL_IP" ]]; then
                 EXTERNAL_IP=$(hostname -I | awk '{print $1}')
