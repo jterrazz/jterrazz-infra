@@ -438,6 +438,7 @@ check_firewall_status() {
 check_exposed_ports() {
     local vm_ip="$1"
     
+    echo
     info "Checking host-level listening services..."
     local listening_ports
     listening_ports=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo ss -tulpn | grep LISTEN | grep -E ':(22|80|443|6443|8080|9000)'" 2>/dev/null)
@@ -588,6 +589,7 @@ check_kubernetes_services() {
 check_argocd_status() {
     local vm_ip="$1"
     
+    echo
     info "Checking ArgoCD status..."
     if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get pods -n argocd 2>/dev/null | grep -q 'argocd-server.*Running'"; then
         success "ArgoCD is running"
