@@ -33,18 +33,28 @@ get_vm_ip() {
         
         # If we have multiple IPs, prefer the bridged network IP (usually not 10.x.x.x or 192.168.64.x)
         if [[ -n "$all_ips" ]]; then
+            local fallback_ip=""
             while read -r ip; do
                 if [[ -n "$ip" && "$ip" != "null" ]]; then
-                    # Skip typical Multipass internal IPs and prefer bridged IPs
+                    # Skip Kubernetes cluster IPs (10.42.x.x)
+                    if [[ "$ip" =~ ^10\.42\. ]]; then
+                        continue
+                    fi
+                    # Prefer bridged network IPs (not 10.x or 192.168.64.x)
                     if [[ ! "$ip" =~ ^192\.168\.64\. && ! "$ip" =~ ^10\. ]]; then
                         vm_ip="$ip"
                         break
-                    else
-                        # Fallback to internal IP if no bridged IP found
-                        vm_ip="$ip"
+                    elif [[ "$ip" =~ ^192\.168\.64\. ]]; then
+                        # Use multipass internal IP as fallback
+                        fallback_ip="$ip"
                     fi
                 fi
             done <<< "$all_ips"
+            
+            # If no bridged IP found, use the multipass internal IP
+            if [[ -z "$vm_ip" && -n "$fallback_ip" ]]; then
+                vm_ip="$fallback_ip"
+            fi
         fi
     fi
     

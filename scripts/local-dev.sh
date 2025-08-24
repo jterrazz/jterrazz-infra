@@ -276,6 +276,38 @@ status() {
     check_system_resources "$vm_ip"
 }
 
+# Wait for Traefik LoadBalancer to be ready
+wait_for_traefik_loadbalancer() {
+    local max_attempts=60  # 2 minutes max
+    local attempt=0
+    
+    while [[ $attempt -lt $max_attempts ]]; do
+        # Check if Traefik LoadBalancer service has an external IP
+        # Try to use existing KUBECONFIG or fall back to local file
+        local kubeconfig_arg=""
+        if [[ -z "${KUBECONFIG:-}" ]] && [[ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]]; then
+            kubeconfig_arg="--kubeconfig=$PROJECT_DIR/local-kubeconfig.yaml"
+        fi
+        
+        if kubectl get svc traefik -n kube-system $kubeconfig_arg -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null | grep -q "192.168"; then
+            success "Traefik LoadBalancer is ready"
+            return 0
+        fi
+        
+        ((attempt++))
+        if [[ $attempt -eq 1 ]]; then
+            info "Waiting for Traefik LoadBalancer... (attempt $attempt/$max_attempts)"
+        elif [[ $((attempt % 10)) -eq 0 ]]; then
+            info "Still waiting for Traefik LoadBalancer... (attempt $attempt/$max_attempts)"
+        fi
+        sleep 2
+    done
+    
+    warning "Traefik LoadBalancer not ready after $max_attempts attempts"
+    info "Status check may fail but services should work shortly"
+    return 1
+}
+
 # Helper functions for status checks
 check_connectivity() {
     local vm_ip="$1"
@@ -687,6 +719,11 @@ case "${1:-help}" in
             fi
         verify_inventory
         run_ansible
+        
+        # Wait for Kubernetes services to stabilize before status check
+        info "Waiting for Kubernetes services to stabilize..."
+        wait_for_traefik_loadbalancer
+        
         status
         fi
         ;;
