@@ -22,6 +22,14 @@ subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 VM_NAME="${VM_NAME:-jterrazz-infra}"
 HOSTS_MARKER="# jterrazz-infra-local"
 
+# Default services (can be overridden)
+DEFAULT_SERVICES=(
+    "app.local"
+    "argocd.local"
+    "portainer.local"
+    "traefik.local"
+)
+
 # Get VM IP (supports both bridged and regular networking)
 get_vm_ip() {
     local vm_ip=""
@@ -67,6 +75,69 @@ get_vm_ip() {
     echo "$vm_ip"
 }
 
+# Get current IP from hosts file
+get_current_hosts_ip() {
+    grep "$HOSTS_MARKER" /etc/hosts 2>/dev/null | head -1 | awk '{print $1}' || echo ""
+}
+
+# Auto-detect services from Kubernetes ingresses
+get_kubernetes_services() {
+    local services=()
+    
+    # Try to get services from Kubernetes if kubectl is available
+    if command -v kubectl &> /dev/null; then
+        local kubeconfig_arg=""
+        if [[ -z "${KUBECONFIG:-}" ]] && [[ -f "$PROJECT_DIR/local-kubeconfig.yaml" ]]; then
+            kubeconfig_arg="--kubeconfig=$PROJECT_DIR/local-kubeconfig.yaml"
+        fi
+        
+        # Get hostnames from ingresses
+        local ingress_hosts
+        ingress_hosts=$(kubectl get ingress --all-namespaces $kubeconfig_arg -o jsonpath='{range .items[*]}{range .spec.rules[*]}{.host}{"\n"}{end}{end}' 2>/dev/null || echo "")
+        
+        if [[ -n "$ingress_hosts" ]]; then
+            while read -r host; do
+                if [[ -n "$host" && "$host" != "null" ]]; then
+                    services+=("$host")
+                fi
+            done <<< "$ingress_hosts"
+        fi
+    fi
+    
+    # If no services found from Kubernetes, use defaults
+    if [[ ${#services[@]} -eq 0 ]]; then
+        services=("${DEFAULT_SERVICES[@]}")
+    fi
+    
+    printf '%s\n' "${services[@]}"
+}
+
+# Check if hosts file needs updating
+needs_hosts_update() {
+    local new_ip="$1"
+    local current_ip
+    current_ip=$(get_current_hosts_ip)
+    
+    # Check if IP changed
+    if [[ "$current_ip" != "$new_ip" ]]; then
+        return 0  # IP changed - needs update
+    fi
+    
+    # Check if services changed
+    local current_services
+    mapfile -t current_services < <(grep "$HOSTS_MARKER" /etc/hosts 2>/dev/null | awk '{print $2}' | sort)
+    
+    local expected_services
+    mapfile -t expected_services < <(get_kubernetes_services | sort)
+    
+    # Compare service lists
+    if [[ "${current_services[*]}" != "${expected_services[*]}" ]]; then
+        return 0  # Services changed - needs update
+    fi
+    
+    return 1  # No changes needed
+}
+
 # Clean old entries
 clean_hosts() {
     info "Cleaning old /etc/hosts entries..."
@@ -83,17 +154,15 @@ add_hosts_entries() {
     
     info "Adding new /etc/hosts entries for $vm_ip..."
     
-    # Define the services we want to access (using .local to avoid conflicts)
-    local entries=(
-        "$vm_ip app.local $HOSTS_MARKER"
-        "$vm_ip argocd.local $HOSTS_MARKER"  
-        "$vm_ip portainer.local $HOSTS_MARKER"
-        "$vm_ip traefik.local $HOSTS_MARKER"
-    )
+    # Get services (auto-detected or defaults)
+    local services
+    mapfile -t services < <(get_kubernetes_services)
     
-    # Add each entry
-    for entry in "${entries[@]}"; do
-        echo "$entry" | sudo tee -a /etc/hosts > /dev/null
+    info "Configuring ${#services[@]} services: ${services[*]}"
+    
+    # Add each service entry
+    for service in "${services[@]}"; do
+        echo "$vm_ip $service $HOSTS_MARKER" | sudo tee -a /etc/hosts > /dev/null
     done
     
     success "DNS entries added"
@@ -150,9 +219,20 @@ main() {
         success "VM IP: $vm_ip (multipass internal)"
     fi
     
-    # Update /etc/hosts
-    clean_hosts
-    add_hosts_entries "$vm_ip"
+    # Update /etc/hosts only if needed
+    if needs_hosts_update "$vm_ip"; then
+        local current_ip
+        current_ip=$(get_current_hosts_ip)
+        if [[ -n "$current_ip" ]]; then
+            info "IP changed from $current_ip to $vm_ip - updating DNS..."
+        else
+            info "No existing DNS entries found - setting up..."
+        fi
+        clean_hosts
+        add_hosts_entries "$vm_ip"
+    else
+        success "DNS already configured for $vm_ip - no update needed"
+    fi
     
     # Show results
     show_urls "$vm_ip"
@@ -175,15 +255,30 @@ case "${1:-setup}" in
     clean)
         cleanup clean
         ;;
+    cleanup)
+        # Clean up any corrupted entries (like debug messages)
+        info "Cleaning up corrupted hosts file entries..."
+        sudo sed -i '' '/→ Using bridged network IP:/d' /etc/hosts 2>/dev/null || true
+        sudo sed -i '' '/→ Getting VM IP address/d' /etc/hosts 2>/dev/null || true
+        sudo sed -i '' '/✓ VM IP:/d' /etc/hosts 2>/dev/null || true
+        success "Corrupted entries cleaned up"
+        ;;
     status)
-        echo "Current jterrazz-infra entries in /etc/hosts:"
-        grep "$HOSTS_MARKER" /etc/hosts || echo "No entries found"
+        current_ip=$(get_current_hosts_ip)
+        if [[ -n "$current_ip" ]]; then
+            success "Local DNS configured for IP: $current_ip"
+            echo "Current jterrazz-infra entries in /etc/hosts:"
+            grep "$HOSTS_MARKER" /etc/hosts || echo "No entries found"
+        else
+            info "No local DNS entries found"
+        fi
         ;;
     *)
-        echo "Usage: $0 [setup|clean|status]"
-        echo "  setup  - Configure local DNS (default)"
-        echo "  clean  - Remove local DNS entries"  
-        echo "  status - Show current DNS entries"
+        echo "Usage: $0 [setup|clean|cleanup|status]"
+        echo "  setup   - Configure local DNS (default)"
+        echo "  clean   - Remove local DNS entries"  
+        echo "  cleanup - Clean corrupted hosts file entries"
+        echo "  status  - Show current DNS entries"
         exit 1
         ;;
 esac
