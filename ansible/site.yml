@@ -88,7 +88,8 @@
     # Note: ArgoCD and Portainer are now deployed in post_tasks for consistency
 
   post_tasks:
-    - name: Create namespaces for infrastructure applications
+    # Deploy infrastructure applications
+    - name: Create infrastructure namespaces
       kubernetes.core.k8s:
         name: "{{ item }}"
         api_version: v1
@@ -96,80 +97,21 @@
         state: present
       loop:
         - portainer
-      when: not (skip_portainer | default(false))
+        - argocd
 
-    - name: Deploy Portainer infrastructure application
+    - name: Deploy Portainer
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', '../kubernetes/applications/portainer.yml') | from_yaml_all }}"
-        wait: true
-        wait_timeout: 300
       when: not (skip_portainer | default(false))
 
-    - name: Create ArgoCD namespace
-      kubernetes.core.k8s:
-        name: argocd
-        api_version: v1
-        kind: Namespace
-        state: present
-      when: not (skip_argocd | default(false))
-
-    - name: Check if ArgoCD is already deployed
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: argocd-server
-        namespace: argocd
-      register: argocd_deployment
-      failed_when: false
-      when: not (skip_argocd | default(false))
-
-    - name: Download ArgoCD installation manifest
-      ansible.builtin.get_url:
-        url: "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml"
-        dest: "/tmp/argocd-install.yaml"
-        mode: "0644"
-      when: not (skip_argocd | default(false)) and (argocd_deployment.resources | default([]) | length == 0)
-
-    - name: Deploy ArgoCD infrastructure application
+    - name: Deploy ArgoCD
       ansible.builtin.shell: |
-        kubectl apply -n argocd -f /tmp/argocd-install.yaml
+        kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      when: not (skip_argocd | default(false)) and (argocd_deployment.resources | default([]) | length == 0)
-      register: argocd_apply_result
-      changed_when: "'created' in argocd_apply_result.stdout or 'configured' in argocd_apply_result.stdout"
-
-    - name: Wait for ArgoCD server to be ready
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: argocd-server
-        namespace: argocd
-        wait_condition:
-          type: Available
-          status: "True"
-        wait_timeout: 180
       when: not (skip_argocd | default(false))
-
-    - name: Get ArgoCD initial admin password
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: Secret
-        name: argocd-initial-admin-secret
-        namespace: argocd
-      register: argocd_admin_secret
-      when: not (skip_argocd | default(false))
-
-    - name: Display ArgoCD access information
-      ansible.builtin.debug:
-        msg: |
-          ✅ ArgoCD deployed successfully!
-          • Username: admin
-          • Password: {{ argocd_admin_secret.resources[0].data.password | b64decode }}
-          • Access: kubectl port-forward svc/argocd-server -n argocd 8080:443
-          • Then: https://localhost:8080
-      when: not (skip_argocd | default(false)) and argocd_admin_secret.resources | default([]) | length > 0
+      changed_when: true
 
     - name: Get Tailscale IP if connected
       ansible.builtin.command: tailscale ip -4
