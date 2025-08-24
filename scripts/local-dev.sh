@@ -438,28 +438,41 @@ check_firewall_status() {
 check_exposed_ports() {
     local vm_ip="$1"
     
-    info "Checking exposed ports..."
+    info "Checking host-level listening services..."
     local listening_ports
     listening_ports=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo ss -tulpn | grep LISTEN | grep -E ':(22|80|443|6443|8080|9000)'" 2>/dev/null)
     
+    subsection "🔌 Host-level exposed ports:"
     if [[ -n "$listening_ports" ]]; then
-        success "Found listening services"
-        subsection "🔌 Exposed ports:"
         echo "$listening_ports" | while read -r line; do
             local port=$(echo "$line" | awk '{print $5}' | cut -d: -f2)
             local service=""
             case "$port" in
-                22) service=" (SSH)" ;;
-                80) service=" (HTTP)" ;;
-                443) service=" (HTTPS)" ;;
-                6443) service=" (Kubernetes API)" ;;
-                8080) service=" (ArgoCD)" ;;
-                9000) service=" (Portainer)" ;;
+                22) service=" (SSH - Direct host service)" ;;
+                80) service=" (HTTP - Direct host service)" ;;
+                443) service=" (HTTPS - Direct host service)" ;;
+                6443) service=" (Kubernetes API - K3s server)" ;;
+                8080) service=" (ArgoCD - Direct host service)" ;;
+                9000) service=" (Portainer - Direct host service)" ;;
             esac
             echo "    • Port $port$service"
         done
     else
-        warn "No standard services detected"
+        echo "    • No direct host services on standard ports"
+    fi
+    
+    echo
+    subsection "🌐 Kubernetes LoadBalancer routing:"
+    info "Checking iptables-routed services..."
+    local lb_services
+    lb_services=$(ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo iptables -L -t nat | grep 'loadbalancer IP' | grep -E 'tcp dpt:(http|https)'" 2>/dev/null)
+    
+    if [[ -n "$lb_services" ]]; then
+        echo "    • Port 80 (HTTP) → Traefik LoadBalancer (iptables routing)"
+        echo "    • Port 443 (HTTPS) → Traefik LoadBalancer (iptables routing)"
+        echo "    📝 Note: These ports use kernel-level routing, not host processes"
+    else
+        echo "    • No LoadBalancer services detected"
     fi
 }
 
