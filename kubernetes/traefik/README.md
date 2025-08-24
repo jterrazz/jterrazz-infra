@@ -1,40 +1,19 @@
 # Traefik Configuration
 
-K3s comes with **Traefik pre-installed** as the default ingress controller. This directory contains additional Traefik configurations.
+K3s comes with **Traefik pre-installed** as the default ingress controller. This directory contains Traefik-specific configurations.
 
 ## What's Included
 
 - **`middleware.yml`**: Custom middlewares for IP whitelisting and HTTPS redirects
-- **`acme-config.yml`**: Example ACME configuration for automatic SSL certificates
+- **`global-https-redirect.yml`**: Global HTTP→HTTPS redirect enforcement
 
-## Key Benefits of Using Traefik with K3s
+## Benefits
 
 ✅ **Zero Setup**: Traefik comes pre-configured with k3s  
 ✅ **Automatic Service Discovery**: Finds services automatically  
-✅ **Built-in ACME Support**: No cert-manager needed  
-✅ **Native Kubernetes Support**: CRDs for advanced configuration  
-✅ **Lightweight**: Perfect for edge/IoT deployments
+✅ **Self-signed TLS**: Automatic certificates for local development  
+✅ **HTTPS Enforcement**: Global redirects for security
 
 ## Usage
 
-1. **Apply middlewares**:
-
-   ```bash
-   kubectl apply -f kubernetes/traefik/middleware.yml
-   ```
-
-2. **Use in ingress resources**:
-   ```yaml
-   annotations:
-     traefik.ingress.kubernetes.io/router.middlewares: default-https-redirect@kubernetescrd
-   ```
-
-## ACME/SSL Configuration
-
-For automatic SSL certificates in production:
-
-1. **Configure Traefik ACME** (via k3s server args or Traefik ConfigMap)
-2. **Use standard Ingress TLS** - Traefik handles the rest automatically
-3. **No cert-manager required** - Traefik has built-in ACME support
-
-This eliminates the complexity of nginx-ingress + cert-manager while providing the same functionality.
+Middlewares are applied automatically via `make apps` command.

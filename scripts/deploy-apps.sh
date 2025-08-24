@@ -89,6 +89,49 @@ wait_for_sync() {
     info "Visit ArgoCD dashboard to monitor deployments."
 }
 
+# Configure local development setup
+configure_local_setup() {
+    info "Configuring local development setup..."
+    
+    # Create necessary namespaces
+    info "Creating necessary namespaces..."
+    kubectl create namespace portainer --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Deploy simple landing page
+    info "Deploying landing page service..."
+    kubectl apply -f kubernetes/services/landing-page.yml
+    
+    # Apply HTTPS-only ingresses for local development
+    if [[ -f "kubernetes/ingress/local-https-only-ingresses.yml" ]]; then
+        info "Deploying HTTPS-only ingresses..."
+        if kubectl apply -f kubernetes/ingress/local-https-only-ingresses.yml; then
+            success "HTTPS ingresses deployed"
+        else
+            error "Failed to deploy HTTPS ingresses"
+        fi
+    fi
+    
+    # Apply global HTTPS redirect
+    if [[ -f "kubernetes/traefik/global-https-redirect.yml" ]]; then
+        info "Deploying global HTTPS redirect..."
+        if kubectl apply -f kubernetes/traefik/global-https-redirect.yml; then
+            success "Global HTTPS redirect deployed"
+        else
+            error "Failed to deploy global HTTPS redirect"
+        fi
+    fi
+    
+    # Configure ArgoCD for insecure mode (required for ingress)
+    info "Configuring ArgoCD for ingress compatibility..."
+    if kubectl patch configmap argocd-cmd-params-cm -n argocd --patch '{"data":{"server.insecure":"true"}}'; then
+        info "Restarting ArgoCD server..."
+        kubectl rollout restart deployment argocd-server -n argocd
+        success "ArgoCD configured for HTTPS ingress"
+    else
+        error "Failed to configure ArgoCD insecure mode"
+    fi
+}
+
 # Setup local DNS automation
 setup_local_dns() {
     info "Setting up local DNS automation..."
@@ -151,6 +194,12 @@ main() {
     deploy_traefik_configs
     deploy_argocd_apps
     wait_for_sync
+    
+    # Only configure local setup if we're in local development
+    if command -v multipass &> /dev/null; then
+        configure_local_setup
+    fi
+    
     show_access_info
 }
 

@@ -11,13 +11,8 @@ Unattended-Upgrade::Allowed-Origins {
 
 # Packages to never automatically upgrade
 Unattended-Upgrade::Package-Blacklist {
-    // Kubernetes components (manage manually)
-    "kubectl";
-    "kubelet";  
-    "kubeadm";
-    "docker-ce";
-    "docker-ce-cli";
-    "containerd.io";
+    // k3s components (manage manually via k3s)
+    "k3s";
 };
 
 {% if security_auto_reboot_enabled %}

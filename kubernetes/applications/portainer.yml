@@ -26,9 +26,9 @@ roleRef:
   kind: ClusterRole
   name: cluster-admin
 subjects:
-- kind: ServiceAccount
-  name: portainer-sa
-  namespace: portainer
+  - kind: ServiceAccount
+    name: portainer-sa
+    namespace: portainer
 
 ---
 # Portainer Data PVC
@@ -65,30 +65,30 @@ spec:
     spec:
       serviceAccountName: portainer-sa
       containers:
-      - name: portainer
-        image: portainer/portainer-ce:latest
-        ports:
-        - containerPort: 9000
-          name: http
-        - containerPort: 9443
-          name: https
-        volumeMounts:
-        - name: data
-          mountPath: /data
-        env:
-        - name: PORTAINER_K8S_MODE
-          value: "true"
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
+        - name: portainer
+          image: portainer/portainer-ce:latest
+          ports:
+            - containerPort: 9000
+              name: http
+            - containerPort: 9443
+              name: https
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          env:
+            - name: PORTAINER_K8S_MODE
+              value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
       volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: portainer-data
+        - name: data
+          persistentVolumeClaim:
+            claimName: portainer-data
 
 ---
 # Portainer Service (ClusterIP - internal only)
@@ -100,35 +100,14 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 9000
-    targetPort: 9000
-    protocol: TCP
-    name: http
-  - port: 9443
-    targetPort: 9443
-    protocol: TCP
-    name: https
-  selector:
-    app: portainer
-
----
-# Portainer NodePort Service (for Tailscale access)
-apiVersion: v1
-kind: Service
-metadata:
-  name: portainer-nodeport
-  namespace: portainer
-  annotations:
-    # This service is only accessible via Tailscale IP
-    service.beta.kubernetes.io/do-loadbalancer-enable-proxy-protocol: "false"
-spec:
-  type: NodePort
-  ports:
-  - port: 9443
-    targetPort: 9443
-    nodePort: 30943
-    protocol: TCP
-    name: https
+    - port: 9000
+      targetPort: 9000
+      protocol: TCP
+      name: http
+    - port: 9443
+      targetPort: 9443
+      protocol: TCP
+      name: https
   selector:
     app: portainer
 
@@ -149,17 +128,17 @@ metadata:
 spec:
   ingressClassName: traefik
   tls:
-  - hosts:
-    - portainer.{{ domain_name | default('localhost') }}
-    secretName: portainer-tls
+    - hosts:
+        - portainer.local
+      secretName: portainer-tls
   rules:
-  - host: portainer.{{ domain_name | default('localhost') }}
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: portainer
-            port:
-              number: 9443
+    - host: portainer.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: portainer
+                port:
+                  number: 9443

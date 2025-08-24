@@ -26,7 +26,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: default-landing
+                name: nginx-service
                 port:
                   number: 80
 

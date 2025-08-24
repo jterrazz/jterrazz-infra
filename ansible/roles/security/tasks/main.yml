@@ -15,10 +15,7 @@
       - unattended-upgrades
       - apt-listchanges
       - needrestart
-      - libpam-pwquality
       - auditd
-      - rkhunter
-      - lynis
     state: present
 
 # SSH Hardening
