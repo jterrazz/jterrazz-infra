@@ -197,13 +197,13 @@ net.ipv4.conf.all.accept_source_route: 0
 **Location**: `scripts/setup-mdns-resolver.sh`
 
 ```bash
-# Pure mDNS resolution via .curlrc (NO /etc/hosts)
-app.local → mDNS + curl resolver
-argocd.local → mDNS + curl resolver
-portainer.local → mDNS + curl resolver
+# Pure mDNS resolution via Kubernetes mDNS publisher pod
+app.local → mDNS publisher pod → macOS mDNS
+argocd.local → mDNS publisher pod → macOS mDNS  
+portainer.local → mDNS publisher pod → macOS mDNS
 ```
 
-**Why**: Uses native mDNS for service discovery while maintaining production-like domain access patterns. No manual DNS management required.
+**Why**: Uses Kubernetes mDNS publisher pod to broadcast .local domains, which macOS discovers automatically via built-in mDNS. Zero manual DNS management, just like Docker.
 
 ## 🔍 Security Monitoring
 

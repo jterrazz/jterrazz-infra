@@ -27,9 +27,4 @@
     state: reloaded
   listen: "reload ufw"
 
-- name: Restart avahi-daemon
-  ansible.builtin.systemd:
-    name: avahi-daemon
-    state: restarted
-    daemon_reload: true
-  listen: "restart avahi-daemon"
+

@@ -303,7 +303,7 @@ configure_local_setup() {
     fi
 }
 
-# Zero-sudo DNS resolver provides Docker-like domain resolution
+# Pure mDNS resolution via Kubernetes mDNS publisher pod
 
 # Display access information
 show_access_info() {

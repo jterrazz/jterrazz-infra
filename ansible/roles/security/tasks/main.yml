@@ -223,48 +223,8 @@
     job: "/usr/local/bin/security-status > /var/log/security-status.log 2>&1"
     user: root
 
-# mDNS Configuration for automatic .local domain resolution
-- name: Install Avahi for mDNS
-  apt:
-    name:
-      - avahi-daemon
-      - avahi-utils
-    state: present
-    update_cache: yes
-
-- name: Configure Avahi hostname
-  lineinfile:
-    path: /etc/avahi/avahi-daemon.conf
-    regexp: "^#?host-name="
-    line: "host-name={{ inventory_hostname }}"
-    backup: yes
-  notify: restart avahi-daemon
-
-- name: Create Avahi services directory
-  file:
-    path: /etc/avahi/services
-    state: directory
-    mode: '0755'
-
-- name: Configure additional mDNS hostnames for local development
-  template:
-    src: mdns-service.xml.j2
-    dest: "/etc/avahi/services/{{ item.hostname }}-local.service"
-    mode: '0644'
-  loop:
-    - { hostname: 'app' }
-    - { hostname: 'argocd' }
-    - { hostname: 'portainer' }
-  vars:
-    service_hostname: "{{ item.hostname }}"
-  notify: restart avahi-daemon
-  when: ansible_hostname == "jterrazz-infra"  # Only for local development
-
-- name: Ensure Avahi daemon is running
-  systemd:
-    name: avahi-daemon
-    state: started
-    enabled: yes
+# mDNS Configuration handled by mDNS publisher pod in Kubernetes
+# See scripts/setup-mdns-resolver.sh for local development DNS
 
 # Final security verification
 - name: Display security setup summary

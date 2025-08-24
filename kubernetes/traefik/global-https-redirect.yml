@@ -17,5 +17,5 @@ spec:
       middlewares:
         - name: https-redirect-global
       services:
-        - name: default-landing
+        - name: nginx-service
           port: 80
