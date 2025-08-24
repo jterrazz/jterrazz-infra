@@ -32,8 +32,20 @@ create_vm() {
     info "Creating Ubuntu VM '$VM_NAME'..."
     
     if multipass list | grep -q "$VM_NAME"; then
-        warn "VM '$VM_NAME' already exists"
-        return 0
+        local vm_status
+        vm_status=$(multipass list | grep "$VM_NAME" | awk '{print $2}')
+        
+        if [ "$vm_status" = "Running" ]; then
+            success "VM '$VM_NAME' is already running!"
+            info "💡 If you want to start fresh, run: make clean && make start"
+            info "💡 To deploy apps on existing VM, run: make apps"
+            return 0
+        else
+            info "VM '$VM_NAME' exists but is $vm_status. Starting it..."
+            multipass start "$VM_NAME"
+            success "VM '$VM_NAME' started"
+            return 0
+        fi
     fi
     
     multipass launch \
@@ -281,11 +293,19 @@ case "${1:-help}" in
         ssh_vm
         ;;
     full)
-        create_vm
-        setup_ssh
-        verify_inventory
-        run_ansible
-        status
+        if create_vm; then
+            # Check if SSH is working, if not set it up
+            vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
+            if [ -n "$vm_ip" ] && ! ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@"$vm_ip" "echo 'SSH test'" &>/dev/null; then
+                info "SSH not configured or not working, setting up..."
+                setup_ssh
+            else
+                info "SSH already configured and working"
+            fi
+            verify_inventory
+            run_ansible
+            status
+        fi
         ;;
     help|--help|-h)
         echo "Local Development Manager - Real Ubuntu VM + Ansible + Kubernetes"
