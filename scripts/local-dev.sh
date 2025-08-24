@@ -134,7 +134,7 @@ verify_inventory() {
         local vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
         info "VM accessible at: $vm_ip"
     else
-        warning "Dynamic inventory couldn't discover VM. VM might not be ready yet."
+        warn "Dynamic inventory couldn't discover VM. VM might not be ready yet."
     fi
 }
 
@@ -174,7 +174,7 @@ get_kubeconfig() {
             info "Use: export KUBECONFIG=$PROJECT_DIR/local-kubeconfig.yaml"
             return 0
         else
-            warning "Existing kubeconfig not working, fetching fresh copy..."
+            warn "Existing kubeconfig not working, fetching fresh copy..."
         fi
     fi
     
@@ -303,7 +303,7 @@ wait_for_traefik_loadbalancer() {
         sleep 2
     done
     
-    warning "Traefik LoadBalancer not ready after $max_attempts attempts"
+    warn "Traefik LoadBalancer not ready after $max_attempts attempts"
     info "Status check may fail but services should work shortly"
     return 1
 }
