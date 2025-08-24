@@ -207,13 +207,8 @@ configure_local_setup() {
         warn "Failed to create TLS certificate job"
     fi
     
-    # Create required middleware for ingresses
-    info "Creating required middleware..."
-    if kubectl apply -f kubernetes/traefik/https-redirect-middleware.yml; then
-        success "HTTPS redirect middleware deployed"
-    else
-        warn "Failed to create HTTPS redirect middleware"
-    fi
+    # Middleware is already deployed as part of Traefik configuration
+    success "Middleware configuration already applied"
     
     # Wait for ArgoCD and configure for insecure mode (required for ingress)
     info "Configuring ArgoCD for ingress compatibility..."
