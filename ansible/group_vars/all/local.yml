@@ -64,4 +64,4 @@ enable_local_storage: true # Use local storage classes
 ansible_debug: true
 k3s_debug: true
 verbose_output: true
-# Local DNS handled by scripts/setup-local-dns.sh
+# Local DNS handled by pure mDNS via scripts/setup-mdns-resolver.sh

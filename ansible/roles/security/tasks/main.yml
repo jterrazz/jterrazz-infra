@@ -240,6 +240,26 @@
     backup: yes
   notify: restart avahi-daemon
 
+- name: Create Avahi services directory
+  file:
+    path: /etc/avahi/services
+    state: directory
+    mode: '0755'
+
+- name: Configure additional mDNS hostnames for local development
+  template:
+    src: mdns-service.xml.j2
+    dest: "/etc/avahi/services/{{ item.hostname }}-local.service"
+    mode: '0644'
+  loop:
+    - { hostname: 'app' }
+    - { hostname: 'argocd' }
+    - { hostname: 'portainer' }
+  vars:
+    service_hostname: "{{ item.hostname }}"
+  notify: restart avahi-daemon
+  when: ansible_hostname == "jterrazz-infra"  # Only for local development
+
 - name: Ensure Avahi daemon is running
   systemd:
     name: avahi-daemon

@@ -156,6 +156,65 @@ wait_for_argocd() {
     return 1
 }
 
+# Create TLS certificates for local .local domains
+create_local_tls_certificates() {
+    # Check if certificates already exist
+    if kubectl get secret local-tls-secret -n default &> /dev/null; then
+        success "TLS certificates already exist"
+        return 0
+    fi
+    
+    # Create temporary certificate files
+    local temp_key="/tmp/local-tls.key"
+    local temp_crt="/tmp/local-tls.crt"
+    
+    # Generate certificate with SAN for .local domains
+    if openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout "$temp_key" -out "$temp_crt" \
+        -subj "/CN=*.local" \
+        -config <(echo '[req]'; echo 'distinguished_name=req_distinguished_name'; echo '[req_distinguished_name]'; echo '[v3_req]'; echo 'keyUsage=keyEncipherment,dataEncipherment'; echo 'extendedKeyUsage=serverAuth'; echo 'subjectAltName=@alt_names'; echo '[alt_names]'; echo 'DNS.1=app.local'; echo 'DNS.2=argocd.local'; echo 'DNS.3=portainer.local') \
+        -extensions v3_req &> /dev/null; then
+        
+        # Create TLS secrets in all required namespaces
+        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n default &> /dev/null || true
+        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n argocd &> /dev/null || true
+        kubectl create secret tls local-tls-secret --cert="$temp_crt" --key="$temp_key" -n portainer &> /dev/null || true
+        
+        # Clean up temporary files
+        rm -f "$temp_key" "$temp_crt"
+        success "TLS certificates created for all namespaces"
+    else
+        warning "Failed to create TLS certificates"
+    fi
+}
+
+# Create HTTPS redirect middleware required by ingresses
+create_https_redirect_middleware() {
+    # Check if middleware already exists
+    if kubectl get middleware https-redirect-global -n default &> /dev/null; then
+        success "HTTPS redirect middleware already exists"
+        return 0
+    fi
+    
+    # Create the middleware
+    if cat <<EOF | kubectl apply -f - &> /dev/null
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect-global
+  namespace: default
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+EOF
+    then
+        success "HTTPS redirect middleware created"
+    else
+        warning "Failed to create HTTPS redirect middleware"
+    fi
+}
+
 # Configure local development setup
 configure_local_setup() {
     section "Configuring Local Development"
@@ -172,13 +231,13 @@ configure_local_setup() {
     info "Ensuring Traefik is ready for ingress configuration..."
     wait_for_traefik_crds
     
-    # Apply HTTPS-only ingresses for local development
-    if [[ -f "kubernetes/ingress/local-https-only-ingresses.yml" ]]; then
-        info "Deploying HTTPS-only ingresses..."
-        if kubectl apply -f kubernetes/ingress/local-https-only-ingresses.yml; then
-            success "HTTPS ingresses deployed"
+    # Apply mDNS-based ingresses for local development
+    if [[ -f "kubernetes/ingress/local-mdns-ingresses.yml" ]]; then
+        info "Deploying mDNS-based ingresses (app.local, argocd.local, portainer.local)..."
+        if kubectl apply -f kubernetes/ingress/local-mdns-ingresses.yml; then
+            success "mDNS ingresses deployed"
         else
-            warning "Failed to deploy HTTPS ingresses (Traefik CRDs may not be ready)"
+            warning "Failed to deploy mDNS ingresses (Traefik CRDs may not be ready)"
         fi
     fi
     
@@ -191,6 +250,14 @@ configure_local_setup() {
             warning "Failed to deploy global HTTPS redirect (Traefik CRDs may not be ready)"
         fi
     fi
+    
+    # Create TLS certificates for .local domains
+    info "Creating TLS certificates for .local domains..."
+    create_local_tls_certificates
+    
+    # Create required middleware for ingresses
+    info "Creating required middleware..."
+    create_https_redirect_middleware
     
     # Wait for ArgoCD and configure for insecure mode (required for ingress)
     info "Configuring ArgoCD for ingress compatibility..."
@@ -206,16 +273,15 @@ configure_local_setup() {
         warning "ArgoCD not ready - skipping insecure mode configuration"
     fi
     
-    # Set up local DNS for subdomain access
-    info "Setting up local DNS for subdomain access..."
-    if [[ -f "$PROJECT_DIR/scripts/setup-local-dns.sh" ]]; then
-        "$PROJECT_DIR/scripts/setup-local-dns.sh" > /dev/null 2>&1 || true
-        success "Local DNS configured"
+    # Set up ultra-simple DNS resolver
+    info "Configuring ultra-simple DNS resolver..."
+    if [[ -f "$PROJECT_DIR/scripts/setup-mdns-resolver.sh" ]]; then
+        "$PROJECT_DIR/scripts/setup-mdns-resolver.sh" > /dev/null 2>&1 || true
+        success "Ultra-simple DNS resolver configured (just like Docker!)"
     fi
 }
 
-# mDNS is now handled automatically by Avahi via Ansible
-# No manual DNS setup required
+# Zero-sudo DNS resolver provides Docker-like domain resolution
 
 # Display access information
 show_access_info() {
@@ -224,12 +290,12 @@ show_access_info() {
     if command -v multipass &> /dev/null; then
         # Local development with mDNS - automatic .local domain resolution
         subsection "🌐 Access your applications:"
-        echo "    • Landing Page:      https://jterrazz-infra.local/"
-        echo "    • ArgoCD:           https://argocd.jterrazz-infra.local/"
-        echo "    • Portainer:        https://portainer.jterrazz-infra.local/"
+        echo "    • Landing Page:      https://app.local/"
+        echo "    • ArgoCD:           https://argocd.local/"
+        echo "    • Portainer:        https://portainer.local/"
         echo ""
-        info "mDNS enabled - all domains resolve automatically via Avahi"
-        success "Shared SSL certificate for all HTTPS services (accept once)"
+        info "Zero-sudo DNS resolver enabled - all domains resolve automatically"
+        success "Docker-like domain resolution with shared SSL certificate"
     else
         # Production environment
         subsection "🌐 Access your applications:"

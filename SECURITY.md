@@ -193,17 +193,17 @@ net.ipv4.conf.all.accept_source_route: 0
 - **Firewall simulation**: UFW rules applied but don't affect VM-to-VM traffic
 - **Service isolation**: Same ClusterIP + Ingress pattern as production
 
-### DNS Security
-**Location**: `scripts/setup-local-dns.sh`
+### mDNS Security
+**Location**: `scripts/setup-mdns-resolver.sh`
 
 ```bash
-# Uses .local domains to avoid localhost conflicts
-app.local → 192.168.64.x
-argocd.local → 192.168.64.x  
-portainer.local → 192.168.64.x
+# Pure mDNS resolution via .curlrc (NO /etc/hosts)
+app.local → mDNS + curl resolver
+argocd.local → mDNS + curl resolver
+portainer.local → mDNS + curl resolver
 ```
 
-**Why**: Prevents DNS conflicts while maintaining production-like domain access patterns.
+**Why**: Uses native mDNS for service discovery while maintaining production-like domain access patterns. No manual DNS management required.
 
 ## 🔍 Security Monitoring
 
