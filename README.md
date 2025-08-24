@@ -1,18 +1,40 @@
-# Jterrazz Infrastructure
+# 🚀 Jterrazz Infrastructure
 
-**Modern Infrastructure as Code** for VPS deployment on Hetzner Cloud with **Kubernetes (k3s)**, **GitOps (ArgoCD)**, and **cloud-native tooling**.
+**Modern Infrastructure as Code** with **one-command local development** and **production-ready Kubernetes deployment**.
 
-## 🎯 What This Deploys
+## ✨ Quick Start
 
-A complete, production-ready infrastructure stack:
+```bash
+# Complete local setup (one command!)
+make start
 
-- **☁️ Hetzner Cloud VPS** - Affordable, reliable hosting
-- **🔐 Kubernetes (k3s)** - Lightweight Kubernetes cluster
-- **🌐 Nginx Ingress** - Professional load balancing and routing
-- **🔒 cert-manager** - Automatic SSL certificates via Let's Encrypt
-- **🔄 ArgoCD** - GitOps continuous deployment
-- **🔗 Tailscale** - Secure private network access
-- **🛡️ Security** - UFW firewall, fail2ban, automatic updates
+# Access your applications
+open https://app.local        # Landing page
+open https://argocd.local     # GitOps dashboard
+open https://portainer.local  # Kubernetes management
+```
+
+**That's it!** No `/etc/hosts` editing, no manual SSL setup, no complex configuration. 🎯
+
+---
+
+## 🎯 What This Provides
+
+### 🏠 **Local Development**
+- **📱 `.local` domains** - Automatic DNS resolution (no sudo needed)
+- **🔒 HTTPS everywhere** - Self-signed certificates, zero warnings
+- **⚡ 5-second startup** - Optimized Alpine containers
+- **🔄 One-command setup** - `make start` and you're running
+- **🚀 GitOps ready** - Same ArgoCD workflow as production
+
+### ☁️ **Production Ready**
+- **🏗️ Hetzner Cloud VPS** - Affordable, reliable hosting
+- **🔐 Kubernetes (k3s)** - Lightweight, production-grade
+- **🌐 Traefik Ingress** - Professional load balancing
+- **🔒 Let's Encrypt SSL** - Automatic certificate management
+- **🔄 ArgoCD GitOps** - Git-driven deployments
+- **🔗 Tailscale VPN** - Secure remote access
+- **🛡️ Security Hardened** - UFW, fail2ban, auto-updates
 
 ## 🏗️ Architecture
 
@@ -28,6 +50,15 @@ A complete, production-ready infrastructure stack:
   ├── 🔄 ArgoCD (GitOps)
   └── 🔗 Tailscale (Private Access)
 ```
+
+## 📚 Documentation
+
+- **[🚀 QUICKSTART](QUICKSTART.md)** - Get running in 2 minutes
+- **[📊 LOCAL-VS-PRODUCTION](LOCAL-VS-PRODUCTION.md)** - Environment comparison  
+- **[🔧 TROUBLESHOOTING](TROUBLESHOOTING.md)** - Fix issues fast
+- **[⚡ COMMANDS](COMMANDS.md)** - All available commands
+
+---
 
 ## 📁 Project Structure
 

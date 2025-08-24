@@ -52,12 +52,35 @@ check_security_services() {
     return $([ "$all_good" = true ] && echo 0 || echo 1)
 }
 
+# Wait for services to be ready
+wait_for_services() {
+    local timeout=30
+    local count=0
+    
+    info "Waiting for Kubernetes services to be ready..."
+    
+    while [ $count -lt $timeout ]; do
+        if ssh_vm "sudo k3s kubectl get svc traefik -n kube-system 2>/dev/null" > /dev/null; then
+            success "Services are ready"
+            return 0
+        fi
+        sleep 2
+        count=$((count + 2))
+    done
+    
+    warning "Services not ready after ${timeout}s, continuing anyway..."
+    return 1
+}
+
 # Check Kubernetes services
 check_kubernetes_services() {
     local vm_ip="$1"
     
-    # Get LoadBalancer services
-    local lb_services=$(ssh_vm "sudo k3s kubectl get svc --all-namespaces -o wide 2>/dev/null" | grep LoadBalancer || echo "")
+    # Wait for services to be ready first
+    wait_for_services
+    
+    # Get LoadBalancer services with error handling
+    local lb_services=$(ssh_vm "sudo k3s kubectl get svc --all-namespaces -o wide 2>/dev/null" | grep LoadBalancer 2>/dev/null || echo "")
     
     if [[ -n "$lb_services" ]]; then
         success "Kubernetes services running"
