@@ -22,12 +22,30 @@ subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 VM_NAME="${VM_NAME:-jterrazz-infra}"
 HOSTS_MARKER="# jterrazz-infra-local"
 
-# Get VM IP
+# Get VM IP (supports both bridged and regular networking)
 get_vm_ip() {
     local vm_ip=""
     
     if command -v multipass &> /dev/null; then
-        vm_ip=$(multipass info "$VM_NAME" --format json 2>/dev/null | jq -r '.info["'$VM_NAME'"].ipv4[0]' 2>/dev/null || echo "")
+        # Get all IPv4 addresses - prefer bridged network (typically first non-10.x.x.x)
+        local all_ips
+        all_ips=$(multipass info "$VM_NAME" --format json 2>/dev/null | jq -r '.info["'$VM_NAME'"].ipv4[]' 2>/dev/null || echo "")
+        
+        # If we have multiple IPs, prefer the bridged network IP (usually not 10.x.x.x or 192.168.64.x)
+        if [[ -n "$all_ips" ]]; then
+            while read -r ip; do
+                if [[ -n "$ip" && "$ip" != "null" ]]; then
+                    # Skip typical Multipass internal IPs and prefer bridged IPs
+                    if [[ ! "$ip" =~ ^192\.168\.64\. && ! "$ip" =~ ^10\. ]]; then
+                        vm_ip="$ip"
+                        break
+                    else
+                        # Fallback to internal IP if no bridged IP found
+                        vm_ip="$ip"
+                    fi
+                fi
+            done <<< "$all_ips"
+        fi
     fi
     
     if [[ -z "$vm_ip" || "$vm_ip" == "null" ]]; then
@@ -71,6 +89,18 @@ add_hosts_entries() {
     success "DNS entries added"
 }
 
+# Check if IP looks stable (bridged network)
+is_stable_ip() {
+    local vm_ip="$1"
+    
+    # Bridged IPs typically are on your local network range (192.168.1.x, 192.168.0.x, etc)
+    # and are more stable than Multipass internal ranges
+    if [[ "$vm_ip" =~ ^192\.168\.[0-9]+\.[0-9]+$ && ! "$vm_ip" =~ ^192\.168\.64\. ]]; then
+        return 0  # Likely stable bridged IP
+    fi
+    return 1  # Probably dynamic IP
+}
+
 # Show access URLs
 show_urls() {
     local vm_ip="$1"
@@ -84,7 +114,12 @@ show_urls() {
     echo "    • Traefik Dashboard: https://traefik.local (if configured)"
     
     subsection "💡 Development notes:"
-    echo "    • VM IP: $vm_ip (auto-updates when VM changes)"
+    echo "    • VM IP: $vm_ip"
+    if is_stable_ip "$vm_ip"; then
+        echo "    • Network: Bridged (stable IP - less likely to change)"
+    else
+        echo "    • Network: Dynamic (IP may change when VM recreated)"
+    fi
     echo "    • All services use HTTPS (production-like setup)"
     echo "    • Accept browser security warnings for self-signed certificates"
 }
@@ -97,7 +132,13 @@ main() {
     info "Getting VM IP address..."
     local vm_ip
     vm_ip=$(get_vm_ip)
-    success "VM IP: $vm_ip"
+    
+    # Show network type info
+    if is_stable_ip "$vm_ip"; then
+        success "VM IP: $vm_ip (bridged network)"
+    else
+        success "VM IP: $vm_ip (multipass internal)"
+    fi
     
     # Update /etc/hosts
     clean_hosts

@@ -136,7 +136,7 @@ configure_local_setup() {
     fi
 }
 
-# Setup local DNS automation
+# Setup local DNS with setup-local-dns.sh
 setup_local_dns() {
     # Check if we're in local development (multipass available)
     if command -v multipass &> /dev/null; then
@@ -144,7 +144,7 @@ setup_local_dns() {
             ./scripts/setup-local-dns.sh setup
             return $?
         else
-            warn "setup-local-dns.sh not found, skipping local DNS setup"
+            warning "DNS setup script not found, skipping local DNS setup"
             return 1
         fi
     else
