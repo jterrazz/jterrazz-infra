@@ -11,10 +11,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
-success() { echo -e "${GREEN}✅ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-error() { echo -e "${RED}❌ $1${NC}"; }
+info() { echo -e "${BLUE}→ $1${NC}"; }
+success() { echo -e "${GREEN}✓ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+error() { echo -e "${RED}✗ $1${NC}"; }
+section() { echo -e "\n${GREEN}▶ $1${NC}"; }
+subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
 # Configuration
 VM_NAME="${VM_NAME:-jterrazz-infra}"
@@ -73,26 +75,25 @@ add_hosts_entries() {
 show_urls() {
     local vm_ip="$1"
     
-    echo
-    success "🌐 Local DNS configured! Access your services:"
-        echo "  • Landing Page:      https://app.local"
-    echo "  • ArgoCD:           https://argocd.local"
-    echo "  • Portainer:        https://portainer.local"
-    echo "  • Traefik Dashboard: https://traefik.local (if configured)"
-    echo
-    info "💡 VM IP: $vm_ip - URLs will auto-update when VM changes"
-    echo
-    info "💡 All services use HTTPS (production-like setup)"
-    info "💡 Accept browser security warnings for self-signed certificates"
+    section "🌐 Local Services Ready"
+    
+    subsection "Access your applications:"
+    echo "    • Landing Page:      https://app.local"
+    echo "    • ArgoCD:           https://argocd.local"
+    echo "    • Portainer:        https://portainer.local"
+    echo "    • Traefik Dashboard: https://traefik.local (if configured)"
+    
+    subsection "💡 Development notes:"
+    echo "    • VM IP: $vm_ip (auto-updates when VM changes)"
+    echo "    • All services use HTTPS (production-like setup)"
+    echo "    • Accept browser security warnings for self-signed certificates"
 }
 
 # Main function
 main() {
-    echo -e "${GREEN}🔧 Setting up local DNS automation${NC}"
-    echo "Configuring /etc/hosts for seamless local development"
-    echo
+    section "🔧 Local DNS Configuration"
+    subsection "Configuring /etc/hosts for seamless local development"
     
-    # Get VM IP
     info "Getting VM IP address..."
     local vm_ip
     vm_ip=$(get_vm_ip)

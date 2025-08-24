@@ -14,11 +14,14 @@ NC := \033[0m
 ##@ Local Development (Real K3s + Ansible)
 
 start: ## Complete local setup (VM + Ansible + K3s + Apps)
-	@echo "$(GREEN)Setting up complete local environment...$(NC)"
+	@echo "$(GREEN)🚀 Starting Complete Local Environment Setup$(NC)"
+	@echo "$(BLUE)This will create VM, configure security, install K3s, and deploy apps$(NC)"
+	@echo
 	./scripts/local-dev.sh full
-	@echo "$(GREEN)Deploying applications...$(NC)"
 	./scripts/deploy-apps.sh
-	@echo "$(GREEN)Local environment ready! Check URLs above$(NC)"
+	@echo
+	@echo "$(GREEN)✓ Local environment is ready!$(NC)"
+	@echo "$(BLUE)→ Check the service URLs above to access your applications$(NC)"
 
 infra: ## Infrastructure only (VM + Ansible + K3s)
 	@echo "$(GREEN)Setting up infrastructure (VM + K3s)...$(NC)"

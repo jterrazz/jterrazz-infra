@@ -11,11 +11,13 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Helper functions
-info() { echo -e "${BLUE}ℹ️ $1${NC}"; }
-success() { echo -e "${GREEN}✅ $1${NC}"; }
-warning() { echo -e "${YELLOW}⚠️ $1${NC}"; }
-error() { echo -e "${RED}❌ $1${NC}"; }
+# Helper functions with better UX hierarchy
+info() { echo -e "${BLUE}→ $1${NC}"; }
+success() { echo -e "${GREEN}✓ $1${NC}"; }
+warning() { echo -e "${YELLOW}⚠ $1${NC}"; }
+error() { echo -e "${RED}✗ $1${NC}"; }
+section() { echo -e "\n${GREEN}▶ $1${NC}"; }
+subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
 # Check if kubectl is available and cluster is reachable
 check_cluster() {
@@ -46,10 +48,11 @@ check_cluster() {
 
 # Deploy Traefik middleware configurations
 deploy_traefik_configs() {
-    info "Deploying Traefik middleware configurations..."
+    section "Configuring Traefik"
+    info "Deploying middleware configurations..."
     
     if kubectl apply -f kubernetes/traefik/middleware.yml; then
-        success "Traefik middleware deployed"
+        success "Traefik middleware configured"
     else
         warning "Failed to deploy Traefik middleware (may already exist)"
     fi
@@ -57,7 +60,8 @@ deploy_traefik_configs() {
 
 # Deploy ArgoCD applications for GitOps
 deploy_argocd_apps() {
-    info "Deploying ArgoCD applications for GitOps automation..."
+    section "Setting up GitOps with ArgoCD"
+    info "Deploying application manifests..."
     
     # Deploy the ArgoCD applications that will manage everything else
     for app in kubernetes/argocd/*.yml; do
@@ -78,12 +82,12 @@ deploy_argocd_apps() {
 # Wait for ArgoCD to sync applications
 wait_for_sync() {
     info "Waiting for ArgoCD to sync applications..."
-    
-    # Give ArgoCD some time to detect and sync the applications
     sleep 10
     
     info "Checking ArgoCD application status..."
+    echo
     kubectl get applications -n argocd || true
+    echo
     
     success "ArgoCD applications are now managing your infrastructure!"
     info "Visit ArgoCD dashboard to monitor deployments."
@@ -91,14 +95,14 @@ wait_for_sync() {
 
 # Configure local development setup
 configure_local_setup() {
-    info "Configuring local development setup..."
+    section "Configuring Local Development"
     
     # Create necessary namespaces
-    info "Creating necessary namespaces..."
+    info "Setting up namespaces..."
     kubectl create namespace portainer --dry-run=client -o yaml | kubectl apply -f -
     
     # Deploy simple landing page
-    info "Deploying landing page service..."
+    info "Deploying landing page..."
     kubectl apply -f kubernetes/services/landing-page.yml
     
     # Apply HTTPS-only ingresses for local development
@@ -134,19 +138,11 @@ configure_local_setup() {
 
 # Setup local DNS automation
 setup_local_dns() {
-    info "Setting up local DNS automation..."
-    
     # Check if we're in local development (multipass available)
     if command -v multipass &> /dev/null; then
         if [[ -f "scripts/setup-local-dns.sh" ]]; then
-            info "Configuring /etc/hosts for seamless local access..."
-            if ./scripts/setup-local-dns.sh setup; then
-                success "Local DNS configured successfully!"
-                return 0
-            else
-                warn "Local DNS setup failed, but deployment continues..."
-                return 1
-            fi
+            ./scripts/setup-local-dns.sh setup
+            return $?
         else
             warn "setup-local-dns.sh not found, skipping local DNS setup"
             return 1
@@ -159,8 +155,7 @@ setup_local_dns() {
 
 # Display access information
 show_access_info() {
-    success "🚀 Deployment Complete!"
-    echo
+    section "🎉 Deployment Complete!"
     
     # Try to setup local DNS first
     local dns_configured=false
@@ -170,25 +165,21 @@ show_access_info() {
     
     if [[ "$dns_configured" == "true" ]]; then
         # Local development with DNS configured - URLs already shown by DNS script
-        success "🎉 HTTPS setup complete! All services accessible via secure URLs shown above"
+        success "All services are now accessible via HTTPS"
     else
         # Production or local fallback
-        info "🌐 Access your applications:"
-        echo "  • Landing Page:      https://yourdomain.com"
-        echo "  • ArgoCD:           https://argocd.yourdomain.com"
-        echo "  • Portainer:        https://portainer.yourdomain.com"
-        echo
-        info "💡 Configure your domain DNS to point to this server"
+        subsection "🌐 Access your applications:"
+        echo "    • Landing Page:      https://yourdomain.com"
+        echo "    • ArgoCD:           https://argocd.yourdomain.com"
+        echo "    • Portainer:        https://portainer.yourdomain.com"
+        info "Configure your domain DNS to point to this server"
     fi
-    
-
 }
 
 # Main execution
 main() {
-    echo -e "${GREEN}🚀 Deploying Kubernetes Applications${NC}"
-    echo "This will deploy your applications via ArgoCD GitOps"
-    echo
+    echo -e "\n${GREEN}🚀 Kubernetes Application Deployment${NC}"
+    echo -e "${BLUE}Setting up your applications via ArgoCD GitOps${NC}"
     
     check_cluster
     deploy_traefik_configs

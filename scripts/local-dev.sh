@@ -15,11 +15,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# Logging
-info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
-success() { echo -e "${GREEN}✅ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠️  $1${NC}"; }
-error() { echo -e "${RED}❌ $1${NC}"; }
+# Logging with better UX hierarchy
+info() { echo -e "${BLUE}→ $1${NC}"; }
+success() { echo -e "${GREEN}✓ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+error() { echo -e "${RED}✗ $1${NC}"; }
+section() { echo -e "\n${GREEN}▶ $1${NC}"; }
+subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
 # VM Configuration
 VM_NAME="jterrazz-infra"
@@ -29,24 +31,27 @@ VM_DISK="20G"
 
 # Create Ubuntu VM
 create_vm() {
-    info "Creating Ubuntu VM '$VM_NAME'..."
+    section "Setting up Ubuntu VM"
     
     if multipass list | grep -q "$VM_NAME"; then
         local vm_status
         vm_status=$(multipass list | grep "$VM_NAME" | awk '{print $2}')
         
         if [ "$vm_status" = "Running" ]; then
-            success "VM '$VM_NAME' is already running!"
-            info "💡 If you want to start fresh, run: make clean && make start"
-            info "💡 To deploy apps on existing VM, run: make apps"
+            success "VM '$VM_NAME' is already running"
+            subsection "💡 Quick tips:"
+            echo "    • Fresh start: make clean && make start"
+            echo "    • Deploy apps: make apps"
             return 0
         else
-            info "VM '$VM_NAME' exists but is $vm_status. Starting it..."
+            info "VM exists but is $vm_status, starting..."
             multipass start "$VM_NAME"
             success "VM '$VM_NAME' started"
             return 0
         fi
     fi
+    
+    info "Creating new VM '$VM_NAME'..."
     
     multipass launch \
         --name "$VM_NAME" \
@@ -243,22 +248,23 @@ status() {
         local vm_ip
         vm_ip=$(multipass info "$VM_NAME" | grep IPv4 | awk '{print $2}')
         
-        echo
+        section "System Health Check"
+        
         info "Testing SSH connectivity..."
         if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "echo 'SSH OK'" 2>/dev/null; then
-            echo "🟢 SSH: Connected"
+            success "SSH connection established"
         else
-            echo "🔴 SSH: Failed"
+            error "SSH connection failed"
         fi
         
-        info "Testing Kubernetes..."
+        info "Testing Kubernetes cluster..."
         if ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" -o StrictHostKeyChecking=no ubuntu@"$vm_ip" "sudo k3s kubectl get nodes" 2>/dev/null; then
-            echo "🟢 Kubernetes: Running"
+            success "Kubernetes cluster is healthy"
         else
-            echo "🔴 Kubernetes: Not running"
+            error "Kubernetes cluster not responding"
         fi
     else
-        echo "🔴 VM: Not found"
+        error "VM: Not found"
     fi
 }
 

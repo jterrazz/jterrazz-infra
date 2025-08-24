@@ -18,26 +18,23 @@ readonly YELLOW='\033[1;33m'
 readonly BLUE='\033[0;34m'
 readonly NC='\033[0m' # No Color
 
-# Logging functions
-log() { echo -e "${GREEN}[INFO]${NC} $*"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-info() { echo -e "${BLUE}[INFO]${NC} $*"; }
+# Logging functions with better UX hierarchy
+info() { echo -e "${BLUE}→ $1${NC}"; }
+success() { echo -e "${GREEN}✓ $1${NC}"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
+error() { echo -e "${RED}✗ $1${NC}" >&2; }
+section() { echo -e "\n${GREEN}▶ $1${NC}"; }
+subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
 print_header() {
     echo
-    echo -e "${BLUE}═══ $1 ═══${NC}"
-    echo
-}
-
-print_section() {
-    echo
-    echo -e "${BLUE}▸ $1${NC}"
+    echo -e "${GREEN}🚀 $1${NC}"
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 }
 
 # Check prerequisites
 check_prerequisites() {
-    print_section "Checking Prerequisites"
+    section "Checking Prerequisites"
     
     local missing=()
     
@@ -51,110 +48,116 @@ check_prerequisites() {
     if [[ ${#missing[@]} -gt 0 ]]; then
         error "Missing required tools: ${missing[*]}"
         echo
-        echo "Install missing tools:"
-        echo "• Terraform: https://terraform.io/downloads"
-        echo "• Ansible: pip install ansible"
-        echo "• SSH tools: usually pre-installed"
+        subsection "📦 Install missing tools:"
+        echo "    • Terraform: https://terraform.io/downloads"
+        echo "    • Ansible: pip install ansible"
+        echo "    • SSH tools: usually pre-installed"
         exit 1
     fi
     
-    log "All prerequisites satisfied ✅"
+    success "All prerequisites satisfied"
 }
 
 # Initialize Terraform
 init_terraform() {
-    print_section "Initializing Terraform"
+    section "Initializing Terraform"
     
     cd "$TERRAFORM_DIR"
     
     if [[ ! -f terraform.tfvars ]]; then
         error "terraform.tfvars not found!"
         echo
-        echo "Create terraform.tfvars with your configuration:"
-        echo "See terraform.tfvars.example for template"
+        subsection "📝 Configuration required:"
+        echo "    • Create terraform.tfvars with your configuration"
+        echo "    • See terraform.tfvars.example for template"
         exit 1
     fi
     
-    log "Initializing Terraform..."
+    info "Initializing Terraform backend..."
     terraform init
     
-    log "Validating Terraform configuration..."
+    info "Validating configuration..."
     terraform validate
     
-    log "Terraform initialized ✅"
+    success "Terraform initialized and validated"
 }
 
 # Deploy infrastructure
 deploy_infrastructure() {
-    print_section "Deploying Infrastructure"
+    section "Deploying Infrastructure"
     
     cd "$TERRAFORM_DIR"
     
-    log "Planning infrastructure deployment..."
+    info "Planning infrastructure deployment..."
     terraform plan -out=tfplan
     
     echo
+    subsection "🤔 Review the plan above carefully"
     read -p "Deploy infrastructure? (y/N) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        warn "Deployment cancelled"
+        warn "Deployment cancelled by user"
         exit 0
     fi
     
-    log "Applying Terraform configuration..."
+    info "Applying Terraform configuration..."
     terraform apply tfplan
     
-    log "Infrastructure deployed ✅"
+    success "Infrastructure deployed successfully"
 }
 
 # Generate Ansible inventory
 generate_inventory() {
-    print_section "Generating Ansible Inventory"
+    section "Generating Ansible Inventory"
     
     cd "$TERRAFORM_DIR"
     
-    log "Generating Ansible inventory from Terraform output..."
+    info "Extracting server information from Terraform..."
     terraform output -raw ansible_inventory > "$ANSIBLE_DIR/inventory.yml"
     
-    log "Ansible inventory generated ✅"
+    success "Ansible inventory generated"
 }
 
 # Run Ansible playbook
 configure_server() {
-    print_section "Configuring Server with Ansible"
+    section "Configuring Server with Ansible"
     
     cd "$ANSIBLE_DIR"
     
     # Wait for server to be ready
-    log "Waiting for server to be ready..."
+    info "Waiting for server to be ready..."
     sleep 30
     
-    log "Running Ansible playbook..."
+    info "Running Ansible playbook (security, K3s, ArgoCD)..."
     ansible-playbook -i inventory.yml site.yml
     
-    log "Server configuration completed ✅"
+    success "Server configuration completed"
 }
 
 # Display summary
 show_summary() {
-    print_section "Deployment Summary"
+    section "🎉 Deployment Summary"
     
     cd "$TERRAFORM_DIR"
     
     echo
-    echo "🎉 Infrastructure deployment completed successfully!"
-    echo
-    echo "📋 Access Information:"
+    subsection "📋 Access Information:"
     terraform output deployment_summary
+    
     echo
-    echo "🔑 Kubeconfig downloaded to: ./kubeconfig"
-    echo "   Set it as default: export KUBECONFIG=./kubeconfig"
+    subsection "🔑 Kubernetes Access:"
+    echo "    • Kubeconfig downloaded to: ./kubeconfig"
+    echo "    • Set as default: export KUBECONFIG=./kubeconfig"
+    
     echo
-    echo "🚀 Next Steps:"
-    echo "1. Test Kubernetes: kubectl get nodes"
-    echo "2. Access ArgoCD: kubectl -n argocd get secret argocd-initial-admin-secret"
-    echo "3. Deploy your applications via ArgoCD"
+    subsection "🚀 Next Steps:"
+    echo "    1. Test cluster: kubectl get nodes"
+    echo "    2. Get ArgoCD password: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+    echo "    3. Deploy applications via ArgoCD UI"
+    echo "    4. Configure DNS to point to your server"
+    
     echo
+    success "Production infrastructure is ready!"
 }
 
 # Main deployment function
@@ -163,9 +166,10 @@ main() {
     
     print_header "JTerrazz Infrastructure Deployment"
     
-    info "Environment: $environment"
-    info "Project: $(basename "$PROJECT_ROOT")"
-    echo
+    subsection "🎯 Deployment Configuration:"
+    echo "    • Environment: $environment"
+    echo "    • Project: $(basename "$PROJECT_ROOT")"
+    echo "    • Target: Production Kubernetes cluster"
     
     check_prerequisites
     init_terraform
@@ -174,7 +178,7 @@ main() {
     configure_server
     show_summary
     
-    print_header "Deployment Complete! 🎉"
+    print_header "🎉 Deployment Complete!"
 }
 
 # Handle script arguments
@@ -183,19 +187,32 @@ case "${1:-}" in
         main "$1"
         ;;
     --help|-h)
-        echo "Usage: $0 [environment]"
+        print_header "JTerrazz Infrastructure Bootstrap"
+        
+        subsection "📖 Usage:"
+        echo "    $0 [environment]"
+        
         echo
-        echo "Environments:"
-        echo "  production   Deploy production infrastructure (default)"
-        echo "  staging      Deploy staging infrastructure"
-        echo "  development  Deploy development infrastructure"
+        subsection "🌍 Environments:"
+        echo "    • production   Deploy production infrastructure (default)"
+        echo "    • staging      Deploy staging infrastructure"
+        echo "    • development  Deploy development infrastructure"
+        
         echo
-        echo "Prerequisites:"
-        echo "  • Terraform >= 1.0"
-        echo "  • Ansible >= 2.9"
-        echo "  • SSH key pair"
-        echo "  • Hetzner Cloud API token"
-        echo "  • Cloudflare API token (optional)"
+        subsection "📋 Prerequisites:"
+        echo "    • Terraform >= 1.0"
+        echo "    • Ansible >= 2.9"
+        echo "    • SSH key pair"
+        echo "    • Hetzner Cloud API token"
+        echo "    • Cloudflare API token (optional)"
+        
+        echo
+        subsection "🚀 What this script does:"
+        echo "    1. Validates prerequisites"
+        echo "    2. Initializes Terraform"
+        echo "    3. Deploys cloud infrastructure"
+        echo "    4. Configures servers with Ansible"
+        echo "    5. Sets up Kubernetes + ArgoCD"
         echo
         exit 0
         ;;
