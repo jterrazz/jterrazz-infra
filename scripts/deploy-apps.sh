@@ -46,15 +46,46 @@ check_cluster() {
     success "Connected to cluster"
 }
 
+# Wait for Traefik CRDs to be available
+wait_for_traefik_crds() {
+    info "Waiting for Traefik CRDs to be available..."
+    
+    local max_attempts=30
+    local attempt=0
+    
+    while [[ $attempt -lt $max_attempts ]]; do
+        if kubectl get crd middlewares.traefik.containo.us &>/dev/null && \
+           kubectl get crd ingressroutes.traefik.containo.us &>/dev/null; then
+            success "Traefik CRDs are available"
+            return 0
+        fi
+        
+        ((attempt++))
+        if [[ $attempt -eq 1 ]]; then
+            info "Waiting for Traefik to install CRDs... (attempt $attempt/$max_attempts)"
+        elif [[ $((attempt % 5)) -eq 0 ]]; then
+            info "Still waiting for Traefik CRDs... (attempt $attempt/$max_attempts)"
+        fi
+        sleep 2
+    done
+    
+    warning "Traefik CRDs not available after $max_attempts attempts"
+    info "This may cause some Traefik-specific resources to fail"
+    return 1
+}
+
 # Deploy Traefik middleware configurations
 deploy_traefik_configs() {
     section "Configuring Traefik"
-    info "Deploying middleware configurations..."
     
+    # Wait for Traefik CRDs first
+    wait_for_traefik_crds
+    
+    info "Deploying middleware configurations..."
     if kubectl apply -f kubernetes/traefik/middleware.yml; then
         success "Traefik middleware configured"
     else
-        warning "Failed to deploy Traefik middleware (may already exist)"
+        warning "Failed to deploy Traefik middleware (CRDs may not be ready yet)"
     fi
 }
 
@@ -93,6 +124,32 @@ wait_for_sync() {
     info "Visit ArgoCD dashboard to monitor deployments."
 }
 
+# Wait for ArgoCD to be ready
+wait_for_argocd() {
+    info "Waiting for ArgoCD to be ready..."
+    
+    local max_attempts=60
+    local attempt=0
+    
+    while [[ $attempt -lt $max_attempts ]]; do
+        if kubectl get configmap argocd-cmd-params-cm -n argocd &>/dev/null; then
+            success "ArgoCD is ready"
+            return 0
+        fi
+        
+        ((attempt++))
+        if [[ $attempt -eq 1 ]]; then
+            info "Waiting for ArgoCD to be fully deployed... (attempt $attempt/$max_attempts)"
+        elif [[ $((attempt % 10)) -eq 0 ]]; then
+            info "Still waiting for ArgoCD... (attempt $attempt/$max_attempts)"
+        fi
+        sleep 3
+    done
+    
+    warning "ArgoCD not ready after $max_attempts attempts"
+    return 1
+}
+
 # Configure local development setup
 configure_local_setup() {
     section "Configuring Local Development"
@@ -105,13 +162,17 @@ configure_local_setup() {
     info "Deploying landing page..."
     kubectl apply -f kubernetes/services/landing-page.yml
     
+    # Ensure Traefik CRDs are ready before applying ingresses
+    info "Ensuring Traefik is ready for ingress configuration..."
+    wait_for_traefik_crds
+    
     # Apply HTTPS-only ingresses for local development
     if [[ -f "kubernetes/ingress/local-https-only-ingresses.yml" ]]; then
         info "Deploying HTTPS-only ingresses..."
         if kubectl apply -f kubernetes/ingress/local-https-only-ingresses.yml; then
             success "HTTPS ingresses deployed"
         else
-            error "Failed to deploy HTTPS ingresses"
+            warning "Failed to deploy HTTPS ingresses (Traefik CRDs may not be ready)"
         fi
     fi
     
@@ -121,18 +182,22 @@ configure_local_setup() {
         if kubectl apply -f kubernetes/traefik/global-https-redirect.yml; then
             success "Global HTTPS redirect deployed"
         else
-            error "Failed to deploy global HTTPS redirect"
+            warning "Failed to deploy global HTTPS redirect (Traefik CRDs may not be ready)"
         fi
     fi
     
-    # Configure ArgoCD for insecure mode (required for ingress)
+    # Wait for ArgoCD and configure for insecure mode (required for ingress)
     info "Configuring ArgoCD for ingress compatibility..."
-    if kubectl patch configmap argocd-cmd-params-cm -n argocd --patch '{"data":{"server.insecure":"true"}}'; then
-        info "Restarting ArgoCD server..."
-        kubectl rollout restart deployment argocd-server -n argocd
-        success "ArgoCD configured for HTTPS ingress"
+    if wait_for_argocd; then
+        if kubectl patch configmap argocd-cmd-params-cm -n argocd --patch '{"data":{"server.insecure":"true"}}'; then
+            info "Restarting ArgoCD server..."
+            kubectl rollout restart deployment argocd-server -n argocd
+            success "ArgoCD configured for HTTPS ingress"
+        else
+            warning "Failed to configure ArgoCD insecure mode"
+        fi
     else
-        error "Failed to configure ArgoCD insecure mode"
+        warning "ArgoCD not ready - skipping insecure mode configuration"
     fi
 }
 
