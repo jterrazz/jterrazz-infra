@@ -26,5 +26,3 @@
   ufw:
     state: reloaded
   listen: "reload ufw"
-
-

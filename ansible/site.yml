@@ -113,6 +113,13 @@
       when: not (skip_argocd | default(false))
       changed_when: true
 
+    # Development-only deployments
+    - name: Deploy mDNS publisher for local DNS resolution
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/services/mdns-publisher.yml') | from_yaml_all }}"
+      when: is_local_development | default(false)
+
     - name: Get Tailscale IP if connected
       ansible.builtin.command: tailscale ip -4
       register: tailscale_ip_result

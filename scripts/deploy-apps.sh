@@ -201,14 +201,6 @@ configure_local_setup() {
     else
         warning "ArgoCD not ready - skipping insecure mode configuration"
     fi
-    
-    # Deploy mDNS publisher for local development
-    info "Setting up mDNS for local DNS resolution..."
-    if kubectl apply -f kubernetes/services/mdns-publisher.yml; then
-        success "mDNS publisher deployed - domains will resolve automatically!"
-    else
-        warning "mDNS publisher deployment failed - DNS resolution may not work"
-    fi
 }
 
 # Display access information
