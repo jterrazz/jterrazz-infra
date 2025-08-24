@@ -3,7 +3,7 @@
 
 ---
 # Environment identification
-environment_type: "local"
+environment_type: "multipass"
 deployment_method: "docker"
 is_local_development: true
 

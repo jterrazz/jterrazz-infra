@@ -19,7 +19,6 @@
     helm_version: "v3.13.3"
     argocd_version: "v2.9.3"
 
-
     # Tailscale
     tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
 
@@ -27,9 +26,9 @@
     - name: Display deployment environment information
       ansible.builtin.debug:
         msg: |
-          {% if environment_type == 'local' %}
+          {% if environment_type in ['local', 'multipass'] %}
           🏠 Starting LOCAL DEVELOPMENT deployment
-          📦 Target: Docker container ({{ ansible_hostname }})
+          📦 Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
           🔧 Environment: {{ environment_type | default('production') }}
           ⚠️  This is NOT a production deployment!
           {% else %}
@@ -42,10 +41,10 @@
     - name: Wait for system to be ready (local development)
       ansible.builtin.wait_for_connection:
         connect_timeout: 20
-        sleep: 5
-        delay: 5
+        sleep: 0
+        delay: 0
         timeout: 300
-      when: environment_type == 'local'
+      when: environment_type in ['local', 'multipass']
 
     - name: Update package cache
       ansible.builtin.apt:
@@ -65,10 +64,10 @@
           - gnupg
           - lsb-release
           - python3-pip
-          - python3-yaml  # Required for Ansible Kubernetes modules
-          - python3-kubernetes  # Required for Ansible Kubernetes modules
+          - python3-yaml # Required for Ansible Kubernetes modules
+          - python3-kubernetes # Required for Ansible Kubernetes modules
           - jq
-          - iptables  # Required for k3s networking
+          - iptables # Required for k3s networking
         state: present
 
     - name: Create k3s directories
@@ -116,7 +115,7 @@
           🎉 Jterrazz Infrastructure Setup Complete!
 
           📋 Summary:
-          • Environment: {{ environment_type | default('local') }}
+          • Environment: {{ environment_type | default('production') }}
           • Target: {{ ansible_hostname }}
 
           🔧 Installed Components:

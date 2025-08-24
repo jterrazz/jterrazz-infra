@@ -6,7 +6,7 @@ bind-address: {{ k3s_node_ip }}
 https-listen-port: 6443
 
 # Single-node cluster configuration
-{% if environment_type != 'local' %}
+{% if environment_type not in ['local', 'multipass'] %}
 cluster-init: true
 {% endif %}
 token: {{ k3s_token }}
