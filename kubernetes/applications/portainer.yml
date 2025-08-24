@@ -121,8 +121,8 @@ metadata:
   annotations:
     # Traefik automatic HTTPS redirect
     traefik.ingress.kubernetes.io/redirect-entry-point: https
-    # Traefik backend protocol (HTTPS backend)
-    traefik.ingress.kubernetes.io/service.serversscheme: https
+    # Traefik backend protocol (HTTP backend) 
+    traefik.ingress.kubernetes.io/service.serversscheme: http
     # Restrict to Tailscale IPs only using Traefik middleware
     traefik.ingress.kubernetes.io/router.middlewares: default-tailscale-whitelist@kubernetescrd
 spec:
@@ -141,4 +141,4 @@ spec:
               service:
                 name: portainer
                 port:
-                  number: 9443
+                  number: 9000
