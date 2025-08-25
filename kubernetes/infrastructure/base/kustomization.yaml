@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: infrastructure-base
+
+resources:
+  # Infrastructure applications
+  - argocd/
+  - portainer/portainer.yml
+  
+  # Traefik configurations
+  - traefik/middleware.yml
+  - traefik/global-https-redirect.yml
+
+# Note: mDNS publisher and TLS certificates are dev-only (in overlays)

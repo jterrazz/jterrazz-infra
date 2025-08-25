@@ -82,148 +82,13 @@
 
     - role: helm
 
-    # Removed complex roles - using Traefik built-in instead!
-    # - cert-manager: Not needed, Traefik has built-in ACME
-    # - nginx-ingress: Not needed, k3s comes with Traefik
-    # Note: ArgoCD and Portainer are now deployed in post_tasks for consistency
-
   post_tasks:
-    # Deploy infrastructure applications
-    - name: Create infrastructure namespaces
-      kubernetes.core.k8s:
-        name: "{{ item }}"
-        api_version: v1
-        kind: Namespace
-        state: present
-      loop:
-        - portainer
-        - argocd
-
-    - name: Deploy Portainer
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/applications/portainer.yml') | from_yaml_all }}"
-      when: not (skip_portainer | default(false))
-
-    - name: Deploy ArgoCD
-      ansible.builtin.shell: |
-        kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-      when: not (skip_argocd | default(false))
-      changed_when: true
-
-    - name: Deploy mDNS publisher for local DNS resolution
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/services/mdns-publisher.yml') | from_yaml_all }}"
-      when: is_local_development | default(false)
-
-    # Wait for Traefik CRDs to be available before deploying dependent resources
-    - name: Wait for Traefik middleware CRD
-      kubernetes.core.k8s_info:
-        api_version: apiextensions.k8s.io/v1
-        kind: CustomResourceDefinition
-        name: middlewares.traefik.containo.us
-      register: middleware_crd_check
-      until: middleware_crd_check.resources | length > 0
-      retries: 60
-      delay: 5
-      failed_when: false
-
-    - name: Wait for Traefik IngressRoute CRD
-      kubernetes.core.k8s_info:
-        api_version: apiextensions.k8s.io/v1
-        kind: CustomResourceDefinition
-        name: ingressroutes.traefik.containo.us
-      register: ingressroute_crd_check
-      until: ingressroute_crd_check.resources | length > 0
-      retries: 60
-      delay: 5
-      failed_when: false
-
-    - name: Deploy Traefik middleware configurations
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/traefik/middleware.yml') | from_yaml_all }}"
-      when: middleware_crd_check is succeeded
-
-    - name: Deploy global HTTPS redirect
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/traefik/global-https-redirect.yml') | from_yaml_all }}"
-      when: ingressroute_crd_check is succeeded
-
-    - name: Create TLS certificates for .local domains
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/jobs/create-tls-certificates.yml') | from_yaml_all }}"
-      when: is_local_development | default(false)
-
-    - name: Deploy landing page for local development
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/services/landing-page.yml') | from_yaml_all }}"
-      when: is_local_development | default(false)
-
-    - name: Deploy mDNS ingresses for local development
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/ingress/local-mdns-ingresses.yml') | from_yaml_all }}"
-      when: is_local_development | default(false) and ingressroute_crd_check is succeeded
-
-    # Configure ArgoCD for local development (insecure mode for ingress)
-    - name: Wait for ArgoCD to be ready
-      kubernetes.core.k8s_info:
-        api_version: v1
-        kind: ConfigMap
-        name: argocd-cmd-params-cm
-        namespace: argocd
-      register: argocd_configmap_check
-      until: argocd_configmap_check.resources | length > 0
-      retries: 60
-      delay: 5
-      when: is_local_development | default(false) and not (skip_argocd | default(false))
-
-    - name: Configure ArgoCD for insecure mode (required for ingress)
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: argocd-cmd-params-cm
-            namespace: argocd
-          data:
-            server.insecure: "true"
-        merge_type: merge
-      when: is_local_development | default(false) and not (skip_argocd | default(false)) and argocd_configmap_check is succeeded
-
-    - name: Restart ArgoCD server to apply insecure mode
-      kubernetes.core.k8s:
-        state: present
-        api_version: apps/v1
-        kind: Deployment
-        name: argocd-server
-        namespace: argocd
-        definition:
-          spec:
-            template:
-              metadata:
-                annotations:
-                  kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 }}"
-      when: is_local_development | default(false) and not (skip_argocd | default(false)) and argocd_configmap_check is succeeded
-
     - name: Get Tailscale IP if connected
       ansible.builtin.command: tailscale ip -4
       register: tailscale_ip_result
       changed_when: false
       failed_when: false
       when: not (skip_tailscale | default(false))
-
-    - name: Display cluster information
-      ansible.builtin.debug:
-        msg: "✅ Infrastructure setup complete - run 'make access' to see URLs"
 
     - name: Create kubeconfig copy
       ansible.builtin.fetch:
@@ -236,7 +101,23 @@
       ansible.builtin.replace:
         path: "{% if environment_type == 'multipass' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
-        replace: "{% if environment_type == 'multipass' %}https://localhost:6443{% else %}https://{{ ansible_host }}:6443{% endif %}"
+        replace: "https://{{ ansible_host }}:6443"
         backup: false
       delegate_to: localhost
       become: false
+
+    # Deploy all infrastructure (after kubeconfig is ready)
+    - name: Deploy infrastructure components
+      ansible.builtin.shell: |
+        kubectl apply -k kubernetes/infrastructure/environments/{{ environment_type | default('production') }}
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      delegate_to: localhost
+      become: false
+      environment:
+        KUBECONFIG: "{% if environment_type == 'multipass' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+      changed_when: true
+
+    - name: Display cluster information
+      ansible.builtin.debug:
+        msg: "✅ Infrastructure setup complete - run 'make status' to see details"

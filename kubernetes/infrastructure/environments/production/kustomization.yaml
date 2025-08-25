@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: infrastructure-production
+
+resources:
+  # Base infrastructure only (no dev-specific components)
+  - ../../base
+
+# Production-specific patches
+# patchesStrategicMerge:
+# - patches/portainer-prod.yml
+
+# Production-specific resource limits
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: portainer
+      namespace: portainer
+    path: patches/portainer-resources.yml
+
+# Production-specific images with specific tags
+images:
+  - name: portainer/portainer-ce
+    newTag: "2.19.4"  # Use specific version in production

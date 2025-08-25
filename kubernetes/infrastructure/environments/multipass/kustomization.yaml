@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: infrastructure-multipass
+
+resources:
+  # Base infrastructure
+  - ../../base
+  
+  # Multipass-specific components
+  - components/mdns-publisher.yml
+  - components/landing-page.yml
+  - components/create-tls-certificates.yml
+  - components/local-mdns-ingresses.yml
+
+# Multipass-specific patches for local development
+patches:
+  - path: patches/argocd-insecure.yaml
+  - path: patches/argocd-server-restart.yaml
+
+# Development-specific images or configs can be added here if needed
+# images:
+# - name: portainer/portainer-ce
+#   newTag: "development"

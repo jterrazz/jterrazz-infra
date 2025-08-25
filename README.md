@@ -105,12 +105,15 @@ jterrazz-infra/
 │       ├── security/          # VPS hardening & UFW
 │       ├── k3s/               # Kubernetes cluster
 │       └── helm/              # Package manager
-├── ☸️ kubernetes/             # Infrastructure manifests (deployed by Ansible)
-│   ├── applications/          # Portainer, ArgoCD, landing page
-│   ├── ingress/              # mDNS ingresses for local dev
-│   ├── jobs/                 # TLS certificate creation
-│   ├── services/             # mDNS publisher
-│   └── traefik/              # Middleware & HTTPS redirect
+├── ☸️ kubernetes/             # Kubernetes-native infrastructure
+│   ├── applications/          # ArgoCD user application templates
+│   └── infrastructure/        # Infrastructure components (Kustomize)
+│       ├── base/              # Base infrastructure manifests
+│       │   ├── portainer/     # Kubernetes management UI
+│       │   └── traefik/       # Ingress controller configs
+│       └── environments/      # Environment-specific overlays
+│           ├── multipass/     # Local dev (includes mDNS, TLS)
+│           └── production/    # Production settings
 ├── 📜 scripts/                # Development utilities
 │   ├── lib/                   # Shared libraries
 │   │   ├── common.sh          # Colors, logging, VM utilities
@@ -380,11 +383,44 @@ spec:
 
 ### Infrastructure Components
 
-**All infrastructure** is deployed automatically by Ansible in `site.yml`:
+**All infrastructure** is deployed using **Kustomize** for environment-specific configurations:
 
-- Kubernetes manifests in `kubernetes/` folder
-- No manual deployment scripts needed
-- Consistent across local development and production
+- **Base manifests** in `kubernetes/infrastructure/base/`
+- **Environment overlays** in `kubernetes/infrastructure/environments/`
+- **Single command deployment**: `kubectl apply -k kubernetes/infrastructure/environments/multipass`
+- **Ansible orchestration**: Automated by `site.yml` post-tasks
+
+## 🎯 Why This Architecture?
+
+### **🏗️ Clean Separation of Concerns**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    INFRASTRUCTURE LAYER                     │
+│  (Automated via Ansible + Kustomize)                       │
+│                                                             │
+│  🏗️  OS Setup: Security, networking, packages              │
+│  ⚙️  k3s: Kubernetes cluster installation                  │
+│  📦 Kustomize: Infrastructure components deployment         │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                     APPLICATION LAYER                       │
+│  (GitOps with ArgoCD)                                      │
+│                                                             │
+│  🚀 ArgoCD: User applications from separate repos           │
+│  🔄 Git webhooks: Automatic deployments                    │
+│  📈 Rollbacks: Easy application management                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### **✨ Key Benefits**
+
+- **🎯 Ansible** handles OS/system concerns only
+- **☸️ Kubernetes-native** infrastructure management  
+- **🔄 ArgoCD** focuses on user applications
+- **📦 Kustomize** provides environment-specific configs
+- **⚡ One command** deploys everything per environment
 
 ## 💰 Cost Breakdown
 
