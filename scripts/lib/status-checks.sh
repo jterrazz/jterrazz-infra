@@ -358,14 +358,6 @@ show_vm_status() {
     fi
     echo ""
     
-    subsection "🔒 Network Security Summary"
-    echo "• Port access levels shown above indicate actual firewall restrictions"
-    echo "• PRIVATE ports: Restricted to internal networks + VPN only (excellent security)"
-    echo "• OPEN ports: Public access allowed (necessary for web services)"
-    echo "• BLOCKED ports: Service running but no firewall rule configured"
-    echo "• UFW firewall active with consistent rules across all environments"
-    echo ""
-    
     # Kubernetes services and pods
     show_kubernetes_services_table "$vm_ip"
     

@@ -81,34 +81,7 @@ setup_vm_ssh() {
     fi
 }
 
-# Fetch kubeconfig from VM
-fetch_kubeconfig() {
-    local vm_ip=$(get_vm_ip)
-    
-    if [[ -z "$vm_ip" ]]; then
-        error "Cannot determine VM IP"
-        return 1
-    fi
-    
-    # Fetch kubeconfig
-    if scp -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        ubuntu@"$vm_ip":/etc/rancher/k3s/k3s.yaml \
-        "$KUBECONFIG_PATH"; then
-        
-        # Update server address
-        sed -i.bak "s/127.0.0.1/$vm_ip/g" "$KUBECONFIG_PATH"
-        rm -f "$KUBECONFIG_PATH.bak"
-        
-        success "Kubeconfig fetched successfully"
-        info "Use: export KUBECONFIG=$KUBECONFIG_PATH"
-        return 0
-    else
-        error "Failed to fetch kubeconfig"
-        return 1
-    fi
-}
+
 
 # Delete VM completely
 delete_vm() {

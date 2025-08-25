@@ -41,16 +41,7 @@ cmd_ansible() {
     fi
 }
 
-cmd_kubeconfig() {
-    section "Getting Kubeconfig"
-    
-    if [[ -f "$KUBECONFIG_PATH" ]] && check_kubectl_connection; then
-        success "Existing kubeconfig is working"
-        info "Use: export KUBECONFIG=$KUBECONFIG_PATH"
-    else
-        fetch_kubeconfig
-    fi
-}
+
 
 cmd_status() {
     show_vm_status
@@ -78,7 +69,6 @@ cmd_full() {
     # Complete setup
     cmd_create
     cmd_ansible
-    cmd_kubeconfig
     
     # Wait for services
     info "Waiting for Kubernetes services..."
@@ -97,11 +87,10 @@ Usage: $0 <command>
 Commands:
   create      Create VM and setup SSH
   ansible     Run Ansible configuration
-  kubeconfig  Get kubeconfig from VM
   status      Show VM and service status
   ssh         SSH into VM
   delete      Delete VM and cleanup
-  full        Complete setup (create + ansible + kubeconfig)
+  full        Complete setup (create + ansible)
 
 Examples:
   $0 full      # Complete setup
@@ -114,7 +103,6 @@ EOF
 case "${1:-help}" in
     create)     cmd_create ;;
     ansible)    cmd_ansible ;;
-    kubeconfig) cmd_kubeconfig ;;
     status)     cmd_status ;;
     ssh)        cmd_ssh ;;
     delete)     cmd_delete ;;

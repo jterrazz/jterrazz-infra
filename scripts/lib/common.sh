@@ -36,15 +36,6 @@ is_development() {
     command -v multipass &> /dev/null
 }
 
-# Setup kubeconfig for kubectl commands
-setup_kubeconfig() {
-    if [[ -z "${KUBECONFIG:-}" ]] && [[ -f "$KUBECONFIG_PATH" ]]; then
-        export KUBECONFIG="$KUBECONFIG_PATH"
-        return 0
-    fi
-    return 1
-}
-
 # Get VM IP reliably
 get_vm_ip() {
     if is_development && multipass info "$VM_NAME" &>/dev/null; then
@@ -52,22 +43,6 @@ get_vm_ip() {
             jq -r ".info.\"$VM_NAME\".ipv4[0] // empty" | \
             grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || echo ""
     fi
-}
-
-# Check if kubectl can connect to cluster
-check_kubectl_connection() {
-    if ! command -v kubectl &> /dev/null; then
-        return 1
-    fi
-    
-    setup_kubeconfig
-    kubectl cluster-info &> /dev/null
-}
-
-# Run command with automatic kubeconfig setup
-run_kubectl() {
-    setup_kubeconfig
-    kubectl "$@"
 }
 
 # SSH helper for VM
