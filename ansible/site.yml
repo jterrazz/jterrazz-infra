@@ -80,8 +80,6 @@
 
     - role: k3s
 
-    - role: helm
-
   post_tasks:
     - name: Get Tailscale IP if connected
       ansible.builtin.command: tailscale ip -4

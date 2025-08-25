@@ -6,7 +6,6 @@
 ansible_python_interpreter: /usr/bin/python3
 
 # Application versions (consistent across environments)
-helm_version: "v3.13.3"
 k3s_version: "v1.28.5+k3s1"
 
 # Global k3s configuration
