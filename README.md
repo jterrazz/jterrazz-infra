@@ -21,6 +21,7 @@ open https://portainer.local  # Kubernetes management
 ## 🎯 What This Provides
 
 ### 🏠 **Local Development**
+
 - **📱 `.local` domains** - Automatic DNS resolution (no sudo needed)
 - **🔒 HTTPS everywhere** - Self-signed certificates, zero warnings
 - **⚡ 5-second startup** - Optimized Alpine containers
@@ -28,6 +29,7 @@ open https://portainer.local  # Kubernetes management
 - **🚀 GitOps ready** - Same ArgoCD workflow as production
 
 ### ☁️ **Production Ready**
+
 - **🏗️ Hetzner Cloud VPS** - Affordable, reliable hosting
 - **🔐 Kubernetes (k3s)** - Lightweight, production-grade
 - **🌐 Traefik Ingress** - Professional load balancing
@@ -54,7 +56,7 @@ open https://portainer.local  # Kubernetes management
 ## 📚 Documentation
 
 - **[🚀 QUICKSTART](QUICKSTART.md)** - Get running in 2 minutes
-- **[📊 LOCAL-VS-PRODUCTION](LOCAL-VS-PRODUCTION.md)** - Environment comparison  
+- **[📊 LOCAL-VS-PRODUCTION](LOCAL-VS-PRODUCTION.md)** - Environment comparison
 - **[🔧 TROUBLESHOOTING](TROUBLESHOOTING.md)** - Fix issues fast
 - **[⚡ COMMANDS](COMMANDS.md)** - All available commands
 
@@ -116,7 +118,7 @@ make dev-full        # Complete setup: clean -> start -> ansible -> test
 
 # 💡 More Makefile shortcuts:
 make local-start     # Start environment
-make local-ansible   # Run Ansible  
+make local-ansible   # Run Ansible
 make local-test      # Test Kubernetes
 make help           # See all commands
 ```
@@ -145,9 +147,10 @@ make help           # See all commands
 📚 **[Complete GitHub Actions Setup Guide →](docs/GITHUB_ACTIONS_DEPLOYMENT.md)**
 
 #### **🎯 Why GitHub Actions?**
+
 - 🔧 **Zero local setup** - No Terraform/Ansible installation needed
 - 🔒 **Secure secrets** - API tokens stored safely in GitHub
-- 👥 **Team friendly** - Anyone can deploy with proper permissions  
+- 👥 **Team friendly** - Anyone can deploy with proper permissions
 - 📊 **Full audit trail** - Every deployment tracked and logged
 - 📱 **Deploy anywhere** - From mobile, laptop, or any device
 - ⚡ **Consistent environment** - Same Ubuntu runner every time
@@ -158,14 +161,16 @@ make help           # See all commands
 <summary>🔧 Local deployment with bootstrap script</summary>
 
 #### 1. Prerequisites
+
 ```bash
 # Install required tools
 brew install terraform ansible
-# or  
+# or
 pip install ansible
 ```
 
 #### 2. Configure
+
 ```bash
 # Clone repository
 git clone https://github.com/jterrazz/jterrazz-infra.git
@@ -177,6 +182,7 @@ nano terraform/terraform.tfvars  # Add your Hetzner API token
 ```
 
 #### 3. Deploy
+
 ```bash
 # One-command deployment!
 ./scripts/bootstrap.sh production
@@ -235,7 +241,7 @@ vault_tailscale_auth_key: "tskey-auth-your-tailscale-key"  # From Tailscale admi
 | **Nginx Ingress** | Load balancer      | Automatic routing                              |
 | **cert-manager**  | SSL certificates   | Automatic renewal                              |
 | **Tailscale**     | Private access     | Private IP for management tools                |
-| **Security**      | VPS hardening      | SSH/UFW/fail2ban/auto-updates                 |
+| **Security**      | VPS hardening      | SSH/UFW/fail2ban/auto-updates                  |
 
 ## 🎛️ Management
 
@@ -319,6 +325,7 @@ spec:
 ## 🔒 Security Features
 
 ### **🛡️ VPS-Level Security:**
+
 - ✅ **SSH Hardening** - Key-only auth, encrypted ciphers, timeouts
 - ✅ **UFW Firewall** - Only essential ports open, deny by default
 - ✅ **fail2ban** - Automatic IP banning for brute force attacks
@@ -328,11 +335,13 @@ spec:
 - ✅ **Security Monitoring** - Daily status reports and alerts
 
 ### **🌐 Network Security:**
+
 - ✅ **Tailscale VPN** - Private network for management tools
 - ✅ **SSL Certificates** - Automatic Let's Encrypt for all services
 - ✅ **IP Whitelisting** - Restrict management access to Tailscale IPs
 
 ### **☸️ Kubernetes Security:**
+
 - ✅ **RBAC** - Role-based access control
 - ✅ **Network Policies** - Pod-to-pod communication restrictions
 - ✅ **Secret Management** - Encrypted storage of sensitive data

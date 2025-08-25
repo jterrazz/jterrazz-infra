@@ -10,7 +10,7 @@ is_local_development: true
 # Security settings (relaxed for local development)
 security_level: "development"
 skip_ssh_hardening: true
-security_ufw_enabled: false  # Disable UFW in development - causes iptables issues in VMs
+security_ufw_enabled: true   # Enable UFW for consistency with production
 enable_fail2ban: false
 enable_audit_logging: false
 allow_password_auth: true
