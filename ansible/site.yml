@@ -119,7 +119,40 @@
         definition: "{{ lookup('file', '../kubernetes/services/mdns-publisher.yml') | from_yaml_all }}"
       when: is_local_development | default(false)
 
-    # Note: Traefik middleware and HTTPS redirect deployed by deploy-apps.sh with proper CRD waiting
+    # Wait for Traefik CRDs to be available before deploying dependent resources
+    - name: Wait for Traefik middleware CRD
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: middlewares.traefik.containo.us
+      register: middleware_crd_check
+      until: middleware_crd_check.resources | length > 0
+      retries: 60
+      delay: 5
+      failed_when: false
+
+    - name: Wait for Traefik IngressRoute CRD
+      kubernetes.core.k8s_info:
+        api_version: apiextensions.k8s.io/v1
+        kind: CustomResourceDefinition
+        name: ingressroutes.traefik.containo.us
+      register: ingressroute_crd_check
+      until: ingressroute_crd_check.resources | length > 0
+      retries: 60
+      delay: 5
+      failed_when: false
+
+    - name: Deploy Traefik middleware configurations
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/traefik/middleware.yml') | from_yaml_all }}"
+      when: middleware_crd_check is succeeded
+
+    - name: Deploy global HTTPS redirect
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/traefik/global-https-redirect.yml') | from_yaml_all }}"
+      when: ingressroute_crd_check is succeeded
 
     - name: Create TLS certificates for .local domains
       kubernetes.core.k8s:
@@ -137,17 +170,49 @@
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', '../kubernetes/ingress/local-mdns-ingresses.yml') | from_yaml_all }}"
-      retries: 15
-      delay: 10
-      register: mdns_ingresses_result
-      until: mdns_ingresses_result is succeeded
-      failed_when: false
-      when: is_local_development | default(false)
+      when: is_local_development | default(false) and ingressroute_crd_check is succeeded
 
-    - name: Display mDNS ingresses status
-      ansible.builtin.debug:
-        msg: "{{ 'mDNS ingresses deployed successfully' if mdns_ingresses_result is succeeded else 'mDNS ingresses will be available after running deploy-apps.sh' }}"
-      when: is_local_development | default(false)
+    # Configure ArgoCD for local development (insecure mode for ingress)
+    - name: Wait for ArgoCD to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: ConfigMap
+        name: argocd-cmd-params-cm
+        namespace: argocd
+      register: argocd_configmap_check
+      until: argocd_configmap_check.resources | length > 0
+      retries: 60
+      delay: 5
+      when: is_local_development | default(false) and not (skip_argocd | default(false))
+
+    - name: Configure ArgoCD for insecure mode (required for ingress)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: argocd-cmd-params-cm
+            namespace: argocd
+          data:
+            server.insecure: "true"
+        merge_type: merge
+      when: is_local_development | default(false) and not (skip_argocd | default(false)) and argocd_configmap_check is succeeded
+
+    - name: Restart ArgoCD server to apply insecure mode
+      kubernetes.core.k8s:
+        state: present
+        api_version: apps/v1
+        kind: Deployment
+        name: argocd-server
+        namespace: argocd
+        definition:
+          spec:
+            template:
+              metadata:
+                annotations:
+                  kubectl.kubernetes.io/restartedAt: "{{ ansible_date_time.iso8601 }}"
+      when: is_local_development | default(false) and not (skip_argocd | default(false)) and argocd_configmap_check is succeeded
 
     - name: Get Tailscale IP if connected
       ansible.builtin.command: tailscale ip -4
@@ -158,24 +223,7 @@
 
     - name: Display cluster information
       ansible.builtin.debug:
-        msg: |
-          🎉 Jterrazz Infrastructure Setup Complete!
-
-          📋 Summary:
-          • Environment: {{ environment_type | default('production') }}
-          • Target: {{ ansible_hostname }}
-
-          🔧 Installed Components:
-          • ✅ k3s Kubernetes cluster
-          • ✅ Helm package manager
-          • ✅ Traefik ingress controller (built-in!)
-
-          🚀 Next Steps:
-          1. Get kubeconfig: make kubeconfig
-          2. Test cluster: kubectl get nodes
-          3. Check Traefik: kubectl get pods -n kube-system
-
-          🎯 Much simpler setup with Traefik! 🚀
+        msg: "✅ Infrastructure setup complete - run 'make access' to see URLs"
 
     - name: Create kubeconfig copy
       ansible.builtin.fetch:

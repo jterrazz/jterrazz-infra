@@ -2,7 +2,7 @@
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean ansible status deploy deps infra k8s vm reset ssh
+.PHONY: help start stop clean ansible status deploy deps infra vm reset ssh access
 
 # Colors
 GREEN := \033[32m
@@ -18,10 +18,8 @@ start: ## Complete setup - VM, K3s cluster, and applications ready
 	@echo "$(BLUE)This will create VM, configure security, install K3s, and deploy apps$(NC)"
 	@echo
 	./scripts/local-dev.sh full
-	./scripts/deploy-apps.sh
 	@echo
-	@echo "$(GREEN)✓ Local environment is ready!$(NC)"
-	@echo "$(BLUE)→ Check the service URLs above to access your applications$(NC)"
+	./scripts/show-access.sh
 
 stop: ## Delete VM and cleanup everything
 	@echo "$(RED)Deleting VM...$(NC)"
@@ -34,6 +32,9 @@ ssh: ## SSH into the development VM
 status: ## Show VM health and service status
 	@echo "$(BLUE)Checking VM status...$(NC)"
 	./scripts/local-dev.sh status
+
+access: ## Show application URLs and access information
+	@./scripts/show-access.sh
 
 reset: ## Clean restart - delete everything and start fresh
 	@$(MAKE) clean || true
@@ -53,9 +54,7 @@ ansible: ## Configure VM security and system setup
 	@echo "$(GREEN)Running Ansible on VM...$(NC)"
 	./scripts/local-dev.sh ansible
 
-k8s: ## Deploy applications to cluster via ArgoCD
-	@echo "$(GREEN)Deploying applications via ArgoCD...$(NC)"
-	./scripts/deploy-apps.sh
+
 
 ##@ Production
 
@@ -93,13 +92,13 @@ help: ## Display this help message
 	@echo ""
 	@echo "$(BLUE)Quick Start:$(NC)"
 	@echo "  make start                  # Complete setup - everything ready!"
+	@echo "  make access                 # Show application URLs"
 	@echo "  make ssh                    # SSH into your VM"
 	@echo "  make status                 # Check VM status"
 	@echo "  make stop                   # Delete VM"
 	@echo ""
 	@echo "$(BLUE)Advanced:$(NC)"
-	@echo "  make infra                  # Infrastructure only (no apps)"
+	@echo "  make infra                  # Infrastructure only"
 	@echo "  make vm                     # Create VM only"
-	@echo "  make k8s                    # Deploy/redeploy applications"
 	@echo "  make reset                  # Clean restart"
 	@echo "  make deploy                 # Production deployment"
