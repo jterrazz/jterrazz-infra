@@ -24,6 +24,7 @@ open https://portainer.local  # Kubernetes management
 ## 🎯 What This Provides
 
 ### 🏠 **Local Development**
+
 - **Real Ubuntu VM** - Production-like environment via Multipass
 - **`.local` domains** - Automatic mDNS resolution (no hosts file editing)
 - **HTTPS everywhere** - Self-signed certificates with shared SSL
@@ -31,6 +32,7 @@ open https://portainer.local  # Kubernetes management
 - **Production security** - Same UFW/fail2ban configuration as production
 
 ### ☁️ **Production Ready**
+
 - **Hetzner Cloud VPS** - Affordable, reliable European hosting (€6/month)
 - **Kubernetes (k3s)** - Lightweight, production-grade cluster
 - **Traefik Ingress** - Cloud-native load balancing and routing
@@ -41,6 +43,7 @@ open https://portainer.local  # Kubernetes management
 ## 🏗️ Architecture
 
 ### 🏠 Local Development
+
 ```
 🖥️ Multipass VM (Ubuntu 24.04)
   ├── 🔐 k3s Kubernetes Cluster
@@ -53,6 +56,7 @@ open https://portainer.local  # Kubernetes management
 ```
 
 ### ☁️ Production
+
 ```
 📱 Your Domain (manager.yourdomain.com)
             ↓
@@ -78,7 +82,7 @@ make stop               # Delete VM
 # ☁️ Production (see docs/PRODUCTION.md)
 ./scripts/bootstrap.sh  # Deploy to production
 
-# 🛠️ Utilities  
+# 🛠️ Utilities
 make deps               # Check required tools
 make clean              # Force cleanup everything
 ```
@@ -86,17 +90,19 @@ make clean              # Force cleanup everything
 ## 🎯 Why This Architecture?
 
 **Clean Separation of Concerns:**
+
 ```
 🔄 INFRASTRUCTURE LAYER (Ansible + Kustomize)
    └── OS setup, k3s installation, infrastructure components
 
-🚀 APPLICATION LAYER (ArgoCD GitOps)  
+🚀 APPLICATION LAYER (ArgoCD GitOps)
    └── User applications from separate repositories
 ```
 
 **Key Benefits:**
+
 - ✅ **One Source of Truth** - Single `site.yml` playbook for everything
-- ✅ **Environment Consistency** - Identical local/production deployment  
+- ✅ **Environment Consistency** - Identical local/production deployment
 - ✅ **Kubernetes-native** - Infrastructure managed via Kustomize
 - ✅ **Professional Grade** - Industry-standard tools (Ansible + k3s + Traefik)
 
@@ -143,10 +149,12 @@ spec:
 ## 🛠️ Prerequisites
 
 **Local Development:**
-- [Multipass](https://multipass.run/) - VM management  
+
+- [Multipass](https://multipass.run/) - VM management
 - [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) - Configuration
 
 **Production Deployment:**
+
 - [Terraform](https://terraform.io/) - Infrastructure
 - [Hetzner Cloud Account](https://hetzner.cloud/) - Hosting
 
