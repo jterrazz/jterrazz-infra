@@ -81,8 +81,6 @@ setup_vm_ssh() {
     fi
 }
 
-
-
 # Delete VM completely
 delete_vm() {
     if ! vm_exists; then
