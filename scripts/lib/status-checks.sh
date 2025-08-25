@@ -1,6 +1,41 @@
 #!/bin/bash
 # Status checking utilities
 
+# Check if we're in local development environment
+is_local_dev() {
+    command -v multipass &> /dev/null || [[ -f "local-kubeconfig.yaml" ]]
+}
+
+# Show access information
+show_access_info() {
+    section "🎉 Application Access"
+    
+    if is_local_dev; then
+        # Local development with mDNS - automatic .local domain resolution
+        subsection "🌐 Your applications are ready:"
+        echo "    • Landing Page:      https://app.local/"
+        echo "    • ArgoCD:           https://argocd.local/"
+        echo "    • Portainer:        https://portainer.local/"
+        echo ""
+        info "💡 Zero-sudo DNS resolver enabled - all domains resolve automatically!"
+        success "🔒 Docker-like domain resolution with shared SSL certificate"
+        echo ""
+        info "🚀 Infrastructure fully managed by Ansible!"
+    else
+        # Production environment
+        subsection "🌐 Configure DNS and access:"
+        echo "    • Landing Page:      https://yourdomain.com"
+        echo "    • ArgoCD:           https://argocd.yourdomain.com"
+        echo "    • Portainer:        https://portainer.yourdomain.com"
+        echo ""
+        info "💡 Configure your domain DNS to point to this server"
+        echo ""
+        info "🚀 Infrastructure fully managed by Ansible!"
+    fi
+    
+    echo ""
+}
+
 # Check SSH connectivity
 check_ssh_connectivity() {
     local vm_ip="$1"
@@ -152,6 +187,9 @@ show_vm_status() {
     section "🌐 Services"
     check_kubernetes_services "$vm_ip"
     check_argocd_status "$vm_ip"
+    
+    # Access information
+    show_access_info
     
     return 0
 }

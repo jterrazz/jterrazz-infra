@@ -2,7 +2,7 @@
 # Essential commands for daily development and deployment
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean ansible status deploy deps infra vm reset ssh access
+.PHONY: help start stop clean ansible status deploy deps vm ssh
 
 # Colors
 GREEN := \033[32m
@@ -18,8 +18,6 @@ start: ## Complete setup - VM, K3s cluster, and applications ready
 	@echo "$(BLUE)This will create VM, configure security, install K3s, and deploy apps$(NC)"
 	@echo
 	./scripts/local-dev.sh full
-	@echo
-	./scripts/show-access.sh
 
 stop: ## Delete VM and cleanup everything
 	@echo "$(RED)Deleting VM...$(NC)"
@@ -29,22 +27,11 @@ ssh: ## SSH into the development VM
 	@echo "$(GREEN)Connecting to VM...$(NC)"
 	./scripts/local-dev.sh ssh
 
-status: ## Show VM health and service status
+status: ## Show VM health, services, and application URLs
 	@echo "$(BLUE)Checking VM status...$(NC)"
 	./scripts/local-dev.sh status
 
-access: ## Show application URLs and access information
-	@./scripts/show-access.sh
-
-reset: ## Clean restart - delete everything and start fresh
-	@$(MAKE) clean || true
-	@$(MAKE) start
-
 ##@ Sub-commands
-
-infra: ## Setup K3s cluster ready for applications
-	@echo "$(GREEN)Setting up infrastructure (VM + K3s)...$(NC)"
-	./scripts/local-dev.sh full
 
 vm: ## Create VM with SSH access
 	@echo "$(GREEN)Creating Ubuntu VM...$(NC)"
@@ -92,13 +79,10 @@ help: ## Display this help message
 	@echo ""
 	@echo "$(BLUE)Quick Start:$(NC)"
 	@echo "  make start                  # Complete setup - everything ready!"
-	@echo "  make access                 # Show application URLs"
+	@echo "  make status                 # Check VM health and show URLs"
 	@echo "  make ssh                    # SSH into your VM"
-	@echo "  make status                 # Check VM status"
 	@echo "  make stop                   # Delete VM"
 	@echo ""
 	@echo "$(BLUE)Advanced:$(NC)"
-	@echo "  make infra                  # Infrastructure only"
 	@echo "  make vm                     # Create VM only"
-	@echo "  make reset                  # Clean restart"
 	@echo "  make deploy                 # Production deployment"
