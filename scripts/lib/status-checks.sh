@@ -79,24 +79,12 @@ show_vm_ports_table() {
             return
         fi
         
-        # Check UFW rules for this port
+        # Check UFW rules for this port (UFW is always active now)
         local ufw_rules=$(ssh_vm "sudo ufw status verbose 2>/dev/null | grep -E '${port}/(tcp|udp)'" 2>/dev/null || echo "")
         
         if [[ -z "$ufw_rules" ]]; then
-            # No UFW rules found - check if UFW is active
-            local ufw_active=$(ssh_vm "sudo ufw status 2>/dev/null | head -1" 2>/dev/null || echo "inactive")
-            if [[ "$ufw_active" =~ "inactive" ]]; then
-                # UFW disabled - this should be rare in a properly configured system
-                if [[ "$port" == "6443" ]]; then
-                    # Kubernetes API with no firewall - SECURITY RISK!
-                    printf "%-8s %-12s %-20s %s\n" "$port" "⚠️  EXPOSED" "$service_name" "$description (SECURITY RISK: no firewall!)"
-                else
-                    # Other services with firewall disabled
-                    printf "%-8s %-12s %-20s %s\n" "$port" "OPEN" "$service_name" "$description (firewall disabled)"
-                fi
-            else
-                printf "%-8s %-12s %-20s %s\n" "$port" "BLOCKED" "$service_name" "$description (no firewall rule)"
-            fi
+            # No UFW rules found = blocked by firewall
+            printf "%-8s %-12s %-20s %s\n" "$port" "BLOCKED" "$service_name" "$description (no firewall rule)"
         else
             # Analyze UFW rules to determine access level
             if echo "$ufw_rules" | grep -q "ALLOW IN.*Anywhere"; then
@@ -118,10 +106,7 @@ show_vm_ports_table() {
     check_port_access "6443" "Kubernetes API" "Cluster management"
     
     echo ""
-    info "Access levels: OPEN=public access, PRIVATE=internal networks only, RESTRICTED=specific IPs, CLOSED=not running"
-    if is_local_dev; then
-        info "Development note: Firewall rules apply even though VM is on private network (defense in depth)"
-    fi
+    info "Access levels: OPEN=public access, PRIVATE=internal networks only, RESTRICTED=specific IPs, CLOSED=not running, BLOCKED=no firewall rule"
     echo ""
 }
 
@@ -374,15 +359,11 @@ show_vm_status() {
     echo ""
     
     subsection "🔒 Network Security Summary"
-    echo "• Port access levels shown above indicate actual network restrictions"
+    echo "• Port access levels shown above indicate actual firewall restrictions"
     echo "• PRIVATE ports: Restricted to internal networks + VPN only (excellent security)"
     echo "• OPEN ports: Public access allowed (necessary for web services)"
-    if is_local_dev; then
-        echo "• Development mode: Same firewall rules as production for consistency"
-        echo "• Defense in depth: Firewall rules + VM private network isolation"
-    else
-        echo "• Production mode: Full security hardening with restrictive firewall rules"
-    fi
+    echo "• BLOCKED ports: Service running but no firewall rule configured"
+    echo "• UFW firewall active with consistent rules across all environments"
     echo ""
     
     # Kubernetes services and pods
