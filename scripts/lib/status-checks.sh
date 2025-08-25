@@ -16,19 +16,12 @@ show_access_info() {
         echo "  • Landing Page:      https://app.local/"
         echo "  • ArgoCD:           https://argocd.local/"
         echo "  • Portainer:        https://portainer.local/"
-        echo ""
-        echo "  💡 Zero-sudo DNS resolver enabled - all domains resolve automatically"
-        echo "  🔒 Docker-like domain resolution with shared SSL certificate"
-        echo "  🚀 Infrastructure fully managed by Ansible"
     else
         # Production environment
         subsection "🌐 Configure DNS and Access"
         echo "  • Landing Page:      https://yourdomain.com"
         echo "  • ArgoCD:           https://argocd.yourdomain.com"
         echo "  • Portainer:        https://portainer.yourdomain.com"
-        echo ""
-        echo "  💡 Configure your domain DNS to point to this server"
-        echo "  🚀 Infrastructure fully managed by Ansible"
     fi
 }
 
