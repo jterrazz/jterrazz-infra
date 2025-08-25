@@ -119,24 +119,34 @@
         definition: "{{ lookup('file', '../kubernetes/services/mdns-publisher.yml') | from_yaml_all }}"
       when: is_local_development | default(false)
 
-    - name: Deploy global HTTPS redirect
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', '../kubernetes/traefik/global-https-redirect.yml') | from_yaml_all }}"
-      retries: 10
-      delay: 5
-      register: https_redirect_result
-      until: https_redirect_result is succeeded
-      failed_when: false # Don't fail if CRDs aren't ready yet
-
-    - name: Display HTTPS redirect status
-      ansible.builtin.debug:
-        msg: "{{ 'HTTPS redirect deployed successfully' if https_redirect_result is succeeded else 'HTTPS redirect will be applied later when Traefik CRDs are ready' }}"
+    # Note: Traefik middleware and HTTPS redirect deployed by deploy-apps.sh with proper CRD waiting
 
     - name: Create TLS certificates for .local domains
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', '../kubernetes/jobs/create-tls-certificates.yml') | from_yaml_all }}"
+      when: is_local_development | default(false)
+
+    - name: Deploy landing page for local development
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/services/landing-page.yml') | from_yaml_all }}"
+      when: is_local_development | default(false)
+
+    - name: Deploy mDNS ingresses for local development
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/ingress/local-mdns-ingresses.yml') | from_yaml_all }}"
+      retries: 15
+      delay: 10
+      register: mdns_ingresses_result
+      until: mdns_ingresses_result is succeeded
+      failed_when: false
+      when: is_local_development | default(false)
+
+    - name: Display mDNS ingresses status
+      ansible.builtin.debug:
+        msg: "{{ 'mDNS ingresses deployed successfully' if mdns_ingresses_result is succeeded else 'mDNS ingresses will be available after running deploy-apps.sh' }}"
       when: is_local_development | default(false)
 
     - name: Get Tailscale IP if connected

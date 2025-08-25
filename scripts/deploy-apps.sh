@@ -80,7 +80,7 @@ wait_for_traefik_crds() {
     return 1
 }
 
-# Deploy Traefik middleware configurations
+# Deploy Traefik middleware configurations (needs CRD waiting)
 deploy_traefik_configs() {
     section "Configuring Traefik"
     
@@ -93,8 +93,14 @@ deploy_traefik_configs() {
     else
         warning "Failed to deploy Traefik middleware (CRDs may not be ready yet)"
     fi
+    
+    info "Deploying global HTTPS redirect..."
+    if kubectl apply -f kubernetes/traefik/global-https-redirect.yml; then
+        success "Global HTTPS redirect deployed"
+    else
+        warning "Failed to deploy HTTPS redirect (CRDs may not be ready yet)"
+    fi
 }
-
 
 # ArgoCD is ready for your application deployments
 # Create ArgoCD applications for your actual apps (separate repositories)
@@ -143,28 +149,13 @@ configure_local_setup() {
     
 
 
-    # Deploy simple landing page
-    info "Deploying landing page..."
-    kubectl apply -f kubernetes/services/landing-page.yml
-    
-    # Ensure Traefik CRDs are ready before applying ingresses
-    info "Ensuring Traefik is ready for ingress configuration..."
-    wait_for_traefik_crds
-    
-    # Apply mDNS-based ingresses for local development
-    if [[ -f "kubernetes/ingress/local-mdns-ingresses.yml" ]]; then
-        info "Deploying mDNS-based ingresses (app.local, argocd.local, portainer.local)..."
-        if kubectl apply -f kubernetes/ingress/local-mdns-ingresses.yml; then
-            success "mDNS ingresses deployed"
-        else
-            warning "Failed to deploy mDNS ingresses (Traefik CRDs may not be ready)"
-        fi
-    fi
+    # Note: Landing page and mDNS ingresses now deployed by Ansible
+    success "Landing page and mDNS ingresses already deployed by Ansible"
     
     # Note: HTTPS redirect now deployed by Ansible
     
-    # Middleware is already deployed as part of Traefik configuration
-    success "Middleware configuration already applied"
+    # Note: Traefik middleware now deployed by Ansible
+    success "Traefik middleware already deployed by Ansible"
     
     # Wait for ArgoCD and configure for insecure mode (required for ingress)
     info "Configuring ArgoCD for ingress compatibility..."
