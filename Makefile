@@ -23,7 +23,7 @@ stop: ## Delete VM and cleanup everything
 	@echo "$(RED)Deleting VM...$(NC)"
 	./scripts/local-dev.sh delete
 
-ssh: ## SSH into the development VM
+ssh: ## SSH into the local VM
 	@echo "$(GREEN)Connecting to VM...$(NC)"
 	./scripts/local-dev.sh ssh
 
@@ -53,7 +53,7 @@ deploy: ## Deploy infrastructure and apps to production
 
 deps: ## Check required tools and dependencies
 	@echo "$(BLUE)Checking dependencies...$(NC)"
-	@echo "Local development:"
+	@echo "Local environment:"
 	@command -v multipass >/dev/null 2>&1 && echo "  OK Multipass" || echo "  MISSING Multipass (required - brew install multipass)"
 	@command -v ansible >/dev/null 2>&1 && echo "  OK Ansible" || echo "  MISSING Ansible (required - brew install ansible)"
 	@echo "Production deployment:"
@@ -62,7 +62,7 @@ deps: ## Check required tools and dependencies
 	@command -v kubectl >/dev/null 2>&1 && echo "  OK kubectl" || echo "  MISSING kubectl (recommended)"
 
 clean: ## Force delete VM and cleanup all files
-	@echo "$(RED)Cleaning development environment...$(NC)"
+	@echo "$(RED)Cleaning local environment...$(NC)"
 	@echo "$(BLUE)→ Force deleting VM 'jterrazz-infra'...$(NC)"
 	@multipass delete jterrazz-infra --purge 2>/dev/null || echo "VM already deleted or doesn't exist"
 	@echo "$(BLUE)→ Cleaning up local files...$(NC)"

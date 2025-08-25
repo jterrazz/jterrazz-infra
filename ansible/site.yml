@@ -17,7 +17,7 @@
     - name: Display deployment environment information
       ansible.builtin.debug:
         msg: |
-          {% if environment_type in ['local', 'multipass'] %}
+          {% if environment_type == 'local' %}
           🏠 Starting LOCAL DEVELOPMENT deployment
           📦 Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
           🔧 Environment: {{ environment_type | default('production') }}
@@ -35,7 +35,7 @@
         sleep: 0
         delay: 0
         timeout: 300
-      when: environment_type in ['local', 'multipass']
+      when: environment_type == 'local'
 
     - name: Update package cache
       ansible.builtin.apt:
@@ -91,13 +91,13 @@
     - name: Create kubeconfig copy
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{% if environment_type == 'multipass' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        dest: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         flat: true
       delegate_to: "{{ inventory_hostname }}"
 
     - name: Update kubeconfig server address
       ansible.builtin.replace:
-        path: "{% if environment_type == 'multipass' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        path: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "https://{{ ansible_host }}:6443"
         backup: false
@@ -113,7 +113,7 @@
       delegate_to: localhost
       become: false
       environment:
-        KUBECONFIG: "{% if environment_type == 'multipass' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        KUBECONFIG: "{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
       changed_when: true
 
     - name: Display cluster information

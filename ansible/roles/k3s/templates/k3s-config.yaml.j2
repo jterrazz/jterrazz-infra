@@ -6,12 +6,12 @@ bind-address: {{ k3s_node_ip }}
 https-listen-port: 6443
 
 # Single-node cluster configuration
-{% if environment_type not in ['local', 'multipass'] %}
+{% if environment_type != 'local' %}
 cluster-init: true
 {% endif %}
 token: {{ k3s_token }}
 
-# Disable built-in components (local-storage now enabled for development!)
+# Disable built-in components (local-storage now enabled for local!)
 {% if k3s_disable_components and k3s_disable_components|length > 0 %}
 disable:
 {% for component in k3s_disable_components %}
@@ -43,7 +43,7 @@ kubelet-arg:
   - "max-pods=250"
 {% if is_local_development | default(false) %}
 
-# Local development configuration
+# Local environment configuration
 # Let K3s handle its own containerd runtime
 {% endif %}
 

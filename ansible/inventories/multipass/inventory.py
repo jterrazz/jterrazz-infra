@@ -43,9 +43,9 @@ def get_inventory():
     # Base inventory structure
     inventory = {
         "all": {
-            "children": ["development"]
+            "children": ["local"]
         },
-        "development": {
+        "local": {
             "hosts": []
         },
         "_meta": {
@@ -64,7 +64,7 @@ def get_inventory():
         
         if vm_ip:
             # Add host to group
-            inventory["development"]["hosts"] = ["jterrazz-infra"]
+            inventory["local"]["hosts"] = ["jterrazz-infra"]
             
             # Add host variables - CONNECTION INFO ONLY
             inventory["_meta"]["hostvars"]["jterrazz-infra"] = {

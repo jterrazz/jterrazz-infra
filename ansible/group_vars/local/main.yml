@@ -1,9 +1,9 @@
-# Development Environment Configuration
-# Used for local multipass VMs and development
+# Local Environment Configuration
+# Used for local multipass VMs and local development
 
 ---
 # Environment identification
-environment_type: "multipass"
+environment_type: "local"
 deployment_method: "multipass"
 is_local_development: true
 

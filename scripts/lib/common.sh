@@ -31,14 +31,14 @@ fi
 export VM_NAME="${VM_NAME:-jterrazz-infra}"
 export KUBECONFIG_PATH="$PROJECT_DIR/local-kubeconfig.yaml"
 
-# Check if we're in development (multipass available)
-is_development() {
+# Check if we're in local environment (multipass available)
+is_local() {
     command -v multipass &> /dev/null
 }
 
 # Get VM IP reliably
 get_vm_ip() {
-    if is_development && multipass info "$VM_NAME" &>/dev/null; then
+    if is_local && multipass info "$VM_NAME" &>/dev/null; then
         multipass info "$VM_NAME" --format json 2>/dev/null | \
             jq -r ".info.\"$VM_NAME\".ipv4[0] // empty" | \
             grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || echo ""

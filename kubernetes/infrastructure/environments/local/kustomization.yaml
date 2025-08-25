@@ -2,19 +2,19 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 metadata:
-  name: infrastructure-multipass
+  name: infrastructure-local
 
 resources:
   # Base infrastructure
   - ../../base
   
-  # Multipass-specific components
+  # Local-specific components
   - components/mdns-publisher.yml
   - components/landing-page.yml
   - components/create-tls-certificates.yml
   - components/local-mdns-ingresses.yml
 
-# Multipass-specific patches for local development
+# Local-specific patches for local development
 patches:
   - target:
       kind: ConfigMap
@@ -33,7 +33,7 @@ patches:
         path: /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
         value: "2025-01-01T00:00:00Z"
 
-# Development-specific images or configs can be added here if needed
+# Local-specific images or configs can be added here if needed
 # images:
 # - name: portainer/portainer-ce
-#   newTag: "development"
+#   newTag: "local"

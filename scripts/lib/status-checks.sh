@@ -11,7 +11,7 @@ show_access_info() {
     section "🎉 Application Access"
     
     if is_local_dev; then
-        # Local development with mDNS - automatic .local domain resolution
+        # Local environment with mDNS - automatic .local domain resolution
         subsection "🌐 Your Applications"
         echo "  • Landing Page:      https://app.local/"
         echo "  • ArgoCD:           https://argocd.local/"
@@ -270,7 +270,7 @@ show_vm_status() {
         fi
     else
         if is_local_dev; then
-            printf "  %-20s %-12s %s\n" "ufw" "🔧 Dev Mode" "Disabled for local development"
+            printf "  %-20s %-12s %s\n" "ufw" "🔧 Local Mode" "Configured for local environment"
         else
             printf "  %-20s %-12s %s\n" "ufw" "❌ Critical" "Production firewall disabled!"
         fi
