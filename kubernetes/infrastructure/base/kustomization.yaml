@@ -5,12 +5,13 @@ metadata:
   name: infrastructure-base
 
 resources:
+  # ArgoCD - GitOps controller
+  - argocd/namespace.yaml
+  - argocd/install.yaml
+
   # Infrastructure applications
-  - argocd/
   - portainer/portainer.yml
-  
+
   # Traefik configurations
   - traefik/middleware.yml
   - traefik/global-https-redirect.yml
-
-# Note: mDNS publisher and TLS certificates are dev-only (in overlays)

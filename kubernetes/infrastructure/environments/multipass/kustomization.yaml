@@ -16,8 +16,22 @@ resources:
 
 # Multipass-specific patches for local development
 patches:
-  - path: patches/argocd-insecure.yaml
-  - path: patches/argocd-server-restart.yaml
+  - target:
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+      namespace: argocd
+    patch: |-
+      - op: add
+        path: /data/server.insecure
+        value: "true"
+  - target:
+      kind: Deployment
+      name: argocd-server
+      namespace: argocd
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
+        value: "2025-01-01T00:00:00Z"
 
 # Development-specific images or configs can be added here if needed
 # images:
