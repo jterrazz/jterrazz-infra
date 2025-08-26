@@ -109,7 +109,7 @@
     # Wait for k3s Traefik installation to complete
     - name: Wait for Traefik Helm installation to complete
       ansible.builtin.shell: |
-        kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=120s
+        kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=1s
       register: traefik_wait
       retries: 60
       delay: 1
