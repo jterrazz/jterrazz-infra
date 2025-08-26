@@ -52,6 +52,11 @@ output "kubernetes_endpoint" {
   value       = "https://${var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address}:6443"
 }
 
+output "k8s_storage_volume_id" {
+  description = "Kubernetes storage volume ID"
+  value       = hcloud_volume.k8s_storage.id
+}
+
 # Summary output
 output "deployment_summary" {
   description = "Deployment summary"

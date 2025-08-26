@@ -31,20 +31,6 @@ subjects:
     namespace: portainer
 
 ---
-# Portainer Data PVC
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: portainer-data
-  namespace: portainer
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-
----
 # Portainer Deployment
 apiVersion: apps/v1
 kind: Deployment
@@ -87,8 +73,9 @@ spec:
               memory: 512Mi
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: portainer-data
+          hostPath:
+            path: /var/lib/k8s-data/portainer
+            type: DirectoryOrCreate
 
 ---
 # Portainer Service (ClusterIP - internal only)

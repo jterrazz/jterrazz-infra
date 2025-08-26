@@ -7,7 +7,7 @@ metadata:
 resources:
   # Base infrastructure
   - ../../base
-  
+
   # Local-specific components
   - components/mdns-publisher.yml
   - components/landing-page.yml
@@ -24,14 +24,6 @@ patches:
       - op: add
         path: /data/server.insecure
         value: "true"
-  - target:
-      kind: Deployment
-      name: argocd-server
-      namespace: argocd
-    patch: |-
-      - op: add
-        path: /spec/template/metadata/annotations/kubectl.kubernetes.io~1restartedAt
-        value: "2025-01-01T00:00:00Z"
 
 # Local-specific images or configs can be added here if needed
 # images:

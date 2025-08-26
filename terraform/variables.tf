@@ -44,6 +44,12 @@ variable "enable_floating_ip" {
   default     = true
 }
 
+variable "storage_size" {
+  description = "Size of the storage volume in GB"
+  type        = number
+  default     = 50
+}
+
 # SSH Configuration
 variable "ssh_public_key" {
   description = "SSH public key for server access"

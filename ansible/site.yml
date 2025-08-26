@@ -78,6 +78,8 @@
     - role: tailscale
       when: not (skip_tailscale | default(false))
 
+    - role: storage
+
     - role: k3s
 
   post_tasks:
@@ -104,6 +106,16 @@
       delegate_to: localhost
       become: false
 
+    # Wait for Traefik to be fully ready
+    - name: Wait for Traefik pod to be running
+      ansible.builtin.shell: |
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=300s
+      delegate_to: localhost
+      become: false
+      environment:
+        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+      changed_when: false
+
     # Deploy all infrastructure (after kubeconfig is ready)
     - name: Deploy infrastructure components
       ansible.builtin.shell: |
@@ -113,7 +125,7 @@
       delegate_to: localhost
       become: false
       environment:
-        KUBECONFIG: "{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
       changed_when: true
 
     - name: Display cluster information

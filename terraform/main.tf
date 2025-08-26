@@ -53,6 +53,29 @@ resource "hcloud_server" "main" {
   }
 }
 
+# Storage volume for Kubernetes persistent data
+resource "hcloud_volume" "k8s_storage" {
+  name     = "${var.project_name}-k8s-storage"
+  size     = var.storage_size
+  location = var.server_location
+  
+  labels = {
+    project = var.project_name
+    usage   = "kubernetes-storage"
+  }
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Attach storage volume to server
+resource "hcloud_volume_attachment" "k8s_storage" {
+  volume_id = hcloud_volume.k8s_storage.id
+  server_id = hcloud_server.main.id
+  automount = false  # We'll handle mounting in Ansible
+}
+
 # Floating IP (optional, for static IP)
 resource "hcloud_floating_ip" "main" {
   count         = var.enable_floating_ip ? 1 : 0
