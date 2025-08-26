@@ -8,11 +8,11 @@ resources:
   # Base infrastructure
   - ../../base
   # Production-specific resources
-  - patches/infra-dashboard-ingress.yml
+  - patches/dashboard-ingress.yml
 
 # Production-specific patches
 patchesStrategicMerge:
-  - patches/infra-dashboard-content.yml
+  - patches/dashboard-content.yml
 
 # Production-specific images with specific tags
 images:

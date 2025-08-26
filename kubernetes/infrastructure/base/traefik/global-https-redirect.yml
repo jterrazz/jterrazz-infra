@@ -17,5 +17,5 @@ spec:
       middlewares:
         - name: https-redirect
       services:
-        - name: infra-service
+        - name: dashboard-service
           port: 80

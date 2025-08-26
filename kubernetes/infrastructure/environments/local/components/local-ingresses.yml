@@ -4,7 +4,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: infra-local-ingress
+  name: dashboard-local-ingress
   namespace: platform-management
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -23,7 +23,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: infra-service
+                name: dashboard-service
                 port:
                   number: 80
 

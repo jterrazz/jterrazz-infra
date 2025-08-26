@@ -12,7 +12,7 @@ resources:
   - argocd/
 
   # Infrastructure dashboard
-  - infra-dashboard/
+  - dashboard/base.yml
 
   # Infrastructure applications
   - portainer/portainer.yml

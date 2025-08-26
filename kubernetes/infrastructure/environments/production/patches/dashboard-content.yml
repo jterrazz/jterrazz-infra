@@ -1,9 +1,8 @@
----
-# Infrastructure Dashboard ConfigMap with HTML content
+# Production-specific content patch for infrastructure dashboard
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: infra-dashboard-page
+  name: dashboard-page
   namespace: platform-management
 data:
   index.html: |
@@ -13,7 +12,7 @@ data:
         <title>Infrastructure</title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="description" content="Local development infrastructure">
+        <meta name="description" content="Production infrastructure dashboard">
         <style>
             :root {
                 --background: #ffffff;
@@ -174,6 +173,16 @@ data:
                 animation: pulse 2s ease-in-out infinite;
             }
             
+            .security-notice {
+                background: linear-gradient(135deg, #fbbf24, #f59e0b);
+                color: #92400e;
+                padding: 0.75rem 1rem;
+                border-radius: var(--radius);
+                font-size: 0.875rem;
+                font-weight: 500;
+                margin-bottom: 2rem;
+            }
+            
             @keyframes pulse {
                 0% { opacity: 1; }
                 50% { opacity: 0.5; }
@@ -227,12 +236,16 @@ data:
         <div class="container">
             <header>
                 <h1>Infrastructure</h1>
-                <p class="subtitle">Local development environment</p>
+                <p class="subtitle">Production environment</p>
             </header>
+            
+            <div class="security-notice">
+                🔒 Secure access - VPN connection required
+            </div>
             
             <div class="status-bar">
                 <div class="status-indicator"></div>
-                <span>All systems operational</span>
+                <span>Production systems operational</span>
             </div>
             
             <main class="services-grid">
@@ -242,9 +255,9 @@ data:
                         <h2 class="service-title">ArgoCD</h2>
                     </div>
                     <p class="service-description">
-                        GitOps continuous deployment platform for declarative Kubernetes applications.
+                        GitOps continuous deployment platform for production applications.
                     </p>
-                    <a href="https://argocd.local" class="service-link">
+                    <a href="https://argocd.yourdomain.com" class="service-link">
                         Open ArgoCD
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M7 17L17 7"/>
@@ -259,9 +272,9 @@ data:
                         <h2 class="service-title">Portainer</h2>
                     </div>
                     <p class="service-description">
-                        Kubernetes management dashboard for container orchestration and monitoring.
+                        Production Kubernetes management dashboard and container orchestration.
                     </p>
-                    <a href="https://portainer.local" class="service-link">
+                    <a href="https://portainer.yourdomain.com" class="service-link">
                         Open Portainer
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M7 17L17 7"/>
@@ -275,73 +288,17 @@ data:
             <footer>
                 <div class="footer-content">
                     <div>
-                        <strong>Environment:</strong> Local Development
+                        <strong>Environment:</strong> Production
                     </div>
                     <div class="tech-stack">
                         <span class="tech-item">k3s</span>
                         <span class="tech-item">ArgoCD</span>
                         <span class="tech-item">Traefik</span>
-                        <span class="tech-item">Local SSL</span>
+                        <span class="tech-item">Let's Encrypt</span>
+                        <span class="tech-item">Tailscale VPN</span>
                     </div>
                 </div>
             </footer>
         </div>
     </body>
     </html>
-
----
-# Infrastructure Dashboard for Local Development
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: infra-dashboard
-  namespace: platform-management
-  labels:
-    app: infra-dashboard
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: infra-dashboard
-  template:
-    metadata:
-      labels:
-        app: infra-dashboard
-    spec:
-      containers:
-        - name: infra-dashboard
-          image: nginx:alpine
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              memory: "32Mi"
-              cpu: "50m"
-            limits:
-              memory: "64Mi"
-              cpu: "100m"
-          volumeMounts:
-            - name: infra-dashboard-content
-              mountPath: /usr/share/nginx/html
-      volumes:
-        - name: infra-dashboard-content
-          configMap:
-            name: infra-dashboard-page
-
----
-# Service for Infrastructure Dashboard
-apiVersion: v1
-kind: Service
-metadata:
-  name: infra-service
-  namespace: platform-management
-  labels:
-    app: infra-dashboard
-spec:
-  selector:
-    app: infra-dashboard
-  ports:
-    - port: 80
-      targetPort: 80
-      protocol: TCP
-  type: ClusterIP
