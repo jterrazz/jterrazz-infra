@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mdns-publisher
-  namespace: default
+  namespace: platform-dns
   labels:
     app: mdns-publisher
     environment: local

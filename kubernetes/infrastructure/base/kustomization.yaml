@@ -5,6 +5,9 @@ metadata:
   name: infrastructure-base
 
 resources:
+  # Namespace definitions
+  - platform-namespaces.yaml
+
   # ArgoCD - GitOps controller (with namespace handling)
   - argocd/
 

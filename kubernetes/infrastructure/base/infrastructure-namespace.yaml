@@ -1,0 +1,39 @@
+---
+# Platform Management - Portainer, dashboards, monitoring
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-management
+  labels:
+    name: platform-management
+    platform.component: management
+
+---
+# Platform Ingress - Traefik, certificates, routing
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-ingress
+  labels:
+    name: platform-ingress
+    platform.component: ingress
+
+---
+# Platform GitOps - ArgoCD, deployment automation
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-gitops
+  labels:
+    name: platform-gitops
+    platform.component: gitops
+
+---
+# Platform DNS - Service discovery, certificates, networking
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-dns
+  labels:
+    name: platform-dns
+    platform.component: dns

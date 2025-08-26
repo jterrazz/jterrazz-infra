@@ -139,7 +139,7 @@ spec:
     path: k8s/
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    namespace: applications
   syncPolicy:
     automated:
       prune: true

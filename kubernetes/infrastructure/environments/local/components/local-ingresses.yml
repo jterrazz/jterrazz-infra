@@ -5,11 +5,11 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: infra-local-ingress
-  namespace: default
+  namespace: platform-management
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: default-https-redirect@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
 spec:
   tls:
     - hosts:
@@ -33,11 +33,11 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: argocd-local-ingress
-  namespace: argocd
+  namespace: platform-gitops
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: default-https-redirect@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
 spec:
   tls:
     - hosts:
@@ -61,11 +61,11 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: portainer-local-ingress
-  namespace: portainer
+  namespace: platform-management
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: default-https-redirect@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
 spec:
   tls:
     - hosts:

@@ -18,7 +18,7 @@ patches:
   - target:
       kind: ConfigMap
       name: argocd-cmd-params-cm
-      namespace: argocd
+      namespace: platform-gitops
     patch: |-
       - op: add
         path: /data

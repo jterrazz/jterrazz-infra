@@ -4,7 +4,7 @@ apiVersion: traefik.containo.us/v1alpha1
 kind: Middleware
 metadata:
   name: tailscale-whitelist
-  namespace: default
+  namespace: platform-ingress
 spec:
   ipWhiteList:
     sourceRange:
@@ -20,7 +20,7 @@ apiVersion: traefik.containo.us/v1alpha1
 kind: Middleware
 metadata:
   name: https-redirect
-  namespace: default
+  namespace: platform-ingress
 spec:
   redirectScheme:
     scheme: https

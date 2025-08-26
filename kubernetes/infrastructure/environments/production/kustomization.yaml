@@ -14,16 +14,6 @@ resources:
 patchesStrategicMerge:
   - patches/infra-dashboard-content.yml
 
-# Production-specific resource limits
-patches:
-  - target:
-      group: apps
-      version: v1
-      kind: Deployment
-      name: portainer
-      namespace: portainer
-    path: patches/portainer-resources.yml
-
 # Production-specific images with specific tags
 images:
   - name: portainer/portainer-ce
