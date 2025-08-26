@@ -107,7 +107,20 @@
       become: false
 
     # Wait for Traefik to be fully ready
-    - name: Wait for Traefik pod to be running
+    - name: Wait for Traefik pod to exist
+      ansible.builtin.shell: |
+        kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik --no-headers | wc -l
+      register: traefik_pod_count
+      retries: 60
+      delay: 1
+      until: traefik_pod_count.stdout | int > 0
+      delegate_to: localhost
+      become: false
+      environment:
+        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+      changed_when: false
+
+    - name: Wait for Traefik pod to be ready
       ansible.builtin.shell: |
         kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=300s
       delegate_to: localhost
