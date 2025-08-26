@@ -282,32 +282,7 @@ data:
                         </svg>
                     </a>
                 </div>
-                
-                <div class="service-card">
-                    <div class="service-header">
-                        <div class="service-icon">📊</div>
-                        <h2 class="service-title">Grafana</h2>
-                    </div>
-                    <p class="service-description">
-                        Production metrics visualization and monitoring dashboards.
-                    </p>
-                    <a href="#" class="service-link" style="opacity: 0.5; cursor: not-allowed;">
-                        Coming soon
-                    </a>
-                </div>
-                
-                <div class="service-card">
-                    <div class="service-header">
-                        <div class="service-icon">🔍</div>
-                        <h2 class="service-title">Prometheus</h2>
-                    </div>
-                    <p class="service-description">
-                        Production monitoring, alerting, and metrics collection system.
-                    </p>
-                    <a href="#" class="service-link" style="opacity: 0.5; cursor: not-allowed;">
-                        Coming soon
-                    </a>
-                </div>
+
             </main>
             
             <footer>

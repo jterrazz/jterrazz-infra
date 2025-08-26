@@ -51,9 +51,6 @@
     group: root
   loop:
     - portainer
-    - monitoring
-    - backups
-    - uploads
 
 - name: Set proper permissions for application directories
   ansible.builtin.file:

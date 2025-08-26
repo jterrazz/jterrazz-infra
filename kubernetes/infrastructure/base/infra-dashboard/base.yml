@@ -269,32 +269,7 @@ data:
                         </svg>
                     </a>
                 </div>
-                
-                <div class="service-card">
-                    <div class="service-header">
-                        <div class="service-icon">📊</div>
-                        <h2 class="service-title">Grafana</h2>
-                    </div>
-                    <p class="service-description">
-                        Analytics and interactive visualization platform for metrics and logs.
-                    </p>
-                    <a href="#" class="service-link" style="opacity: 0.5; cursor: not-allowed;">
-                        Coming soon
-                    </a>
-                </div>
-                
-                <div class="service-card">
-                    <div class="service-header">
-                        <div class="service-icon">🔍</div>
-                        <h2 class="service-title">Prometheus</h2>
-                    </div>
-                    <p class="service-description">
-                        Systems monitoring and alerting toolkit for reliability and scalability.
-                    </p>
-                    <a href="#" class="service-link" style="opacity: 0.5; cursor: not-allowed;">
-                        Coming soon
-                    </a>
-                </div>
+
             </main>
             
             <footer>
