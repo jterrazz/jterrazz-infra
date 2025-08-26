@@ -45,7 +45,7 @@ spec:
               subjectAltName = @alt_names
 
               [alt_names]
-              DNS.1 = app.local
+              DNS.1 = infra.local
               DNS.2 = argocd.local
               DNS.3 = portainer.local
               DNS.4 = *.local

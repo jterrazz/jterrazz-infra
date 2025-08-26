@@ -5,12 +5,14 @@ metadata:
   name: infrastructure-production
 
 resources:
-  # Base infrastructure only (no dev-specific components)
+  # Base infrastructure
   - ../../base
+  # Production-specific resources
+  - patches/infra-dashboard-ingress.yml
 
 # Production-specific patches
-# patchesStrategicMerge:
-# - patches/portainer-prod.yml
+patchesStrategicMerge:
+  - patches/infra-dashboard-content.yml
 
 # Production-specific resource limits
 patches:
@@ -25,4 +27,4 @@ patches:
 # Production-specific images with specific tags
 images:
   - name: portainer/portainer-ce
-    newTag: "2.19.4"  # Use specific version in production
+    newTag: "2.19.4" # Use specific version in production

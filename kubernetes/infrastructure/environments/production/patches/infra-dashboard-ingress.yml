@@ -1,0 +1,27 @@
+# Production-specific ingress with VPN restriction
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: infra-prod-ingress
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: default-tailscale-whitelist@kubernetescrd,default-https-redirect@kubernetescrd
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - yourdomain.com
+      secretName: infra-tls-secret
+  rules:
+    - host: yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: infra-service
+                port:
+                  number: 80

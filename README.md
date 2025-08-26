@@ -12,7 +12,7 @@ make start
 make status
 
 # Access your applications
-open https://app.local        # Landing page
+open https://infra.local      # Infrastructure dashboard
 open https://argocd.local     # GitOps dashboard
 open https://portainer.local  # Kubernetes management
 ```

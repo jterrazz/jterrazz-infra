@@ -51,12 +51,12 @@ spec:
               sleep 2
 
               # Publish our domains
-              avahi-publish -a -R app.local $EXTERNAL_IP > /dev/null 2>&1 &
+              avahi-publish -a -R infra.local $EXTERNAL_IP > /dev/null 2>&1 &
               avahi-publish -a -R argocd.local $EXTERNAL_IP > /dev/null 2>&1 &
               avahi-publish -a -R portainer.local $EXTERNAL_IP > /dev/null 2>&1 &
 
               echo "mDNS publisher started for $EXTERNAL_IP"
-              echo "Published domains: app.local, argocd.local, portainer.local -> $EXTERNAL_IP"
+              echo "Published domains: infra.local, argocd.local, portainer.local -> $EXTERNAL_IP"
               echo "Alpine startup complete in ~5-10 seconds vs Ubuntu ~20-30 seconds"
 
               # Keep the container running

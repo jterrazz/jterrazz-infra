@@ -13,13 +13,13 @@ show_access_info() {
     if is_local_dev; then
         # Local environment with mDNS - automatic .local domain resolution
         subsection "🌐 Your Applications"
-        echo "  • Landing Page:      https://app.local/"
+        echo "  • Infrastructure:    https://infra.local/"
         echo "  • ArgoCD:           https://argocd.local/"
         echo "  • Portainer:        https://portainer.local/"
     else
         # Production environment
         subsection "🌐 Configure DNS and Access"
-        echo "  • Landing Page:      https://yourdomain.com"
+        echo "  • Infrastructure:    https://yourdomain.com"
         echo "  • ArgoCD:           https://argocd.yourdomain.com"
         echo "  • Portainer:        https://portainer.yourdomain.com"
     fi

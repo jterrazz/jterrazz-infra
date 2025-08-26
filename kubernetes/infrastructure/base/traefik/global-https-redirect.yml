@@ -17,5 +17,5 @@ spec:
       middlewares:
         - name: https-redirect
       services:
-        - name: default-landing
+        - name: infra-service
           port: 80

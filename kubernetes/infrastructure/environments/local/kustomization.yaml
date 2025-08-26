@@ -10,9 +10,8 @@ resources:
 
   # Local-specific components
   - components/mdns-publisher.yml
-  - components/landing-page.yml
   - components/create-tls-certificates.yml
-  - components/local-mdns-ingresses.yml
+  - components/local-ingresses.yml
 
 # Local-specific patches for local development
 patches:
@@ -21,6 +20,9 @@ patches:
       name: argocd-cmd-params-cm
       namespace: argocd
     patch: |-
+      - op: add
+        path: /data
+        value: {}
       - op: add
         path: /data/server.insecure
         value: "true"

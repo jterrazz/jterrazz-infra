@@ -1,7 +1,10 @@
+# Local-specific ingresses for all services
+---
+# Infrastructure Dashboard Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: app-local-ingress
+  name: infra-local-ingress
   namespace: default
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
@@ -10,21 +13,22 @@ metadata:
 spec:
   tls:
     - hosts:
-        - app.local
+        - infra.local
       secretName: local-tls-secret
   rules:
-    - host: app.local
+    - host: infra.local
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: nginx-service
+                name: infra-service
                 port:
                   number: 80
 
 ---
+# ArgoCD Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -52,6 +56,7 @@ spec:
                   number: 80
 
 ---
+# Portainer Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

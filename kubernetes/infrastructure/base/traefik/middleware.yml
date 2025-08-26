@@ -8,11 +8,11 @@ metadata:
 spec:
   ipWhiteList:
     sourceRange:
-      - "100.64.0.0/10"  # Tailscale IP range
-      - "127.0.0.1/32"   # Localhost
-      - "10.0.0.0/8"     # Private networks
+      - "100.64.0.0/10" # Tailscale IP range
+      - "127.0.0.1/32" # Localhost
+      - "10.0.0.0/8" # Private networks
       - "192.168.0.0/16" # Private networks
-      - "172.16.0.0/12"  # Private networks
+      - "172.16.0.0/12" # Private networks
 
 ---
 # Traefik HTTPS redirect middleware

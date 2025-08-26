@@ -5,9 +5,11 @@ metadata:
   name: infrastructure-base
 
 resources:
-  # ArgoCD - GitOps controller
-  - argocd/namespace.yaml
-  - argocd/install.yaml
+  # ArgoCD - GitOps controller (with namespace handling)
+  - argocd/
+
+  # Infrastructure dashboard
+  - infra-dashboard/
 
   # Infrastructure applications
   - portainer/portainer.yml
