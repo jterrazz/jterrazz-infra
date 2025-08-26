@@ -106,23 +106,14 @@
       delegate_to: localhost
       become: false
 
-    # Wait for Traefik to be fully ready
-    - name: Wait for Traefik pod to exist
+    # Wait for k3s Traefik installation to complete
+    - name: Wait for Traefik Helm installation to complete
       ansible.builtin.shell: |
-        kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik --no-headers | wc -l
-      register: traefik_pod_count
+        kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=120s
+      register: traefik_wait
       retries: 60
       delay: 1
-      until: traefik_pod_count.stdout | int > 0
-      delegate_to: localhost
-      become: false
-      environment:
-        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
-      changed_when: false
-
-    - name: Wait for Traefik pod to be ready
-      ansible.builtin.shell: |
-        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=traefik -n kube-system --timeout=300s
+      until: traefik_wait.rc == 0
       delegate_to: localhost
       become: false
       environment:
