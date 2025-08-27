@@ -254,18 +254,17 @@ show_argocd_applications() {
     
     subsection "🎯 ArgoCD Applications"
     
-    local apps=$(ssh_vm "sudo k3s kubectl get applications -n argocd --no-headers 2>/dev/null" || echo "")
+    local apps=$(ssh_vm "sudo k3s kubectl get applications -n platform-gitops --no-headers 2>/dev/null" || echo "")
     if [[ -n "$apps" ]]; then
         printf "  %-20s %-12s %-12s %-15s %s\n" "APPLICATION" "SYNC STATUS" "HEALTH" "SERVER" "PATH"
         printf "  %-20s %-12s %-12s %-15s %s\n" "-----------" "-----------" "------" "------" "----"
         
         echo "$apps" | while IFS= read -r line; do
             local name=$(echo "$line" | awk '{print $1}')
-            local project=$(echo "$line" | awk '{print $2}')
-            local sync=$(echo "$line" | awk '{print $3}')
-            local health=$(echo "$line" | awk '{print $4}')
-            local server=$(echo "$line" | awk '{print $5}')
-            local path=$(echo "$line" | awk '{print $6}' || echo "N/A")
+            local sync=$(echo "$line" | awk '{print $2}')
+            local health=$(echo "$line" | awk '{print $3}')
+            local server="kubernetes"
+            local path="$(echo "$line" | awk '{print $1}' | cut -d'-' -f1-2)"
             
             # Truncate for formatting
             [[ ${#name} -gt 19 ]] && name="${name:0:16}..."
