@@ -132,6 +132,53 @@
         KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
       changed_when: true
 
+    # Manage ArgoCD Applications declaratively
+    - name: Find all ArgoCD application configs
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../kubernetes/applications"
+        patterns: "*.yml,*.yaml"
+      delegate_to: localhost
+      become: false
+      register: argocd_app_files
+
+    - name: Apply ArgoCD applications
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item.path }}"
+        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        wait: true
+        wait_sleep: 5
+        wait_timeout: 120
+      delegate_to: localhost
+      become: false
+      with_items: "{{ argocd_app_files.files }}"
+      when: argocd_app_files.files is defined
+
+    - name: Get all existing ArgoCD applications
+      kubernetes.core.k8s_info:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        namespace: platform-gitops
+        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+      delegate_to: localhost
+      become: false
+      register: existing_applications
+
+    - name: Remove orphaned ArgoCD applications
+      kubernetes.core.k8s:
+        api_version: argoproj.io/v1alpha1
+        kind: Application
+        name: "{{ item.metadata.name }}"
+        namespace: platform-gitops
+        state: absent
+        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+      delegate_to: localhost
+      become: false
+      with_items: "{{ existing_applications.resources }}"
+      when:
+        - existing_applications.resources is defined
+        - item.metadata.name not in (argocd_app_files.files | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list)
+
     - name: Display cluster information
       ansible.builtin.debug:
         msg: "✅ Infrastructure setup complete - run 'make status' to see details"
