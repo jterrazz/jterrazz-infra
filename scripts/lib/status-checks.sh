@@ -101,61 +101,150 @@ show_vm_ports_table() {
     echo "  Access levels: OPEN=public, PRIVATE=internal only, RESTRICTED=specific IPs, CLOSED=not running, BLOCKED=no rule"
 }
 
-# Show comprehensive Kubernetes services table
-show_kubernetes_services_table() {
+# Show services grouped by category
+show_grouped_services() {
     local vm_ip="$1"
     
-    subsection "🚀 Kubernetes Services & Pods"
-    
-    # Get all services
-    local services_raw=$(ssh_vm "sudo k3s kubectl get svc --all-namespaces -o wide --no-headers 2>/dev/null" || echo "")
-    
-    if [[ -n "$services_raw" ]]; then
-        info "Services Overview"
-        printf "  %-15s %-20s %-12s %-15s %-20s %s\n" "NAMESPACE" "NAME" "TYPE" "CLUSTER-IP" "EXTERNAL-IP" "PORTS"
-        printf "  %-15s %-20s %-12s %-15s %-20s %s\n" "---------" "----" "----" "----------" "-----------" "-----"
+    # Helper function to format service/pod entries
+    format_service_entry() {
+        local namespace="$1" name="$2" type="$3" status="$4" info="$5"
         
-        echo "$services_raw" | while IFS= read -r line; do
-            local namespace=$(echo "$line" | awk '{print $1}')
-            local name=$(echo "$line" | awk '{print $2}')
-            local type=$(echo "$line" | awk '{print $3}')
-            local cluster_ip=$(echo "$line" | awk '{print $4}')
-            local external_ip=$(echo "$line" | awk '{print $5}')
-            local ports=$(echo "$line" | awk '{print $6}')
-            
-            # Truncate long values for table formatting
-            [[ ${#name} -gt 19 ]] && name="${name:0:16}..."
-            [[ ${#external_ip} -gt 19 ]] && external_ip="${external_ip:0:16}..."
-            [[ ${#ports} -gt 19 ]] && ports="${ports:0:16}..."
-            
-            printf "  %-15s %-20s %-12s %-15s %-20s %s\n" "$namespace" "$name" "$type" "$cluster_ip" "$external_ip" "$ports"
-        done
-        echo ""
-    fi
+        # Smart truncation for names
+        if [[ ${#name} -gt 27 ]]; then
+            if [[ "$name" == argocd-* ]]; then
+                local suffix="${name#argocd-}"
+                local service_part="${suffix%-*}"
+                name="argocd-${service_part:0:15}..."
+            elif [[ "$name" == *-* ]]; then
+                local prefix="${name%%-*}"
+                name="${prefix}-${name:$((${#prefix}+1)):15}..."
+            else
+                name="${name:0:24}..."
+            fi
+        fi
+        
+        # Truncate namespace if too long
+        [[ ${#namespace} -gt 19 ]] && namespace="${namespace:0:16}..."
+        
+        printf "    %-20s %-28s %-12s %-12s %s\n" "$namespace" "$name" "$type" "$status" "$info"
+    }
     
-    # Get pod status for key namespaces
-    info "Key Application Pods"
-    printf "  %-15s %-30s %-12s %-8s %s\n" "NAMESPACE" "NAME" "STATUS" "RESTARTS" "AGE"
-    printf "  %-15s %-30s %-12s %-8s %s\n" "---------" "----" "------" "--------" "---"
+    subsection "🚀 Kubernetes Infrastructure Overview"
     
-    local pod_info=$(ssh_vm "sudo k3s kubectl get pods --all-namespaces --no-headers 2>/dev/null | grep -E '(argocd|portainer|kube-system)'" || echo "")
+    # Get services and pods data
+    local services_raw=$(ssh_vm "sudo k3s kubectl get svc --all-namespaces -o wide --no-headers 2>/dev/null" || echo "")
+    local pods_raw=$(ssh_vm "sudo k3s kubectl get pods --all-namespaces --no-headers 2>/dev/null" || echo "")
     
-    if [[ -n "$pod_info" ]]; then
-        echo "$pod_info" | while IFS= read -r line; do
-            local namespace=$(echo "$line" | awk '{print $1}')
-            local name=$(echo "$line" | awk '{print $2}')
-            local ready=$(echo "$line" | awk '{print $3}')
-            local status=$(echo "$line" | awk '{print $4}')
-            local restarts=$(echo "$line" | awk '{print $5}')
-            local age=$(echo "$line" | awk '{print $6}')
-            
-            # Truncate long pod names
-            [[ ${#name} -gt 29 ]] && name="${name:0:26}..."
-            
-            printf "  %-15s %-30s %-12s %-8s %s\n" "$namespace" "$name" "$status" "$restarts" "$age"
-        done
+    # System Services (kube-system)
+    info "🔧 System Services (Kubernetes Core)"
+    printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
+    printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
+    
+    # System services (default and kube-system)
+    echo "$services_raw" | grep -E "^(default|kube-system)" | while IFS= read -r line; do
+        local namespace=$(echo "$line" | awk '{print $1}')
+        local name=$(echo "$line" | awk '{print $2}')
+        local type=$(echo "$line" | awk '{print $3}')
+        local ports=$(echo "$line" | awk '{print $6}')
+        [[ ${#ports} -gt 25 ]] && ports="${ports:0:22}..."
+        
+        # Add context for core services
+        local context=""
+        case "$name" in
+            kubernetes) context="$ports (API Server)" ;;
+            kube-dns) context="$ports (DNS)" ;;
+            traefik) context="$ports (Ingress)" ;;
+            metrics-server) context="$ports (Metrics)" ;;
+            *) context="$ports" ;;
+        esac
+        
+        format_service_entry "$namespace" "$name" "$type" "Running" "$context"
+    done
+    
+    # System pods (default and kube-system)
+    echo "$pods_raw" | grep -E "^(default|kube-system)" | while IFS= read -r line; do
+        local namespace=$(echo "$line" | awk '{print $1}')
+        local name=$(echo "$line" | awk '{print $2}')
+        local status=$(echo "$line" | awk '{print $4}')
+        local age=$(echo "$line" | awk '{print $6}')
+        local restarts=$(echo "$line" | awk '{print $5}')
+        format_service_entry "$namespace" "$name" "Pod" "$status" "restarts: $restarts, age: $age"
+    done
+    
+    echo ""
+    
+    # Platform Services (platform-*)
+    info "🏗️ Platform Services (GitOps & Management)"
+    printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
+    printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
+    
+    # Platform services
+    echo "$services_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
+        local namespace=$(echo "$line" | awk '{print $1}')
+        local name=$(echo "$line" | awk '{print $2}')
+        local type=$(echo "$line" | awk '{print $3}')
+        local ports=$(echo "$line" | awk '{print $6}')
+        [[ ${#ports} -gt 25 ]] && ports="${ports:0:22}..."
+        
+        # Add context for platform services
+        local context=""
+        case "$name" in
+            argocd-server) context="$ports (GitOps UI)" ;;
+            portainer) context="$ports (Container Mgmt)" ;;
+            dashboard-service) context="$ports (K8s Dashboard)" ;;
+            *) context="$ports" ;;
+        esac
+        
+        format_service_entry "$namespace" "$name" "$type" "Running" "$context"
+    done
+    
+    # Platform pods
+    echo "$pods_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
+        local namespace=$(echo "$line" | awk '{print $1}')
+        local name=$(echo "$line" | awk '{print $2}')
+        local status=$(echo "$line" | awk '{print $4}')
+        local age=$(echo "$line" | awk '{print $6}')
+        local restarts=$(echo "$line" | awk '{print $5}')
+        format_service_entry "$namespace" "$name" "Pod" "$status" "restarts: $restarts, age: $age"
+    done
+    
+    echo ""
+    
+    # Application Services (everything else, excluding default system services)
+    info "📱 Application Services"
+    local app_services=$(echo "$services_raw" | grep -v -E "^(default|kube-system|platform-)")
+    local app_pods=$(echo "$pods_raw" | grep -v -E "^(default|kube-system|platform-)")
+    
+    if [[ -n "$app_services" || -n "$app_pods" ]]; then
+        printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
+        printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
+        
+        # App services
+        if [[ -n "$app_services" ]]; then
+            echo "$app_services" | while IFS= read -r line; do
+                local namespace=$(echo "$line" | awk '{print $1}')
+                local name=$(echo "$line" | awk '{print $2}')
+                local type=$(echo "$line" | awk '{print $3}')
+                local ports=$(echo "$line" | awk '{print $6}')
+                [[ ${#ports} -gt 25 ]] && ports="${ports:0:22}..."
+                format_service_entry "$namespace" "$name" "$type" "Running" "$ports"
+            done
+        fi
+        
+        # App pods
+        if [[ -n "$app_pods" ]]; then
+            echo "$app_pods" | while IFS= read -r line; do
+                local namespace=$(echo "$line" | awk '{print $1}')
+                local name=$(echo "$line" | awk '{print $2}')
+                local status=$(echo "$line" | awk '{print $4}')
+                local age=$(echo "$line" | awk '{print $6}')
+                local restarts=$(echo "$line" | awk '{print $5}')
+                format_service_entry "$namespace" "$name" "Pod" "$status" "restarts: $restarts, age: $age"
+            done
+        fi
     else
-        echo "  No pods found in key namespaces"
+        echo "    No application services deployed yet"
+        echo "    Deploy your apps via ArgoCD or kubectl apply"
     fi
 }
 
@@ -347,7 +436,7 @@ show_vm_status() {
     
     # Kubernetes services and pods
     echo ""
-    show_kubernetes_services_table "$vm_ip"
+    show_grouped_services "$vm_ip"
     
     # ArgoCD applications
     echo ""
