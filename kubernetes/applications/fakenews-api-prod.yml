@@ -14,7 +14,7 @@ spec:
   source:
     repoURL: https://github.com/jterrazz/fakenews-api.git
     targetRevision: HEAD
-    path: .  # Look in root directory first
+    path: . # Look in root directory first
     directory:
       include: "*.{yaml,yml}"
       recurse: true

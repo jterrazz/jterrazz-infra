@@ -130,7 +130,8 @@
       become: false
       environment:
         KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
-      changed_when: true
+      register: kubectl_apply_result
+      changed_when: kubectl_apply_result.stdout | regex_search('(created|configured|patched|updated|replaced)')
 
     # Manage ArgoCD Applications declaratively
     - name: Find all ArgoCD application configs

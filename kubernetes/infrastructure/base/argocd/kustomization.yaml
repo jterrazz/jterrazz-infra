@@ -5,3 +5,23 @@ namespace: platform-gitops
 
 resources:
   - install.yaml
+
+# Fix NetworkPolicy protocol defaults to prevent unnecessary reconfigurations
+patches:
+  - target:
+      kind: NetworkPolicy
+      name: argocd-application-controller-network-policy
+    patch: |-
+      - op: add
+        path: /spec/ingress/0/ports/0/protocol
+        value: TCP
+  - target:
+      kind: NetworkPolicy
+      name: argocd-repo-server-network-policy
+    patch: |-
+      - op: add
+        path: /spec/ingress/0/ports/0/protocol
+        value: TCP
+      - op: add
+        path: /spec/ingress/1/ports/0/protocol
+        value: TCP
