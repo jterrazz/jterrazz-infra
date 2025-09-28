@@ -95,57 +95,6 @@ resource "hcloud_floating_ip_assignment" "main" {
   server_id      = hcloud_server.main.id
 }
 
-# Firewall rules
-resource "hcloud_firewall" "main" {
-  name = "${var.project_name}-firewall"
-  
-  # SSH access
-  rule {
-    direction = "in"
-    port      = "22"
-    protocol  = "tcp"
-    source_ips = var.allowed_ssh_ips
-  }
-  
-  # HTTP/HTTPS for web services
-  rule {
-    direction = "in"
-    port      = "80"
-    protocol  = "tcp"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-  
-  rule {
-    direction = "in"
-    port      = "443" 
-    protocol  = "tcp"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-  
-  # Kubernetes API - SECURE: Tailscale VPN + Private Networks Only
-  # Allows: Tailscale mesh (100.64.0.0/10) + RFC1918 private networks
-  # Blocks: All public internet access to Kubernetes API
-  rule {
-    direction = "in"
-    port      = "6443"
-    protocol  = "tcp"
-    source_ips = [
-      "100.64.0.0/10",    # Tailscale VPN
-      "192.168.0.0/16",   # Private Class C
-      "10.0.0.0/8",       # Private Class A
-      "172.16.0.0/12"     # Private Class B
-    ]
-  }
-  
-  # Note: Tailscale doesn't need inbound ports - uses NAT traversal and DERP relays
-}
-
-# Apply firewall to server
-resource "hcloud_firewall_attachment" "main" {
-  firewall_id = hcloud_firewall.main.id
-  server_ids  = [hcloud_server.main.id]
-}
-
 # DNS Records (Cloudflare)
 resource "cloudflare_record" "main" {
   count   = var.domain_name != "" ? 1 : 0

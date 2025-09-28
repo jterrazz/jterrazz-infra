@@ -46,7 +46,7 @@ security_ufw_rules:
       proto: "tcp",
       rule: "allow",
       comment: "Kubernetes API (Private)",
-      from: "192.168.0.0/16",
+      from: "192.168.0.0/16",  
     }
   - {
       port: "6443",
