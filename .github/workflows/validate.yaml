@@ -1,0 +1,89 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6"
+
+      - name: Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Initialize
+        run: terraform init -backend=false
+
+      - name: Validate
+        run: terraform validate
+
+  ansible:
+    name: Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install ansible ansible-lint yamllint
+
+      - name: YAML Lint
+        run: |
+          yamllint -d relaxed ansible/
+
+      - name: Ansible Lint
+        run: |
+          cd ansible && ansible-lint playbooks/
+
+  kubernetes:
+    name: Kubernetes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Validate Base Kustomization
+        run: |
+          kubectl kustomize kubernetes/infrastructure/base > /dev/null
+
+      - name: Validate Local Overlay
+        run: |
+          kubectl kustomize kubernetes/infrastructure/environments/local > /dev/null
+
+      - name: Validate Production Overlay
+        run: |
+          kubectl kustomize kubernetes/infrastructure/environments/production > /dev/null
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "."
+          format: "table"
+          exit-code: "0"  # Don't fail on findings, just report
+          severity: "CRITICAL,HIGH"

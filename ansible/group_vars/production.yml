@@ -1,0 +1,17 @@
+---
+# Production Environment
+# Used for VPS deployments
+
+environment_type: production
+
+# Security - strict
+skip_security: false
+skip_tailscale: false
+
+# SSH - no root, ubuntu only
+ssh_permit_root_login: "no"
+ssh_allowed_users:
+  - ubuntu
+
+# Tailscale
+tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"

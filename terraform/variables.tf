@@ -1,19 +1,37 @@
-# Jterrazz Infrastructure - Terraform Variables
-# Configure your VPS and DNS settings here
+/**
+ * Input Variables
+ */
+
+# -----------------------------------------------------------------------------
+# Project Configuration
+# -----------------------------------------------------------------------------
 
 variable "project_name" {
-  description = "Name of the project (used for resource naming)"
+  description = "Project name used for resource naming"
   type        = string
   default     = "jterrazz-infra"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]*$", var.project_name))
+    error_message = "Project name must start with a letter and contain only lowercase letters, numbers, and hyphens."
+  }
 }
 
 variable "environment" {
-  description = "Environment (production, staging, development)"
+  description = "Deployment environment"
   type        = string
   default     = "production"
+
+  validation {
+    condition     = contains(["production", "staging", "development"], var.environment)
+    error_message = "Environment must be production, staging, or development."
+  }
 }
 
+# -----------------------------------------------------------------------------
 # Hetzner Cloud Configuration
+# -----------------------------------------------------------------------------
+
 variable "hcloud_token" {
   description = "Hetzner Cloud API token"
   type        = string
@@ -21,48 +39,31 @@ variable "hcloud_token" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type"
+  description = "Hetzner server type (cx22 = 2 vCPU, 4GB RAM, 40GB SSD)"
   type        = string
-  default     = "cx21" # 2 vCPU, 4 GB RAM, 40 GB SSD
-}
-
-variable "server_image" {
-  description = "Server OS image"
-  type        = string
-  default     = "ubuntu-24.04"
+  default     = "cx22"
 }
 
 variable "server_location" {
-  description = "Server location"
+  description = "Hetzner datacenter location"
   type        = string
-  default     = "nbg1" # Nuremberg, Germany (EU location)
+  default     = "nbg1"
 }
 
-variable "enable_floating_ip" {
-  description = "Create a floating IP for the server"
-  type        = bool
-  default     = true
-}
-
-# SSH Configuration
 variable "ssh_public_key" {
   description = "SSH public key for server access"
   type        = string
+
+  validation {
+    condition     = can(regex("^ssh-(rsa|ed25519|ecdsa)", var.ssh_public_key))
+    error_message = "Must be a valid SSH public key."
+  }
 }
 
-variable "allowed_ssh_ips" {
-  description = "IP addresses allowed to SSH to the server"
-  type        = list(string)
-  default     = ["0.0.0.0/0"] # Restrict this in production!
-}
+# -----------------------------------------------------------------------------
+# Cloudflare DNS Configuration (Optional)
+# -----------------------------------------------------------------------------
 
-variable "allowed_k8s_ips" {
-  description = "IP addresses allowed to access Kubernetes API"
-  type        = list(string)
-  default     = ["100.64.0.0/10"] # Tailscale IP range only (secure)
-}
-
-# Cloudflare DNS Configuration
 variable "cloudflare_api_token" {
   description = "Cloudflare API token for DNS management"
   type        = string
@@ -71,19 +72,13 @@ variable "cloudflare_api_token" {
 }
 
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID for your domain"
-  type        = string
-  default     = ""
-}
-
-variable "domain_name" {
-  description = "Your domain name (e.g., jterrazz.com)"
+  description = "Cloudflare zone ID (leave empty to skip DNS setup)"
   type        = string
   default     = ""
 }
 
 variable "subdomain" {
-  description = "Subdomain for the server (e.g., manager)"
+  description = "Subdomain for the server (e.g., 'infra' for infra.example.com)"
   type        = string
-  default     = "manager"
+  default     = "infra"
 }

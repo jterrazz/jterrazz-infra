@@ -1,0 +1,14 @@
+---
+# Security Hardening Playbook
+# Configures SSH, firewall, fail2ban, and system hardening
+
+- name: Security Hardening
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include security role
+      ansible.builtin.include_role:
+        name: security
+      when: not (skip_security | default(false))

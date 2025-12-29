@@ -1,0 +1,19 @@
+---
+# Global Variables - All Environments
+# These are defaults that can be overridden per environment
+
+# System
+ansible_python_interpreter: /usr/bin/python3
+timezone: UTC
+
+# Kubeconfig
+kubeconfig_filename: "{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
+
+# k3s - defaults, can override in environment
+k3s_version: "v1.28.5+k3s1"
+k3s_config_dir: "/etc/rancher/k3s"
+k3s_data_dir: "/var/lib/rancher/k3s"
+k3s_node_ip: "{{ ansible_default_ipv4.address }}"
+
+# Storage
+storage_base_path: "/var/lib/k8s-data"

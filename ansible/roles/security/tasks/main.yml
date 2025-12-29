@@ -1,246 +1,135 @@
 ---
-# Security hardening tasks
-# yamllint disable-line rule:syntax-check
-
-- name: Update package cache
-  apt:
-    update_cache: yes
-    cache_valid_time: 3600
+# Security Hardening Role
+# Configures SSH, firewall, fail2ban, and system security
 
 - name: Install security packages
-  apt:
+  ansible.builtin.apt:
     name:
       - ufw
       - fail2ban
       - unattended-upgrades
-      - apt-listchanges
-      - needrestart
       - auditd
     state: present
+    update_cache: true
+    cache_valid_time: 3600
 
 # SSH Hardening
 - name: Configure SSH daemon
-  template:
+  ansible.builtin.template:
     src: sshd_config.j2
     dest: /etc/ssh/sshd_config
-    backup: yes
     mode: "0600"
     owner: root
     group: root
-  notify: restart sshd
+    backup: true
+    validate: "sshd -t -f %s"
+  notify: Restart SSH
 
-# UFW Firewall Configuration
-- name: Check UFW status
-  ufw:
-    state: enabled
-  register: ufw_status
-  when: security_ufw_enabled
-
-- name: Reset UFW to defaults (only if not properly configured)
-  ufw: # noqa syntax-check[unknown-module]
-    state: reset
-  when: security_ufw_enabled and (ufw_status is failed or ufw_status.changed)
-  notify: reload ufw
-
+# UFW Firewall
 - name: Configure UFW defaults
-  ufw:
+  community.general.ufw:
     direction: "{{ item.direction }}"
     policy: "{{ item.policy }}"
   loop:
-    - { direction: "incoming", policy: "{{ security_ufw_default_incoming }}" }
-    - { direction: "outgoing", policy: "{{ security_ufw_default_outgoing }}" }
-    - { direction: "routed", policy: "{{ security_ufw_default_forward }}" }
-  when: security_ufw_enabled
+    - { direction: "incoming", policy: "{{ ufw_default_incoming }}" }
+    - { direction: "outgoing", policy: "{{ ufw_default_outgoing }}" }
+    - { direction: "routed", policy: "{{ ufw_default_forward }}" }
+  when: ufw_enabled
 
 - name: Configure UFW rules
-  ufw:
+  community.general.ufw:
     rule: "{{ item.rule }}"
     port: "{{ item.port }}"
     proto: "{{ item.proto | default('tcp') }}"
     comment: "{{ item.comment | default('') }}"
     from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ security_ufw_rules }}"
-  when: security_ufw_enabled
+  loop: "{{ ufw_rules }}"
+  when: ufw_enabled
 
 - name: Enable UFW
-  ufw:
+  community.general.ufw:
     state: enabled
-    policy: deny
-  when: security_ufw_enabled
+  when: ufw_enabled
 
-# fail2ban Configuration
-- name: Gather package facts for fail2ban configuration
-  ansible.builtin.package_facts:
-    manager: auto
-  when: security_fail2ban_enabled
-
-- name: Configure fail2ban jail.local
-  template:
+# Fail2ban
+- name: Configure fail2ban
+  ansible.builtin.template:
     src: jail.local.j2
     dest: /etc/fail2ban/jail.local
-    backup: yes
     mode: "0644"
-  notify: restart fail2ban
-  when: security_fail2ban_enabled
+    backup: true
+  notify: Restart fail2ban
+  when: fail2ban_enabled
 
-- name: Enable and start fail2ban
-  systemd:
+- name: Enable fail2ban
+  ansible.builtin.systemd:
     name: fail2ban
-    enabled: yes
+    enabled: true
     state: started
-  when: security_fail2ban_enabled
+  when: fail2ban_enabled
 
-# Automatic Updates Configuration
-- name: Configure unattended upgrades
-  template:
+# Automatic Updates
+- name: Configure automatic updates
+  ansible.builtin.template:
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: "0644"
-  when: security_auto_updates_enabled
+  when: auto_updates_enabled
 
-- name: Configure unattended upgrades settings
-  template:
+- name: Configure unattended upgrades
+  ansible.builtin.template:
     src: 50unattended-upgrades.j2
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: "0644"
-  when: security_unattended_upgrades_enabled
+  when: auto_updates_enabled
 
-- name: Enable and start unattended-upgrades
-  systemd:
-    name: unattended-upgrades
-    enabled: yes
-    state: started
-  when: security_unattended_upgrades_enabled
-
-# Kernel Parameter Tuning
-- name: Check if k3s is installed
-  ansible.builtin.stat:
-    path: /usr/local/bin/k3s
-  register: k3s_installed_check
-
-- name: Configure IP forwarding (only if k3s is not installed)
-  sysctl:
-    name: "net.ipv4.ip_forward"
-    value: "0"
-    state: present
-    reload: yes
-  when: not k3s_installed_check.stat.exists
-
-- name: Configure other kernel parameters for security
-  sysctl:
+# Kernel Hardening
+- name: Configure kernel security parameters
+  ansible.posix.sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"
     state: present
-    reload: yes
-  loop: "{{ security_kernel_parameters }}"
+    reload: true
+  loop: "{{ kernel_security_params }}"
 
 # System Hardening
 - name: Secure shared memory
-  mount:
+  ansible.posix.mount:
     path: /run/shm
     src: tmpfs
     fstype: tmpfs
     opts: defaults,noexec,nosuid
     state: present
-  when: security_secure_shared_memory
+  when: secure_shared_memory
 
-- name: Disable unused network protocols
-  blockinfile:
-    path: /etc/modprobe.d/blacklist-rare-protocols.conf
-    create: yes
+- name: Disable uncommon network protocols
+  ansible.builtin.blockinfile:
+    path: /etc/modprobe.d/blacklist-protocols.conf
+    create: true
+    mode: "0644"
     block: |
-      # Disable rare network protocols for security
       install dccp /bin/true
       install sctp /bin/true
       install rds /bin/true
       install tipc /bin/true
-  when: security_disable_uncommon_protocols
+  when: disable_uncommon_protocols
 
-# Audit and Monitoring Setup
-- name: Enable auditd service
-  systemd:
+# Audit Logging
+- name: Enable auditd
+  ansible.builtin.systemd:
     name: auditd
-    enabled: yes
+    enabled: true
     state: started
 
-- name: Configure basic audit rules
-  copy:
+- name: Configure audit rules
+  ansible.builtin.copy:
+    dest: /etc/audit/rules.d/security.rules
+    mode: "0640"
     content: |
-      # Basic audit rules for security monitoring
+      # Monitor authentication files
       -w /etc/passwd -p wa -k identity
       -w /etc/group -p wa -k identity
       -w /etc/shadow -p wa -k identity
-      -w /etc/sudoers -p wa -k identity
+      -w /etc/sudoers -p wa -k sudoers
       -w /etc/ssh/sshd_config -p wa -k sshd
-      -w /etc/fail2ban/ -p wa -k fail2ban
-      -a always,exit -F arch=b64 -S adjtimex -S settimeofday -k time-change
-      -a always,exit -F arch=b32 -S adjtimex -S settimeofday -S stime -k time-change
-    dest: /etc/audit/rules.d/audit.rules
-    mode: "0640"
-  notify: restart auditd
-
-# Security Status and Monitoring
-- name: Create security status script
-  copy:
-    content: |
-      #!/bin/bash
-      # Security status check script
-
-      echo "=== Security Status Report ==="
-      echo "Generated: $(date)"
-      echo
-
-      echo "🔥 Firewall Status:"
-      ufw status numbered
-      echo
-
-      echo "🛡️ fail2ban Status:"
-      fail2ban-client status
-      echo
-
-      echo "📊 Login Attempts (last 100):"
-      journalctl -u ssh -n 100 --no-pager | grep -i "failed\|accept" | tail -10
-      echo
-
-      echo "🔍 System Updates:"
-      apt list --upgradable 2>/dev/null | wc -l | xargs echo "Upgradable packages:"
-
-      echo
-      echo "📈 System Load:"
-      uptime
-
-      echo
-      echo "💾 Disk Usage:"
-      df -h / | tail -1
-    dest: /usr/local/bin/security-status
-    mode: "0755"
-
-- name: Create security update check cron job
-  cron:
-    name: "Security status check"
-    minute: "0"
-    hour: "6"
-    job: "/usr/local/bin/security-status > /var/log/security-status.log 2>&1"
-    user: root
-
-# mDNS Configuration handled by mDNS publisher pod in Kubernetes
-# See scripts/setup-mdns-resolver.sh for local development DNS
-
-# Final security verification
-- name: Display security setup summary
-  debug:
-    msg: |
-      🛡️ Security hardening completed!
-
-      ✅ SSH hardening: Disabled password auth, configured timeouts
-      ✅ UFW firewall: Enabled with k3s/web ports allowed
-      ✅ fail2ban: Protection against brute force attacks
-      ✅ Automatic updates: Security patches applied automatically
-      ✅ Kernel hardening: TCP/IP stack security parameters
-      ✅ Audit logging: System changes monitored
-      ✅ Security monitoring: Daily status reports
-
-      🔍 Security status: /usr/local/bin/security-status
-      📊 Log monitoring: tail -f /var/log/fail2ban.log
-      🛡️ Firewall status: ufw status
-      🌐 mDNS hostname: {{ inventory_hostname }}.local
+  notify: Restart auditd

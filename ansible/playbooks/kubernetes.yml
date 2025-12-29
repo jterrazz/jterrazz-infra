@@ -1,0 +1,46 @@
+---
+# Kubernetes (k3s) Playbook
+# Installs and configures k3s cluster
+
+- name: Kubernetes Setup
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Create k3s directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ k3s_config_dir }}"
+        - "{{ k3s_data_dir }}"
+        - /var/log/k3s
+
+  roles:
+    - role: k3s
+
+  post_tasks:
+    - name: Fetch kubeconfig to local machine
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ playbook_dir }}/../../{{ kubeconfig_filename }}"
+        flat: true
+
+    - name: Update kubeconfig server address
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/../../{{ kubeconfig_filename }}"
+        regexp: 'https://127\.0\.0\.1:6443'
+        replace: "https://{{ ansible_host }}:6443"
+      delegate_to: localhost
+      become: false
+
+    - name: Wait for k3s API server
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 6443
+        delay: 5
+        timeout: 120
+      delegate_to: localhost
+      become: false

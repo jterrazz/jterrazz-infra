@@ -1,91 +1,83 @@
 ---
-# Security hardening role default variables
+# Security Role - Default Variables
 
-# SSH hardening configuration
-security_ssh_port: 22
-security_ssh_permit_root_login: "yes" # We need root for initial setup
-security_ssh_password_authentication: "no"
-security_ssh_pubkey_authentication: "yes"
-security_ssh_challenge_response_auth: "no"
-security_ssh_gss_api_authentication: "no"
-security_ssh_x11_forwarding: "no"
-security_ssh_max_auth_tries: 3
-security_ssh_client_alive_interval: 300
-security_ssh_client_alive_count_max: 2
+# SSH Configuration
+# SECURITY: Root login disabled by default - use 'ubuntu' user with sudo
+ssh_port: 22
+ssh_permit_root_login: "no"
+ssh_password_authentication: "no"
+ssh_pubkey_authentication: "yes"
+ssh_max_auth_tries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+ssh_allowed_users:
+  - ubuntu
 
-# fail2ban configuration
-security_fail2ban_enabled: true
-security_fail2ban_ignoreip: "127.0.0.1/8 ::1"
-security_fail2ban_bantime: "10m"
-security_fail2ban_findtime: "10m"
-security_fail2ban_maxretry: 5
+# Firewall (UFW)
+ufw_enabled: true
+ufw_default_incoming: "deny"
+ufw_default_outgoing: "allow"
+ufw_default_forward: "deny"
 
-# UFW firewall configuration
-security_ufw_enabled: true
-security_ufw_default_incoming: "deny"
-security_ufw_default_outgoing: "allow"
-security_ufw_default_forward: "deny"
-
-# Required firewall rules for our stack
-security_ufw_rules:
+# Base firewall rules - SSH, HTTP, HTTPS only open to public
+# Kubernetes API restricted to private networks
+ufw_rules:
+  # Public services
   - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
-  - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP (Lets Encrypt)" }
+  - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
-  # Kubernetes API - SECURE: Tailscale VPN + Private Networks Only
-  # Allows: Tailscale mesh (100.64.0.0/10) + RFC1918 private networks
-  # Blocks: All public internet access to Kubernetes API
+  # Kubernetes API - private networks only
   - {
       port: "6443",
       proto: "tcp",
       rule: "allow",
-      comment: "Kubernetes API (Tailscale)",
       from: "100.64.0.0/10",
+      comment: "K8s API (Tailscale)",
     }
   - {
       port: "6443",
       proto: "tcp",
       rule: "allow",
-      comment: "Kubernetes API (Private)",
-      from: "192.168.0.0/16",  
-    }
-  - {
-      port: "6443",
-      proto: "tcp",
-      rule: "allow",
-      comment: "Kubernetes API (Private)",
       from: "10.0.0.0/8",
+      comment: "K8s API (Private)",
     }
   - {
       port: "6443",
       proto: "tcp",
       rule: "allow",
-      comment: "Kubernetes API (Private)",
       from: "172.16.0.0/12",
+      comment: "K8s API (Private)",
     }
-  # Note: Tailscale doesn't need inbound ports - it uses NAT traversal and DERP relays
+  - {
+      port: "6443",
+      proto: "tcp",
+      rule: "allow",
+      from: "192.168.0.0/16",
+      comment: "K8s API (Private)",
+    }
 
-# Automatic updates configuration
-security_auto_updates_enabled: true
-security_unattended_upgrades_enabled: true
-security_auto_reboot_enabled: false # Set to true if you want automatic reboots
-security_auto_reboot_time: "06:00"
+# Fail2ban
+fail2ban_enabled: true
+fail2ban_ignoreip: "127.0.0.1/8 ::1"
+fail2ban_bantime: "1h"
+fail2ban_findtime: "10m"
+fail2ban_maxretry: 5
 
-# System hardening
-security_disable_unused_services: true
-security_secure_shared_memory: true
-security_disable_uncommon_protocols: true
+# Automatic Updates
+auto_updates_enabled: true
+auto_reboot_enabled: false
+auto_reboot_time: "06:00"
 
-# Kernel parameters for security
-security_kernel_parameters:
-  # Note: IP forwarding will be handled separately to avoid conflicts with k3s
-  # k3s requires IP forwarding for container networking
-  # Disable IPv6 if not needed
-  - { name: "net.ipv6.conf.all.disable_ipv6", value: "1" }
-  - { name: "net.ipv6.conf.default.disable_ipv6", value: "1" }
-  # TCP hardening
+# System Hardening
+secure_shared_memory: true
+disable_uncommon_protocols: true
+
+# Kernel Security Parameters
+kernel_security_params:
   - { name: "net.ipv4.tcp_syncookies", value: "1" }
   - { name: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }
   - { name: "net.ipv4.icmp_ignore_bogus_error_responses", value: "1" }
-  # Disable source routing
   - { name: "net.ipv4.conf.all.accept_source_route", value: "0" }
   - { name: "net.ipv4.conf.default.accept_source_route", value: "0" }
+  - { name: "net.ipv4.conf.all.rp_filter", value: "1" }
+  - { name: "net.ipv4.conf.default.rp_filter", value: "1" }

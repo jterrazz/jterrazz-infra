@@ -1,13 +1,15 @@
-# Global HTTPS Redirect for Traefik
-# Ensures all HTTP traffic is redirected to HTTPS
-
 ---
-# IngressRoute for global HTTP to HTTPS redirect
+# Global HTTPS Redirect
+# Redirects all HTTP traffic to HTTPS
+
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
   name: global-http-redirect
   namespace: platform-ingress
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/component: redirect
 spec:
   entryPoints:
     - web
@@ -17,5 +19,5 @@ spec:
       middlewares:
         - name: https-redirect
       services:
-        - name: dashboard-service
-          port: 80
+        - name: noop@internal
+          kind: TraefikService

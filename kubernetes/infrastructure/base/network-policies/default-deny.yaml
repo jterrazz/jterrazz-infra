@@ -1,24 +1,38 @@
 ---
-# Default deny all ingress traffic in platform-management namespace
-# Each service must explicitly allow the traffic it needs
+# Default Deny Network Policies
+# Each namespace gets default-deny, services explicitly allow traffic
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-ingress
+  name: default-deny-all
   namespace: platform-management
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
 
 ---
-# Default deny all ingress traffic in platform-dns namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: default-deny-ingress
+  name: default-deny-all
   namespace: platform-dns
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: platform-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

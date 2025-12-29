@@ -1,15 +1,15 @@
 #!/bin/bash
-# Simplified local development manager
+# Local Development Manager
+# Manages Multipass VM for local k3s development
 
-# Load utilities
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$SCRIPT_DIR/lib/common.sh"
-source "$SCRIPT_DIR/lib/vm-utils.sh" 
+source "$SCRIPT_DIR/lib/vm-utils.sh"
 source "$SCRIPT_DIR/lib/status-checks.sh"
-
-# Commands
 
 cmd_create() {
     section "Creating Development VM"
@@ -19,29 +19,26 @@ cmd_create() {
 
 cmd_ansible() {
     section "Running Ansible Configuration"
-    
-    cd "$PROJECT_DIR/ansible"
-    
-    # Test connectivity
-    info "Testing Ansible connectivity..."
-    if ansible -i inventories/multipass/inventory.py -m ping all; then
-        success "Ansible can reach VM"
-    else
-        error "Ansible cannot reach VM"
+
+    local vm_ip=$(get_vm_ip)
+    if [[ -z "$vm_ip" ]]; then
+        error "Cannot determine VM IP"
         exit 1
     fi
-    
-    # Run playbook
+
+    cd "$PROJECT_DIR/ansible"
+
     info "Running Ansible playbook..."
-    if ansible-playbook -i inventories/multipass/inventory.py site.yml -v; then
+    if ansible-playbook playbooks/site.yml \
+        -i inventories/local/hosts.yml \
+        -e "ansible_host=$vm_ip" \
+        -v; then
         success "Ansible configuration completed"
     else
         error "Ansible playbook failed"
         exit 1
     fi
 }
-
-
 
 cmd_status() {
     show_vm_status
@@ -53,31 +50,27 @@ cmd_ssh() {
         error "Cannot determine VM IP"
         exit 1
     fi
-    
     ssh_vm
 }
 
 cmd_delete() {
     section "Deleting Development Environment"
     delete_vm
-    rm -f "$KUBECONFIG_PATH"
+    rm -f "$PROJECT_DIR/local-kubeconfig.yaml"
     rm -rf "$PROJECT_DIR/local-data/"
     success "Environment cleaned"
 }
 
 cmd_full() {
-    # Complete setup
     cmd_create
     cmd_ansible
-    
-    # Wait for services
-    info "Waiting for Kubernetes services..."
+
+    info "Waiting for services to start..."
     sleep 10
-    
+
     cmd_status
 }
 
-# Help
 show_help() {
     cat << EOF
 Local Development Manager
@@ -99,7 +92,6 @@ Examples:
 EOF
 }
 
-# Main
 case "${1:-help}" in
     create)     cmd_create ;;
     ansible)    cmd_ansible ;;

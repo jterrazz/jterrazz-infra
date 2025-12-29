@@ -1,8 +1,13 @@
-# Jterrazz Infrastructure - Hetzner Cloud VPS
-# Modern Infrastructure as Code setup with Terraform + Ansible + k3s
+/**
+ * Jterrazz Infrastructure - Main Configuration
+ *
+ * Provisions a Hetzner Cloud VPS with optional Cloudflare DNS.
+ * Designed for single-node k3s Kubernetes deployment.
+ */
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5.0"
+
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
@@ -15,83 +20,60 @@ terraform {
   }
 }
 
-# Configure Hetzner Cloud Provider
+# -----------------------------------------------------------------------------
+# Providers
+# -----------------------------------------------------------------------------
+
 provider "hcloud" {
   token = var.hcloud_token
 }
 
-# Configure Cloudflare Provider
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-# SSH Key for server access
-resource "hcloud_ssh_key" "main" {
-  name       = "${var.project_name}-key"
-  public_key = var.ssh_public_key
-}
+# -----------------------------------------------------------------------------
+# Local Values
+# -----------------------------------------------------------------------------
 
-# Create the VPS
-resource "hcloud_server" "main" {
-  name        = "${var.project_name}-server"
-  image       = var.server_image
-  server_type = var.server_type
-  location    = var.server_location
+locals {
+  server_name = "${var.project_name}-server"
 
-  ssh_keys = [hcloud_ssh_key.main.id]
-
-  # Cloud-init configuration
-  user_data = templatefile("${path.module}/cloud-init.yml", {
-    ssh_public_key = var.ssh_public_key
-    hostname       = "${var.project_name}-server"
-  })
-
-  labels = {
+  common_labels = {
     project     = var.project_name
     environment = var.environment
-    managed_by  = "terraform"
   }
+
+  cloud_init = templatefile("${path.module}/templates/cloud-init.yaml", {
+    hostname = local.server_name
+  })
 }
 
-# Floating IP (optional, for static IP)
-resource "hcloud_floating_ip" "main" {
-  count         = var.enable_floating_ip ? 1 : 0
-  type          = "ipv4"
-  home_location = var.server_location
-  description   = "${var.project_name} floating IP"
+# -----------------------------------------------------------------------------
+# Server
+# -----------------------------------------------------------------------------
 
-  labels = {
-    project = var.project_name
-  }
+module "server" {
+  source = "./modules/hetzner-server"
+
+  name           = local.server_name
+  server_type    = var.server_type
+  location       = var.server_location
+  ssh_public_key = var.ssh_public_key
+  user_data      = local.cloud_init
+  labels         = local.common_labels
 }
 
-# Assign floating IP to server
-resource "hcloud_floating_ip_assignment" "main" {
-  count          = var.enable_floating_ip ? 1 : 0
-  floating_ip_id = hcloud_floating_ip.main[0].id
-  server_id      = hcloud_server.main.id
-}
+# -----------------------------------------------------------------------------
+# DNS (Optional)
+# -----------------------------------------------------------------------------
 
-# DNS Records (Cloudflare)
-resource "cloudflare_record" "main" {
-  count   = var.domain_name != "" ? 1 : 0
-  zone_id = var.cloudflare_zone_id
-  name    = var.subdomain
-  content = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
-  type    = "A"
-  ttl     = 300
+module "dns" {
+  source = "./modules/cloudflare-dns"
+  count  = var.cloudflare_zone_id != "" ? 1 : 0
 
-  comment = "Managed by Terraform - ${var.project_name}"
-}
-
-# Wildcard DNS for applications
-resource "cloudflare_record" "wildcard" {
-  count   = var.domain_name != "" ? 1 : 0
-  zone_id = var.cloudflare_zone_id
-  name    = "*.${var.subdomain}"
-  content = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
-  type    = "A"
-  ttl     = 300
-
-  comment = "Wildcard for applications - ${var.project_name}"
+  zone_id         = var.cloudflare_zone_id
+  subdomain       = var.subdomain
+  ip_address      = module.server.ipv4_address
+  create_wildcard = true
 }

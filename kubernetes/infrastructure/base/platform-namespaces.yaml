@@ -1,39 +1,38 @@
 ---
-# Platform Management - Portainer, dashboards, monitoring
+# Platform Namespaces
+# Core namespaces for infrastructure services
+
 apiVersion: v1
 kind: Namespace
 metadata:
   name: platform-management
   labels:
-    name: platform-management
-    platform.component: management
+    app.kubernetes.io/component: management
+    pod-security.kubernetes.io/enforce: baseline
 
 ---
-# Platform Ingress - Traefik, certificates, routing
 apiVersion: v1
 kind: Namespace
 metadata:
   name: platform-ingress
   labels:
-    name: platform-ingress
-    platform.component: ingress
+    app.kubernetes.io/component: ingress
+    pod-security.kubernetes.io/enforce: baseline
 
 ---
-# Platform GitOps - ArgoCD, deployment automation
 apiVersion: v1
 kind: Namespace
 metadata:
   name: platform-gitops
   labels:
-    name: platform-gitops
-    platform.component: gitops
+    app.kubernetes.io/component: gitops
+    pod-security.kubernetes.io/enforce: baseline
 
 ---
-# Platform DNS - Service discovery, certificates, networking
 apiVersion: v1
 kind: Namespace
 metadata:
   name: platform-dns
   labels:
-    name: platform-dns
-    platform.component: dns
+    app.kubernetes.io/component: dns
+    pod-security.kubernetes.io/enforce: baseline

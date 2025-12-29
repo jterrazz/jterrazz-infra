@@ -1,0 +1,47 @@
+# k3s Configuration
+# Managed by Ansible
+
+# Network
+bind-address: {{ k3s_node_ip }}
+node-ip: {{ k3s_node_ip }}
+node-external-ip: {{ k3s_node_ip }}
+https-listen-port: 6443
+
+# Cluster
+{% if environment_type | default('production') != 'local' %}
+cluster-init: true
+{% endif %}
+token: {{ k3s_cluster_token }}
+
+# Storage
+data-dir: {{ k3s_data_dir }}
+
+# Kubeconfig
+write-kubeconfig-mode: "0644"
+write-kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+# TLS SANs
+tls-san:
+  - {{ ansible_host }}
+  - {{ k3s_node_ip }}
+  - localhost
+  - 127.0.0.1
+{% for san in k3s_tls_san %}
+  - {{ san }}
+{% endfor %}
+
+# Disabled Components
+{% if k3s_disable_components %}
+disable:
+{% for component in k3s_disable_components %}
+  - {{ component }}
+{% endfor %}
+{% endif %}
+
+# Kubelet
+kubelet-arg:
+  - "max-pods=250"
+
+# API Server
+kube-apiserver-arg:
+  - "enable-admission-plugins=NodeRestriction,ResourceQuota"

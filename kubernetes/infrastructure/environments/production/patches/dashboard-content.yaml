@@ -1,0 +1,39 @@
+---
+# Production dashboard content
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-config
+  namespace: platform-management
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Infrastructure</title>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .container { text-align: center; padding: 2rem; }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; font-weight: 400; }
+        .env { color: #888; margin-bottom: 1rem; }
+        .secure { color: #f59e0b; margin-bottom: 2rem; font-size: 0.875rem; }
+        .links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+        a { color: #fff; background: #222; padding: 1rem 2rem; border-radius: 8px; text-decoration: none; transition: background 0.2s; }
+        a:hover { background: #333; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Infrastructure</h1>
+        <p class="env">Production</p>
+        <p class="secure">VPN access required</p>
+        <div class="links">
+          <a href="https://argocd.jterrazz.com">ArgoCD</a>
+          <a href="https://portainer.jterrazz.com">Portainer</a>
+        </div>
+      </div>
+    </body>
+    </html>

@@ -4,25 +4,29 @@ kind: Kustomization
 metadata:
   name: infrastructure-base
 
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: jterrazz-infrastructure
+    includeSelectors: false
+
 resources:
-  # Namespace definitions
+  # Namespaces
   - platform-namespaces.yaml
 
-  # Storage configuration (local-path provisioner)
+  # Storage (k3s local-path provisioner config)
   - storage/
 
   # Network policies
   - network-policies/
 
-  # ArgoCD - GitOps controller (with namespace handling)
+  # ArgoCD (GitOps)
   - argocd/
 
-  # Infrastructure dashboard
-  - dashboard/base.yml
+  # Platform services
+  - dashboard/dashboard.yaml
+  - portainer/portainer.yaml
 
-  # Infrastructure applications
-  - portainer/portainer.yml
-
-  # Traefik configurations
-  - traefik/middleware.yml
-  - traefik/global-https-redirect.yml
+  # Traefik configuration
+  - traefik/middleware.yaml
+  - traefik/global-https-redirect.yaml

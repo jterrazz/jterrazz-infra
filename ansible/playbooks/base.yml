@@ -1,0 +1,58 @@
+---
+# Base System Setup
+# Installs essential packages and configures the system foundation
+
+- name: Base System Setup
+  hosts: all
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment target
+      ansible.builtin.debug:
+        msg: "Deploying to {{ inventory_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
+
+    - name: Wait for system to be ready
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 20
+        timeout: 300
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install essential packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - unzip
+          - jq
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - python3-pip
+          - python3-yaml
+          - python3-kubernetes
+          - iptables
+        state: present
+
+    - name: Set timezone
+      community.general.timezone:
+        name: "{{ timezone | default('UTC') }}"
+
+    - name: Configure system limits for Kubernetes
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.d/kubernetes.conf
+        create: true
+        mode: "0644"
+        block: |
+          * soft nofile 65536
+          * hard nofile 65536
+          * soft nproc 65536
+          * hard nproc 65536

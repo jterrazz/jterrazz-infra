@@ -1,0 +1,13 @@
+---
+# Storage Playbook
+# Prepares storage directories for Kubernetes PVCs
+
+- name: Storage Setup
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include storage role
+      ansible.builtin.include_role:
+        name: storage

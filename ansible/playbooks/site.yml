@@ -1,0 +1,27 @@
+---
+# Jterrazz Infrastructure - Master Playbook
+#
+# This is the main orchestrator that imports all other playbooks.
+# Each playbook can also be run independently for targeted updates.
+#
+# Usage:
+#   Full deploy:  ansible-playbook playbooks/site.yml -i inventories/local/hosts.yml
+#   Just k3s:     ansible-playbook playbooks/kubernetes.yml -i inventories/local/hosts.yml
+
+- name: Base System Setup
+  ansible.builtin.import_playbook: base.yml
+
+- name: Security Hardening
+  ansible.builtin.import_playbook: security.yml
+
+- name: Networking (Tailscale)
+  ansible.builtin.import_playbook: networking.yml
+
+- name: Storage Configuration
+  ansible.builtin.import_playbook: storage.yml
+
+- name: Kubernetes (k3s)
+  ansible.builtin.import_playbook: kubernetes.yml
+
+- name: Platform Services
+  ansible.builtin.import_playbook: platform.yml

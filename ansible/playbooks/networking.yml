@@ -1,0 +1,14 @@
+---
+# Networking Playbook
+# Configures Tailscale VPN for secure access
+
+- name: Networking Setup
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Include Tailscale role
+      ansible.builtin.include_role:
+        name: tailscale
+      when: not (skip_tailscale | default(false))

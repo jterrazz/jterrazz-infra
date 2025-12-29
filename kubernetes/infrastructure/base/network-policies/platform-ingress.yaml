@@ -1,22 +1,35 @@
 ---
-# Allow Traefik to receive external traffic
-# Note: Traefik runs in kube-system, which typically doesn't have network policies
-# This policy is here for documentation and if you move Traefik to a dedicated namespace
+# Network Policies for platform-ingress namespace
+# Note: Traefik runs in kube-system by default with k3s
+
+# Allow external traffic to any ingress resources
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-traefik-ingress
+  name: allow-external-ingress
   namespace: platform-ingress
 spec:
   podSelector: {}
   policyTypes:
     - Ingress
+    - Egress
   ingress:
-    # Allow all external HTTP/HTTPS traffic
     - ports:
         - protocol: TCP
           port: 80
         - protocol: TCP
           port: 443
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow to all pods (for backends)
+    - to:
+        - namespaceSelector: {}
+      ports:
         - protocol: TCP
-          port: 8080

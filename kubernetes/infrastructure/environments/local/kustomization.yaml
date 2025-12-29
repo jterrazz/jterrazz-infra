@@ -4,17 +4,17 @@ kind: Kustomization
 metadata:
   name: infrastructure-local
 
+commonLabels:
+  environment: local
+
 resources:
-  # Base infrastructure
   - ../../base
+  - components/mdns-publisher.yaml
+  - components/create-tls-certificates.yaml
+  - components/local-ingresses.yaml
 
-  # Local-specific components
-  - components/mdns-publisher.yml
-  - components/create-tls-certificates.yml
-  - components/local-ingresses.yml
-
-# Local-specific patches for local development
 patches:
+  # Enable insecure mode for ArgoCD in local dev
   - target:
       kind: ConfigMap
       name: argocd-cmd-params-cm
@@ -27,7 +27,40 @@ patches:
         path: /data/server.insecure
         value: "true"
 
-# Local-specific images or configs can be added here if needed
-# images:
-# - name: portainer/portainer-ce
-#   newTag: "local"
+  # Update dashboard links for local domains
+  - target:
+      kind: ConfigMap
+      name: dashboard-config
+      namespace: platform-management
+    patch: |-
+      - op: replace
+        path: /data/index.html
+        value: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Infrastructure</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: system-ui, sans-serif; background: #111; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+              .container { text-align: center; padding: 2rem; }
+              h1 { font-size: 2rem; margin-bottom: 0.5rem; font-weight: 400; }
+              .env { color: #888; margin-bottom: 2rem; }
+              .links { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+              a { color: #fff; background: #222; padding: 1rem 2rem; border-radius: 8px; text-decoration: none; transition: background 0.2s; }
+              a:hover { background: #333; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Infrastructure</h1>
+              <p class="env">Local Development</p>
+              <div class="links">
+                <a href="https://argocd.local">ArgoCD</a>
+                <a href="https://portainer.local">Portainer</a>
+              </div>
+            </div>
+          </body>
+          </html>

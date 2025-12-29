@@ -1,0 +1,18 @@
+#cloud-config
+# Minimal cloud-init - Ansible handles full configuration
+
+hostname: ${hostname}
+
+package_update: true
+
+packages:
+  - python3
+  - python3-apt
+
+# Disable password authentication immediately
+ssh_pwauth: false
+
+# Harden SSH on first boot
+runcmd:
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - systemctl restart sshd
