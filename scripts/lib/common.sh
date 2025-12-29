@@ -49,19 +49,19 @@ get_vm_ip() {
 ssh_vm() {
     local vm_ip
     vm_ip=$(get_vm_ip)
-    
+
     if [[ -z "$vm_ip" ]]; then
         error "Cannot determine VM IP"
         return 1
     fi
-    
+
     # Create SSH directory if it doesn't exist
-    mkdir -p "$PROJECT_DIR/local-data/ssh"
-    
+    mkdir -p "$PROJECT_DIR/data/ssh"
+
     # Use SSH with suppressed warnings but functional authentication
-    ssh -i "$PROJECT_DIR/local-data/ssh/id_rsa" \
+    ssh -i "$PROJECT_DIR/data/ssh/id_rsa" \
         -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile="$PROJECT_DIR/local-data/ssh/known_hosts" \
+        -o UserKnownHostsFile="$PROJECT_DIR/data/ssh/known_hosts" \
         -o PasswordAuthentication=no \
         -o ConnectTimeout=5 \
         -o LogLevel=QUIET \

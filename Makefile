@@ -47,7 +47,7 @@ deps: ## Check tools
 clean: ## Cleanup everything
 	@multipass delete jterrazz-infra --purge 2>/dev/null || true
 	@rm -f local-kubeconfig.yaml kubeconfig.yaml
-	@rm -rf local-data/
+	@rm -rf data/
 
 ##@ Help
 

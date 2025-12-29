@@ -8,7 +8,7 @@ Thumbs.db
 *.swp
 
 # Local development
-local-data/
+data/
 local-kubeconfig.yaml
 kubeconfig.yaml
 

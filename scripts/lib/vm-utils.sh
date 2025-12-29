@@ -60,7 +60,7 @@ ensure_vm_running() {
 
 # Setup SSH access
 setup_vm_ssh() {
-    local ssh_dir="$PROJECT_DIR/local-data/ssh"
+    local ssh_dir="$PROJECT_DIR/data/ssh"
     local key_path="$ssh_dir/id_rsa"
 
     # Create SSH directory

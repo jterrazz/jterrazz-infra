@@ -57,7 +57,7 @@ cmd_delete() {
     section "Deleting Development Environment"
     delete_vm
     rm -f "$PROJECT_DIR/local-kubeconfig.yaml"
-    rm -rf "$PROJECT_DIR/local-data/"
+    rm -rf "$PROJECT_DIR/data/"
     success "Environment cleaned"
 }
 

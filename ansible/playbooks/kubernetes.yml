@@ -1,11 +1,13 @@
 ---
 # Kubernetes (k3s) Playbook
-# Installs and configures k3s cluster
 
 - name: Kubernetes Setup
   hosts: all
   become: true
   gather_facts: true
+
+  vars:
+    kubeconfig_file: "{{ 'local-' if environment_type | default('local') == 'local' else '' }}kubeconfig.yaml"
 
   pre_tasks:
     - name: Create k3s directories
@@ -25,12 +27,12 @@
     - name: Fetch kubeconfig to local machine
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ playbook_dir }}/../../{{ kubeconfig_filename }}"
+        dest: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
         flat: true
 
     - name: Update kubeconfig server address
       ansible.builtin.replace:
-        path: "{{ playbook_dir }}/../../{{ kubeconfig_filename }}"
+        path: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "https://{{ ansible_host }}:6443"
       delegate_to: localhost

@@ -8,7 +8,9 @@
   gather_facts: true
 
   vars:
-    kubeconfig_path: "{{ playbook_dir }}/../../{{ kubeconfig_filename }}"
+    env_type: "{{ environment_type | default('local') }}"
+    kubeconfig_file: "{{ 'local-' if env_type == 'local' else '' }}kubeconfig.yaml"
+    kubeconfig_path: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
 
   tasks:
     - name: Wait for Traefik to be ready
@@ -25,7 +27,7 @@
 
     - name: Deploy infrastructure manifests
       ansible.builtin.command:
-        cmd: kubectl apply -k kubernetes/infrastructure/environments/{{ environment_type }}
+        cmd: kubectl apply -k kubernetes/infrastructure/environments/{{ env_type }}
         chdir: "{{ playbook_dir }}/../.."
       delegate_to: localhost
       environment:
@@ -82,6 +84,4 @@
       ansible.builtin.debug:
         msg: |
           Platform deployment complete!
-
           Kubeconfig: {{ kubeconfig_path }}
-          Run 'make status' to check service status.

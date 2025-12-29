@@ -1,6 +1,5 @@
 ---
-# Production Environment
-# Used for VPS deployments
+# Production Environment Overrides
 
 environment_type: production
 
@@ -8,10 +7,13 @@ environment_type: production
 skip_security: false
 skip_tailscale: false
 
-# SSH - no root, ubuntu only
+# SSH - no root
 ssh_permit_root_login: "no"
 ssh_allowed_users:
   - ubuntu
 
 # Tailscale
 tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
+
+# k3s - auto-generate token
+k3s_token: ""
