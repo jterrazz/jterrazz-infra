@@ -1,0 +1,92 @@
+---
+# SigNoz - Observability Platform
+# APM, Metrics, Logs, Traces
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: signoz
+  namespace: platform-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://charts.signoz.io
+    chart: signoz
+    targetRevision: 0.55.1
+    helm:
+      values: |
+        global:
+          storageClass: local-path
+
+        # ClickHouse - Data storage
+        clickhouse:
+          persistence:
+            enabled: true
+            size: 10Gi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          # Zookeeper is under clickhouse
+          zookeeper:
+            image:
+              registry: docker.io
+              repository: signoz/zookeeper
+              tag: "3.7.1"
+            persistence:
+              enabled: true
+              size: 1Gi
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
+
+        # Query Service
+        queryService:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+        # Frontend
+        frontend:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # Alert Manager
+        alertmanager:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+
+        # OpenTelemetry Collector
+        otelCollector:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform-observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

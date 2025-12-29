@@ -24,3 +24,30 @@ spec:
                 name: argocd-server
                 port:
                   number: 80
+
+---
+# SigNoz Ingress (local)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: signoz-local-ingress
+  namespace: platform-observability
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  tls:
+    - hosts:
+        - signoz.local
+      secretName: local-tls-secret
+  rules:
+    - host: signoz.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: signoz-frontend
+                port:
+                  number: 3301
