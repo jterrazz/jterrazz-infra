@@ -1,0 +1,35 @@
+---
+# Internal services accessible only via Tailscale
+# DNS records point to Tailscale IP (100.x.x.x), so only accessible from Tailscale network
+
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd
+  namespace: platform-gitops
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`argocd.jterrazz.com`)
+      kind: Rule
+      services:
+        - name: argocd-server
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: signoz
+  namespace: platform-observability
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`signoz.jterrazz.com`)
+      kind: Rule
+      services:
+        - name: signoz-frontend
+          port: 3301
+  tls: {}
