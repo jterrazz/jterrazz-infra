@@ -1,130 +1,145 @@
-# 🚀 Jterrazz Infrastructure
+# Jterrazz Infrastructure
 
-**Modern Infrastructure as Code** with **one-command local development** and **production-ready Kubernetes deployment**.
+Modern Infrastructure as Code with one-command local development and production-ready Kubernetes deployment.
 
-## ✨ Quick Start
+## Quick Start
 
 ```bash
-# Complete local setup (one command!)
+# Complete local setup (one command)
 make start
 
-# Check everything is working
+# Check status
 make status
 
-# Access your applications
+# Access applications
 open https://infra.local      # Infrastructure dashboard
 open https://argocd.local     # GitOps dashboard
 open https://portainer.local  # Kubernetes management
 ```
 
-**That's it!** Automatic VM creation, Kubernetes cluster, SSL certificates, and DNS resolution. Zero manual configuration. 🎯
+## Architecture
 
+### Local Development
+
+```
+Multipass VM (Ubuntu 24.04)
+├── k3s Kubernetes Cluster
+├── Traefik Ingress + Load Balancer
+├── mDNS Publisher (*.local domains)
+├── Self-signed SSL Certificates
+├── ArgoCD (GitOps)
+├── Portainer (K8s Management)
+└── UFW + fail2ban (Security)
+```
+
+### Production
+
+```
+Cloudflare DNS
+    ↓
+Hetzner VPS (Nuremberg, Germany)
+├── k3s Kubernetes Cluster
+├── Traefik Ingress Controller
+├── cert-manager (Auto SSL)
+├── ArgoCD (GitOps)
+└── Tailscale (Private Access)
+```
+
+## Storage
+
+All applications use the k3s built-in `local-path` StorageClass. Data is stored on the VPS SSD at `/var/lib/k8s-data`.
+
+### Adding Persistent Storage to Your App
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-app-data
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
 ---
-
-## 🎯 What This Provides
-
-### 🏠 **Local Development**
-
-- **Real Ubuntu VM** - Production-like environment via Multipass
-- **`.local` domains** - Automatic mDNS resolution (no hosts file editing)
-- **HTTPS everywhere** - Self-signed certificates with shared SSL
-- **One-command setup** - `make start` creates VM + Kubernetes + everything
-- **Production security** - Same UFW/fail2ban configuration as production
-
-### ☁️ **Production Ready**
-
-- **Hetzner Cloud VPS** - Affordable, reliable European hosting (€6/month)
-- **Kubernetes (k3s)** - Lightweight, production-grade cluster
-- **Traefik Ingress** - Cloud-native load balancing and routing
-- **Let's Encrypt SSL** - Automatic certificate management
-- **ArgoCD GitOps** - Git-driven application deployments
-- **Security Hardened** - UFW firewall, fail2ban, audit logging, auto-updates
-
-## 🏗️ Architecture
-
-### 🏠 Local Development
-
-```
-🖥️ Multipass VM (Ubuntu 24.04)
-  ├── 🔐 k3s Kubernetes Cluster
-  ├── 🌐 Traefik Ingress + Load Balancer
-  ├── 📱 mDNS Publisher (*.local domains)
-  ├── 🔒 Self-signed SSL Certificates
-  ├── 🔄 ArgoCD (GitOps)
-  ├── 🐳 Portainer (K8s Management)
-  └── 🛡️ UFW + fail2ban (Security)
+# In your deployment
+volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: my-app-data
 ```
 
-### ☁️ Production
+## Commands
 
-```
-📱 Your Domain (manager.yourdomain.com)
-            ↓
-🌐 Cloudflare DNS
-            ↓
-☁️ Hetzner VPS (Nuremberg, Germany)
-  ├── 🔐 k3s Kubernetes Cluster
-  ├── 🌐 Traefik Ingress Controller
-  ├── 🔒 cert-manager (Auto SSL)
-  ├── 🔄 ArgoCD (GitOps)
-  └── 🔗 Tailscale (Private Access)
-```
-
-## 📋 Available Commands
+### Local Development
 
 ```bash
-# 🏠 Local Development
-make start              # Complete setup - VM + K8s + apps
-make status             # Show health, services, URLs
-make ssh                # SSH into VM
-make stop               # Delete VM
-
-# ☁️ Production (see docs/PRODUCTION.md)
-./scripts/bootstrap.sh  # Deploy to production
-
-# 🛠️ Utilities
-make deps               # Check required tools
-make clean              # Force cleanup everything
+make start    # Complete setup - VM + K8s + apps
+make status   # Show health, services, URLs
+make ssh      # SSH into VM
+make stop     # Delete VM
+make clean    # Force cleanup everything
 ```
 
-## 🎯 Why This Architecture?
+### Production
 
-**Clean Separation of Concerns:**
-
-```
-🔄 INFRASTRUCTURE LAYER (Ansible + Kustomize)
-   └── OS setup, k3s installation, infrastructure components
-
-🚀 APPLICATION LAYER (ArgoCD GitOps)
-   └── User applications from separate repositories
+```bash
+make deploy   # Deploy to production VPS
 ```
 
-**Key Benefits:**
+### Utilities
 
-- ✅ **One Source of Truth** - Single `site.yml` playbook for everything
-- ✅ **Environment Consistency** - Identical local/production deployment
-- ✅ **Kubernetes-native** - Infrastructure managed via Kustomize
-- ✅ **Professional Grade** - Industry-standard tools (Ansible + k3s + Traefik)
+```bash
+make deps     # Check required tools
+make vm       # Create VM only
+make ansible  # Run Ansible only
+```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 jterrazz-infra/
-├── 🏗️ terraform/              # Infrastructure provisioning
-├── ⚙️ ansible/                # Complete infrastructure automation
-│   ├── site.yml               # Unified playbook (everything!)
-│   ├── inventories/           # Environment targeting
-│   ├── group_vars/            # Environment configuration
-│   └── roles/                 # Security, k3s components
-├── ☸️ kubernetes/             # Kubernetes-native infrastructure
-│   ├── applications/          # ArgoCD user application templates
-│   └── infrastructure/        # Infrastructure components (Kustomize)
-└── 📜 scripts/                # Development utilities
+├── terraform/                    # Infrastructure provisioning
+│   ├── main.tf                   # Hetzner VPS + Cloudflare DNS
+│   └── variables.tf              # Configuration variables
+│
+├── ansible/                      # Server configuration
+│   ├── site.yml                  # Main playbook
+│   ├── roles/
+│   │   ├── security/             # UFW, fail2ban, SSH hardening
+│   │   ├── k3s/                  # Kubernetes installation
+│   │   ├── storage/              # Storage directory setup
+│   │   └── tailscale/            # VPN (production only)
+│   ├── inventories/
+│   │   ├── multipass/            # Local VM inventory
+│   │   └── vps/                  # Production inventory
+│   └── group_vars/
+│       ├── all/                  # Global variables
+│       ├── local/                # Local overrides
+│       └── production/           # Production overrides
+│
+├── kubernetes/
+│   ├── applications/             # ArgoCD app definitions
+│   │   └── *.yml                 # Your apps (GitOps)
+│   └── infrastructure/
+│       ├── base/                 # Shared infrastructure
+│       │   ├── storage/          # local-path config
+│       │   ├── network-policies/ # Security policies
+│       │   ├── argocd/           # GitOps controller
+│       │   ├── portainer/        # K8s management UI
+│       │   ├── dashboard/        # Infrastructure dashboard
+│       │   └── traefik/          # Ingress config
+│       └── environments/
+│           ├── local/            # Local-specific (mDNS, TLS)
+│           └── production/       # Prod-specific (cert-manager)
+│
+└── scripts/                      # Automation utilities
 ```
 
-## 🚀 Deploy Your Applications
+## Deploy Your Applications
 
-Create ArgoCD applications pointing to your repositories:
+Create an ArgoCD application pointing to your repository:
 
 ```yaml
 # kubernetes/applications/my-app.yml
@@ -132,51 +147,56 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app
-  namespace: argocd
+  namespace: platform-gitops
 spec:
   source:
-    repoURL: https://github.com/your-org/your-app-repo
+    repoURL: https://github.com/your-org/your-app
     path: k8s/
+    targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: applications
+    namespace: app-my-app
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 ```
 
-## 🛠️ Prerequisites
+## Security Features
+
+- **Firewall**: UFW with minimal open ports (22, 80, 443)
+- **SSH**: Key-only authentication, strong ciphers
+- **Intrusion Prevention**: fail2ban for brute force protection
+- **Network Policies**: Default-deny with explicit allows
+- **RBAC**: Minimal permissions for all services
+- **Auto Updates**: Unattended security patches
+- **VPN**: Tailscale for private access (production)
+
+## Prerequisites
 
 **Local Development:**
+- [Multipass](https://multipass.run/) - `brew install multipass`
+- [Ansible](https://docs.ansible.com/) - `brew install ansible`
 
-- [Multipass](https://multipass.run/) - VM management
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) - Configuration
+**Production:**
+- [Terraform](https://terraform.io/) - `brew install terraform`
+- Hetzner Cloud account
+- Cloudflare account (optional, for DNS)
 
-**Production Deployment:**
+## Environment Variables
 
-- [Terraform](https://terraform.io/) - Infrastructure
-- [Hetzner Cloud Account](https://hetzner.cloud/) - Hosting
+For production deployment, create `terraform/terraform.tfvars`:
 
-## 🤝 Contributing
+```hcl
+hcloud_token         = "your-hetzner-api-token"
+ssh_public_key       = "ssh-ed25519 AAAA..."
+cloudflare_api_token = "your-cloudflare-token"  # optional
+cloudflare_zone_id   = "your-zone-id"           # optional
+domain_name          = "yourdomain.com"         # optional
+```
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/amazing-feature`
-3. Test locally: `make stop && make start && make status`
-4. Submit Pull Request
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed guidelines.
-
-## 📞 Support
-
-- 🐛 **Issues**: [GitHub Issues](https://github.com/jterrazz/jterrazz-infra/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/jterrazz/jterrazz-infra/discussions)
-- 📚 **Documentation**: [docs/](docs/)
-
-## 📜 License
+## License
 
 MIT License - see [LICENSE](LICENSE) file.
-
----
-
-**Made with ❤️ for modern DevOps practices**

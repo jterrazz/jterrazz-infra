@@ -15,6 +15,13 @@ spec:
       containers:
         - name: certificate-creator
           image: bitnami/kubectl:latest
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
           command:
             - /bin/bash
             - -c

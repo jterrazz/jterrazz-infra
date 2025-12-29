@@ -26,7 +26,7 @@ data:
                 --radius: 0.5rem;
                 --accent: #000000;
             }
-            
+
             @media (prefers-color-scheme: dark) {
                 :root {
                     --background: #0a0a0a;
@@ -39,13 +39,13 @@ data:
                     --accent: #ffffff;
                 }
             }
-            
+
             * {
                 margin: 0;
                 padding: 0;
                 box-sizing: border-box;
             }
-            
+
             body {
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
                 background: var(--background);
@@ -55,36 +55,36 @@ data:
                 -webkit-font-smoothing: antialiased;
                 -moz-osx-font-smoothing: grayscale;
             }
-            
+
             .container {
                 max-width: 1200px;
                 margin: 0 auto;
                 padding: 2rem;
             }
-            
+
             header {
                 margin-bottom: 4rem;
             }
-            
+
             h1 {
                 font-size: 2rem;
                 font-weight: 600;
                 letter-spacing: -0.025em;
                 margin-bottom: 0.5rem;
             }
-            
+
             .subtitle {
                 color: var(--muted-foreground);
                 font-size: 1rem;
             }
-            
+
             .services-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
                 gap: 1.5rem;
                 margin-bottom: 4rem;
             }
-            
+
             .service-card {
                 background: var(--card);
                 border: 1px solid var(--border);
@@ -94,19 +94,19 @@ data:
                 position: relative;
                 overflow: hidden;
             }
-            
+
             .service-card:hover {
                 border-color: var(--muted-foreground);
                 transform: translateY(-2px);
             }
-            
+
             .service-header {
                 display: flex;
                 align-items: center;
                 gap: 0.75rem;
                 margin-bottom: 0.75rem;
             }
-            
+
             .service-icon {
                 width: 40px;
                 height: 40px;
@@ -117,19 +117,19 @@ data:
                 justify-content: center;
                 font-size: 1.25rem;
             }
-            
+
             .service-title {
                 font-size: 1.125rem;
                 font-weight: 600;
                 letter-spacing: -0.025em;
             }
-            
+
             .service-description {
                 color: var(--muted-foreground);
                 font-size: 0.875rem;
                 margin-bottom: 1rem;
             }
-            
+
             .service-link {
                 display: inline-flex;
                 align-items: center;
@@ -140,21 +140,21 @@ data:
                 font-weight: 500;
                 transition: opacity 0.2s;
             }
-            
+
             .service-link:hover {
                 opacity: 0.7;
             }
-            
+
             .service-link svg {
                 width: 16px;
                 height: 16px;
                 transition: transform 0.2s;
             }
-            
+
             .service-link:hover svg {
                 transform: translateX(2px);
             }
-            
+
             .status-bar {
                 display: flex;
                 align-items: center;
@@ -165,7 +165,7 @@ data:
                 border-radius: var(--radius);
                 font-size: 0.875rem;
             }
-            
+
             .status-indicator {
                 width: 8px;
                 height: 8px;
@@ -173,33 +173,33 @@ data:
                 border-radius: 50%;
                 animation: pulse 2s ease-in-out infinite;
             }
-            
+
             @keyframes pulse {
                 0% { opacity: 1; }
                 50% { opacity: 0.5; }
                 100% { opacity: 1; }
             }
-            
+
             footer {
                 border-top: 1px solid var(--border);
                 padding-top: 2rem;
                 color: var(--muted-foreground);
                 font-size: 0.875rem;
             }
-            
+
             .footer-content {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 2rem;
                 justify-content: space-between;
             }
-            
+
             .tech-stack {
                 display: flex;
                 gap: 1rem;
                 flex-wrap: wrap;
             }
-            
+
             .tech-item {
                 padding: 0.25rem 0.75rem;
                 background: var(--muted);
@@ -207,16 +207,16 @@ data:
                 font-size: 0.75rem;
                 font-weight: 500;
             }
-            
+
             @media (max-width: 768px) {
                 .container {
                     padding: 1.5rem;
                 }
-                
+
                 .services-grid {
                     grid-template-columns: 1fr;
                 }
-                
+
                 h1 {
                     font-size: 1.75rem;
                 }
@@ -229,12 +229,12 @@ data:
                 <h1>Infrastructure</h1>
                 <p class="subtitle">Local development environment</p>
             </header>
-            
+
             <div class="status-bar">
                 <div class="status-indicator"></div>
                 <span>All systems operational</span>
             </div>
-            
+
             <main class="services-grid">
                 <div class="service-card">
                     <div class="service-header">
@@ -252,7 +252,7 @@ data:
                         </svg>
                     </a>
                 </div>
-                
+
                 <div class="service-card">
                     <div class="service-header">
                         <div class="service-icon">🐳</div>
@@ -271,7 +271,7 @@ data:
                 </div>
 
             </main>
-            
+
             <footer>
                 <div class="footer-content">
                     <div>
@@ -320,6 +320,18 @@ spec:
             limits:
               memory: "64Mi"
               cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
           volumeMounts:
             - name: dashboard-content
               mountPath: /usr/share/nginx/html

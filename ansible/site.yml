@@ -1,6 +1,6 @@
 ---
-# Jterrazz Infrastructure - Unified Ansible Playbook
-# Works for both production VPS and local Docker development
+# Jterrazz Infrastructure - Main Playbook
+# Unified setup for both local development and production VPS
 
 - name: Jterrazz Infrastructure Setup
   hosts: all
@@ -8,32 +8,18 @@
   gather_facts: true
 
   vars:
-    # Vault variables (sensitive data)
     tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
 
-    # Note: Other configuration is now properly organized in group_vars/
-
   pre_tasks:
-    - name: Display deployment environment information
+    - name: Display deployment information
       ansible.builtin.debug:
         msg: |
-          {% if environment_type == 'local' %}
-          🏠 Starting LOCAL DEVELOPMENT deployment
-          📦 Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
-          🔧 Environment: {{ environment_type | default('production') }}
-          ⚠️  This is NOT a production deployment!
-          {% else %}
-          🚀 Starting PRODUCTION deployment
-          🖥️  Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
-          🔧 Environment: {{ environment_type | default('production') }}
-          🛡️ Production security will be applied
-          {% endif %}
+          {{ '🏠 LOCAL DEVELOPMENT' if environment_type == 'local' else '🚀 PRODUCTION' }} deployment
+          Target: {{ ansible_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})
 
-    - name: Wait for system to be ready (local development)
+    - name: Wait for system to be ready
       ansible.builtin.wait_for_connection:
         connect_timeout: 20
-        sleep: 0
-        delay: 0
         timeout: 300
       when: environment_type == 'local'
 
@@ -55,10 +41,10 @@
           - gnupg
           - lsb-release
           - python3-pip
-          - python3-yaml # Required for Ansible Kubernetes modules
-          - python3-kubernetes # Required for Ansible Kubernetes modules
+          - python3-yaml
+          - python3-kubernetes
           - jq
-          - iptables # Required for k3s networking
+          - iptables
         state: present
 
     - name: Create k3s directories
@@ -83,31 +69,21 @@
     - role: k3s
 
   post_tasks:
-    - name: Get Tailscale IP if connected
-      ansible.builtin.command: tailscale ip -4
-      register: tailscale_ip_result
-      changed_when: false
-      failed_when: false
-      when: not (skip_tailscale | default(false))
-
-    - name: Create kubeconfig copy
+    - name: Fetch kubeconfig
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        dest: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
         flat: true
-      delegate_to: "{{ inventory_hostname }}"
 
     - name: Update kubeconfig server address
       ansible.builtin.replace:
-        path: "{% if environment_type == 'local' %}../local-kubeconfig.yaml{% else %}./kubeconfig{% endif %}"
+        path: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "https://{{ ansible_host }}:6443"
-        backup: false
       delegate_to: localhost
       become: false
 
-    # Wait for k3s Traefik installation to complete
-    - name: Wait for Traefik Helm installation to complete
+    - name: Wait for Traefik to be ready
       ansible.builtin.shell: |
         kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=1s
       register: traefik_wait
@@ -117,10 +93,9 @@
       delegate_to: localhost
       become: false
       environment:
-        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        KUBECONFIG: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
       changed_when: false
 
-    # Deploy all infrastructure (after kubeconfig is ready)
     - name: Deploy infrastructure components
       ansible.builtin.shell: |
         kubectl apply -k kubernetes/infrastructure/environments/{{ environment_type | default('production') }}
@@ -129,41 +104,39 @@
       delegate_to: localhost
       become: false
       environment:
-        KUBECONFIG: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
-      register: kubectl_apply_result
-      changed_when: kubectl_apply_result.stdout | regex_search('(created|configured|patched|updated|replaced)')
+        KUBECONFIG: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
+      register: kubectl_result
+      changed_when: "'created' in kubectl_result.stdout or 'configured' in kubectl_result.stdout"
 
-    # Manage ArgoCD Applications declaratively
-    - name: Find all ArgoCD application configs
+    - name: Find ArgoCD application configs
       ansible.builtin.find:
         paths: "{{ playbook_dir }}/../kubernetes/applications"
         patterns: "*.yml,*.yaml"
       delegate_to: localhost
       become: false
-      register: argocd_app_files
+      register: argocd_apps
 
     - name: Apply ArgoCD applications
       kubernetes.core.k8s:
         state: present
         src: "{{ item.path }}"
-        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        kubeconfig: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
         wait: true
-        wait_sleep: 5
         wait_timeout: 120
       delegate_to: localhost
       become: false
-      with_items: "{{ argocd_app_files.files }}"
-      when: argocd_app_files.files is defined
+      loop: "{{ argocd_apps.files }}"
+      when: argocd_apps.files | length > 0
 
-    - name: Get all existing ArgoCD applications
+    - name: Get existing ArgoCD applications
       kubernetes.core.k8s_info:
         api_version: argoproj.io/v1alpha1
         kind: Application
         namespace: platform-gitops
-        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        kubeconfig: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
       delegate_to: localhost
       become: false
-      register: existing_applications
+      register: existing_apps
 
     - name: Remove orphaned ArgoCD applications
       kubernetes.core.k8s:
@@ -172,14 +145,14 @@
         name: "{{ item.metadata.name }}"
         namespace: platform-gitops
         state: absent
-        kubeconfig: "{{ playbook_dir }}/../{% if environment_type == 'local' %}local-kubeconfig.yaml{% else %}kubeconfig{% endif %}"
+        kubeconfig: "{{ playbook_dir }}/../{{ 'local-' if environment_type == 'local' else '' }}kubeconfig.yaml"
       delegate_to: localhost
       become: false
-      with_items: "{{ existing_applications.resources }}"
+      loop: "{{ existing_apps.resources | default([]) }}"
       when:
-        - existing_applications.resources is defined
-        - item.metadata.name not in (argocd_app_files.files | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list)
+        - existing_apps.resources is defined
+        - item.metadata.name not in (argocd_apps.files | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list)
 
-    - name: Display cluster information
+    - name: Setup complete
       ansible.builtin.debug:
-        msg: "✅ Infrastructure setup complete - run 'make status' to see details"
+        msg: "Setup complete. Run 'make status' to see details."

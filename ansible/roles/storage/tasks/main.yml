@@ -1,8 +1,8 @@
 ---
-# Universal Storage Setup for Local and VPS environments
-# Creates /var/lib/k8s-data with subdirectories for each application
+# Storage Setup - Creates base directory for k3s local-path-provisioner
+# The k3s local-path-provisioner will create subdirectories for each PVC automatically
 
-- name: Create base storage directory
+- name: Create base storage directory for Kubernetes PVCs
   ansible.builtin.file:
     path: /var/lib/k8s-data
     state: directory
@@ -10,50 +10,9 @@
     owner: root
     group: root
 
-- name: Get Terraform volume ID (VPS only)
-  ansible.builtin.shell: terraform output -raw k8s_storage_volume_id
-  args:
-    chdir: "{{ playbook_dir }}/../terraform"
-  register: volume_id_result
-  delegate_to: localhost
-  when: environment_type == "production"
-  failed_when: false
-
-- name: Mount Hetzner volume (VPS only)
-  when: environment_type == "production" and volume_id_result.rc == 0
-  block:
-    - name: Install filesystem tools
-      ansible.builtin.package:
-        name:
-          - e2fsprogs
-        state: present
-
-    - name: Create filesystem on Hetzner volume (if needed)
-      ansible.builtin.filesystem:
-        fstype: ext4
-        dev: "/dev/disk/by-id/scsi-0HC_Volume_{{ volume_id_result.stdout }}"
-        force: false
-
-    - name: Mount Hetzner volume
-      ansible.builtin.mount:
-        path: /var/lib/k8s-data
-        src: "/dev/disk/by-id/scsi-0HC_Volume_{{ volume_id_result.stdout }}"
-        fstype: ext4
-        state: mounted
-        opts: defaults
-
-- name: Create application data directories
+- name: Ensure storage directory has correct permissions
   ansible.builtin.file:
-    path: "/var/lib/k8s-data/{{ item }}"
+    path: /var/lib/k8s-data
     state: directory
     mode: "0755"
-    owner: root
-    group: root
-  loop:
-    - portainer
-
-- name: Set proper permissions for application directories
-  ansible.builtin.file:
-    path: "/var/lib/k8s-data"
-    recurse: true
-    mode: "0755"
+    recurse: false

@@ -23,7 +23,7 @@ variable "hcloud_token" {
 variable "server_type" {
   description = "Hetzner server type"
   type        = string
-  default     = "cx21"  # 2 vCPU, 4 GB RAM, 40 GB SSD
+  default     = "cx21" # 2 vCPU, 4 GB RAM, 40 GB SSD
 }
 
 variable "server_image" {
@@ -35,19 +35,13 @@ variable "server_image" {
 variable "server_location" {
   description = "Server location"
   type        = string
-  default     = "nbg1"  # Nuremberg, Germany (EU location)
+  default     = "nbg1" # Nuremberg, Germany (EU location)
 }
 
 variable "enable_floating_ip" {
   description = "Create a floating IP for the server"
   type        = bool
   default     = true
-}
-
-variable "storage_size" {
-  description = "Size of the storage volume in GB"
-  type        = number
-  default     = 50
 }
 
 # SSH Configuration
@@ -59,13 +53,13 @@ variable "ssh_public_key" {
 variable "allowed_ssh_ips" {
   description = "IP addresses allowed to SSH to the server"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Restrict this in production!
+  default     = ["0.0.0.0/0"] # Restrict this in production!
 }
 
 variable "allowed_k8s_ips" {
   description = "IP addresses allowed to access Kubernetes API"
   type        = list(string)
-  default     = ["100.64.0.0/10"]  # Tailscale IP range only (secure)
+  default     = ["100.64.0.0/10"] # Tailscale IP range only (secure)
 }
 
 # Cloudflare DNS Configuration

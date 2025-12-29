@@ -8,6 +8,12 @@ resources:
   # Namespace definitions
   - platform-namespaces.yaml
 
+  # Storage configuration (local-path provisioner)
+  - storage/
+
+  # Network policies
+  - network-policies/
+
   # ArgoCD - GitOps controller (with namespace handling)
   - argocd/
 

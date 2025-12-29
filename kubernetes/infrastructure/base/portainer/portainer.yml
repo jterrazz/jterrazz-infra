@@ -1,13 +1,105 @@
 ---
 # Portainer for Kubernetes - Management UI
-# Accessible via Tailscale IP only (private access)
+# Uses PVC for persistent storage, minimal RBAC permissions
 
+# PersistentVolumeClaim for Portainer data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: portainer-data
+  namespace: platform-management
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+
+---
 # Portainer ServiceAccount
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: portainer-sa
   namespace: platform-management
+
+---
+# Portainer ClusterRole - Minimal permissions for Kubernetes management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: portainer-role
+rules:
+  # Core resources - read/write for management
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+      - persistentvolumes
+      - nodes
+      - serviceaccounts
+      - events
+      - resourcequotas
+      - limitranges
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pod execution for console access
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+      - pods/attach
+      - pods/portforward
+    verbs: ["create", "get"]
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Batch resources
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RBAC - read-only for viewing
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterroles
+      - clusterrolebindings
+      - roles
+      - rolebindings
+    verbs: ["get", "list", "watch"]
+  # Storage
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch"]
+  # Metrics
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]
+  # Autoscaling
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
 ---
 # Portainer ClusterRoleBinding
@@ -18,7 +110,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: cluster-admin
+  name: portainer-role
 subjects:
   - kind: ServiceAccount
     name: portainer-sa
@@ -35,6 +127,8 @@ metadata:
     app: portainer
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: portainer
@@ -46,7 +140,7 @@ spec:
       serviceAccountName: portainer-sa
       containers:
         - name: portainer
-          image: portainer/portainer-ce:latest
+          image: portainer/portainer-ce:2.19.4
           ports:
             - containerPort: 9000
               name: http
@@ -65,11 +159,30 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
       volumes:
         - name: data
-          hostPath:
-            path: /var/lib/k8s-data/portainer
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: portainer-data
 
 ---
 # Portainer Service (ClusterIP - internal only)

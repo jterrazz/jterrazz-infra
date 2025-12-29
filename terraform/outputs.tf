@@ -52,21 +52,16 @@ output "kubernetes_endpoint" {
   value       = "https://${var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address}:6443"
 }
 
-output "k8s_storage_volume_id" {
-  description = "Kubernetes storage volume ID"
-  value       = hcloud_volume.k8s_storage.id
-}
-
 # Summary output
 output "deployment_summary" {
   description = "Deployment summary"
   value = {
-    server_ip      = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
-    server_type    = var.server_type
+    server_ip       = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
+    server_type     = var.server_type
     server_location = var.server_location
-    domain         = var.domain_name != "" ? "${var.subdomain}.${var.domain_name}" : null
-    ssh_command    = "ssh root@${var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address}"
-    next_steps     = [
+    domain          = var.domain_name != "" ? "${var.subdomain}.${var.domain_name}" : null
+    ssh_command     = "ssh root@${var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address}"
+    next_steps = [
       "1. Run: ansible-playbook -i inventory.yml playbooks/site.yml",
       "2. Access services at: https://${var.domain_name != "" ? "${var.subdomain}.${var.domain_name}" : hcloud_server.main.ipv4_address}",
       "3. Get kubeconfig: scp root@${var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address}:/etc/rancher/k3s/k3s.yaml ~/.kube/config"

@@ -37,13 +37,13 @@ resource "hcloud_server" "main" {
   image       = var.server_image
   server_type = var.server_type
   location    = var.server_location
-  
+
   ssh_keys = [hcloud_ssh_key.main.id]
-  
+
   # Cloud-init configuration
   user_data = templatefile("${path.module}/cloud-init.yml", {
     ssh_public_key = var.ssh_public_key
-    hostname      = "${var.project_name}-server"
+    hostname       = "${var.project_name}-server"
   })
 
   labels = {
@@ -53,36 +53,13 @@ resource "hcloud_server" "main" {
   }
 }
 
-# Storage volume for Kubernetes persistent data
-resource "hcloud_volume" "k8s_storage" {
-  name     = "${var.project_name}-k8s-storage"
-  size     = var.storage_size
-  location = var.server_location
-  
-  labels = {
-    project = var.project_name
-    usage   = "kubernetes-storage"
-  }
-  
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-# Attach storage volume to server
-resource "hcloud_volume_attachment" "k8s_storage" {
-  volume_id = hcloud_volume.k8s_storage.id
-  server_id = hcloud_server.main.id
-  automount = false  # We'll handle mounting in Ansible
-}
-
 # Floating IP (optional, for static IP)
 resource "hcloud_floating_ip" "main" {
   count         = var.enable_floating_ip ? 1 : 0
   type          = "ipv4"
   home_location = var.server_location
   description   = "${var.project_name} floating IP"
-  
+
   labels = {
     project = var.project_name
   }
@@ -103,7 +80,7 @@ resource "cloudflare_record" "main" {
   content = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
   type    = "A"
   ttl     = 300
-  
+
   comment = "Managed by Terraform - ${var.project_name}"
 }
 
@@ -115,6 +92,6 @@ resource "cloudflare_record" "wildcard" {
   content = var.enable_floating_ip ? hcloud_floating_ip.main[0].ip_address : hcloud_server.main.ipv4_address
   type    = "A"
   ttl     = 300
-  
+
   comment = "Wildcard for applications - ${var.project_name}"
 }
