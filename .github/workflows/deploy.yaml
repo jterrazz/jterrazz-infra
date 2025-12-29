@@ -64,4 +64,6 @@ jobs:
             -i inventories/production/hosts.yml \
             -e "ansible_host=${{ steps.pulumi.outputs.serverIp }}" \
             -e "ansible_ssh_private_key_file=~/.ssh/id_ed25519" \
-            -e "environment_type=production"
+            -e "environment_type=production" \
+            -e "tailscale_oauth_client_id=${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}" \
+            -e "tailscale_oauth_client_secret=${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}"

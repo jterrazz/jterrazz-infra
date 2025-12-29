@@ -1,9 +1,16 @@
 ---
 # Tailscale role default variables
 
-tailscale_version: "1.56.1"
-tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
+# OAuth credentials (no expiration - preferred for automation)
+tailscale_oauth_client_id: ""
+tailscale_oauth_client_secret: ""
+
+# Legacy auth key (expires in 90 days max)
+tailscale_auth_key: ""
+
+# Device configuration
 tailscale_hostname: "{{ inventory_hostname | regex_replace('[^a-zA-Z0-9-]', '-') }}"
+tailscale_tags: ["tag:ci"]
 tailscale_advertise_routes: []
 tailscale_accept_routes: false
 tailscale_accept_dns: true
