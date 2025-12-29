@@ -40,6 +40,18 @@
         dest: "{{ manifest_dest }}/kubernetes/"
         mode: "0644"
 
+    # Make released PVs available for rebinding (for data persistence across redeployments)
+    - name: Clear claimRef from released PVs
+      ansible.builtin.shell: |
+        for pv in $(kubectl get pv -o jsonpath='{.items[?(@.status.phase=="Released")].metadata.name}'); do
+          kubectl patch pv $pv -p '{"spec":{"claimRef":null}}' --type=merge
+        done
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: pv_clear
+      changed_when: pv_clear.stdout != ''
+      failed_when: false
+
     # Apply base infrastructure (namespaces, network policies, storage config)
     - name: Deploy base infrastructure manifests
       ansible.builtin.command:
