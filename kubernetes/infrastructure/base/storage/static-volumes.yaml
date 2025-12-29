@@ -53,11 +53,11 @@ spec:
     name: data-signoz-zookeeper-0
     namespace: platform-observability
 ---
-# SigNoz - Query Service data
+# SigNoz - Main app data (v0.105+)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: signoz-query-service
+  name: signoz-data
 spec:
   capacity:
     storage: 1Gi
@@ -66,10 +66,10 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/signoz/query-service
+    path: /var/lib/k8s-data/signoz/data
     type: DirectoryOrCreate
   claimRef:
-    name: signoz-db-signoz-query-service-0
+    name: signoz-db-signoz-0
     namespace: platform-observability
 ---
 # SigNoz - Alertmanager data

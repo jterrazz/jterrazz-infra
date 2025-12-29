@@ -166,5 +166,5 @@
   loop:
     - { name: "clickhouse", uid: "101", gid: "101" }
     - { name: "zookeeper", uid: "1000", gid: "1000" }
-    - { name: "query-service", uid: "1000", gid: "1000" }
+    - { name: "data", uid: "1000", gid: "1000" }
     - { name: "alertmanager", uid: "1000", gid: "1000" }

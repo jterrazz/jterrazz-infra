@@ -30,6 +30,6 @@ spec:
     - match: Host(`signoz.jterrazz.com`)
       kind: Rule
       services:
-        - name: signoz-frontend
-          port: 3301
+        - name: signoz
+          port: 8080
   tls: {}
