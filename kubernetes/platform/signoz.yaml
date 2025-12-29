@@ -27,9 +27,9 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
-              memory: 1Gi
+              memory: 2Gi
           # Zookeeper is under clickhouse
           zookeeper:
             image:
@@ -78,9 +78,9 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
-            limits:
               memory: 256Mi
+            limits:
+              memory: 512Mi
 
   destination:
     server: https://kubernetes.default.svc
