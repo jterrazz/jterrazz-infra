@@ -59,6 +59,17 @@
     mode: "0600"
   when: not k3s_token_file.stat.exists
 
+# Get Tailscale IP for TLS SAN
+- name: Get Tailscale IP
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ip_result
+  changed_when: false
+  failed_when: false
+
+- name: Set Tailscale IP fact
+  ansible.builtin.set_fact:
+    k3s_tailscale_ip: "{{ tailscale_ip_result.stdout | default('') }}"
+
 # Configuration
 - name: Generate k3s config
   ansible.builtin.template:

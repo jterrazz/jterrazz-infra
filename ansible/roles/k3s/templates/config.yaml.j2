@@ -2,7 +2,7 @@
 # Managed by Ansible
 
 # Network
-bind-address: {{ k3s_node_ip }}
+bind-address: 0.0.0.0
 node-ip: {{ k3s_node_ip }}
 node-external-ip: {{ k3s_node_ip }}
 https-listen-port: 6443
@@ -26,6 +26,9 @@ tls-san:
   - {{ k3s_node_ip }}
   - localhost
   - 127.0.0.1
+{% if k3s_tailscale_ip | default('') != '' %}
+  - {{ k3s_tailscale_ip }}
+{% endif %}
 {% for san in k3s_tls_san %}
   - {{ san }}
 {% endfor %}
