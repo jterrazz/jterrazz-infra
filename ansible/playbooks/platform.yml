@@ -1,6 +1,6 @@
 ---
 # Platform Services Playbook
-# Deploys Kubernetes infrastructure and ArgoCD applications
+# Bootstraps ArgoCD via Helm, then lets ArgoCD manage everything
 
 - name: Platform Services Deployment
   hosts: all
@@ -11,6 +11,8 @@
     env_type: "{{ environment_type | default('local') }}"
     kubeconfig_file: "{{ 'local-' if env_type == 'local' else '' }}kubeconfig.yaml"
     kubeconfig_path: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
+    argocd_namespace: platform-gitops
+    argocd_version: "7.7.5"
 
   tasks:
     - name: Wait for Traefik to be ready
@@ -25,7 +27,8 @@
       until: traefik_wait.rc == 0
       changed_when: false
 
-    - name: Deploy infrastructure manifests
+    # Apply base infrastructure (namespaces, network policies, storage config)
+    - name: Deploy base infrastructure manifests
       ansible.builtin.command:
         cmd: kubectl apply -k kubernetes/infrastructure/environments/{{ env_type }}
         chdir: "{{ playbook_dir }}/../.."
@@ -35,7 +38,105 @@
       register: infra_result
       changed_when: "'created' in infra_result.stdout or 'configured' in infra_result.stdout"
 
-    - name: Find ArgoCD application manifests
+    # Bootstrap ArgoCD via Helm (one-time, then ArgoCD manages itself)
+    - name: Add ArgoCD Helm repository
+      kubernetes.core.helm_repository:
+        name: argo
+        repo_url: https://argoproj.github.io/argo-helm
+      delegate_to: localhost
+
+    - name: Bootstrap ArgoCD via Helm
+      kubernetes.core.helm:
+        name: argocd
+        chart_ref: argo/argo-cd
+        chart_version: "{{ argocd_version }}"
+        release_namespace: "{{ argocd_namespace }}"
+        create_namespace: true
+        kubeconfig: "{{ kubeconfig_path }}"
+        values:
+          configs:
+            params:
+              server.insecure: true
+          server:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
+          redis:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+          controller:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+          repoServer:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
+          applicationSet:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+          notifications:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+          dex:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+        wait: true
+        wait_timeout: 300s
+      delegate_to: localhost
+
+    - name: Wait for ArgoCD to be ready
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=120s
+      delegate_to: localhost
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: false
+
+    # Apply platform services (ArgoCD Applications for Helm charts)
+    - name: Find platform service manifests
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../../kubernetes/platform"
+        patterns: "*.yml,*.yaml"
+      delegate_to: localhost
+      register: platform_apps
+
+    - name: Apply platform services
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item.path }}"
+        kubeconfig: "{{ kubeconfig_path }}"
+      delegate_to: localhost
+      loop: "{{ platform_apps.files }}"
+      when: platform_apps.files | length > 0
+
+    # Apply user applications
+    - name: Find application manifests
       ansible.builtin.find:
         paths: "{{ playbook_dir }}/../../kubernetes/applications"
         patterns: "*.yml,*.yaml"
@@ -47,31 +148,30 @@
         state: present
         src: "{{ item.path }}"
         kubeconfig: "{{ kubeconfig_path }}"
-        wait: true
-        wait_timeout: 120
       delegate_to: localhost
       loop: "{{ argocd_apps.files }}"
       when: argocd_apps.files | length > 0
 
+    # Cleanup orphaned applications
     - name: Get existing ArgoCD applications
       kubernetes.core.k8s_info:
         api_version: argoproj.io/v1alpha1
         kind: Application
-        namespace: platform-gitops
+        namespace: "{{ argocd_namespace }}"
         kubeconfig: "{{ kubeconfig_path }}"
       delegate_to: localhost
       register: existing_apps
 
     - name: Build list of expected application names
       ansible.builtin.set_fact:
-        expected_app_names: "{{ argocd_apps.files | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list }}"
+        expected_app_names: "{{ (platform_apps.files + argocd_apps.files) | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list }}"
 
     - name: Remove orphaned ArgoCD applications
       kubernetes.core.k8s:
         api_version: argoproj.io/v1alpha1
         kind: Application
         name: "{{ item.metadata.name }}"
-        namespace: platform-gitops
+        namespace: "{{ argocd_namespace }}"
         state: absent
         kubeconfig: "{{ kubeconfig_path }}"
       delegate_to: localhost
@@ -84,4 +184,9 @@
       ansible.builtin.debug:
         msg: |
           Platform deployment complete!
+
+          ArgoCD: Bootstrapped via Helm v{{ argocd_version }}
+          Platform services: {{ platform_apps.files | length }} registered
+          Applications: {{ argocd_apps.files | length }} registered
+
           Kubeconfig: {{ kubeconfig_path }}

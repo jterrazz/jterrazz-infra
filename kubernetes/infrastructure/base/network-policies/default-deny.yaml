@@ -1,25 +1,5 @@
 ---
 # Default Deny Network Policies
-
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-all
-  namespace: platform-gitops
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-all
-  namespace: platform-ingress
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
+# Note: Platform namespaces (gitops, ingress, observability) don't use default-deny
+# because their Helm charts manage their own network policies.
+# This file is kept for reference - add app namespace policies here if needed.

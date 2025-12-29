@@ -20,9 +20,6 @@ resources:
   # Network policies
   - network-policies/
 
-  # ArgoCD (GitOps)
-  - argocd/
-
-  # Traefik configuration
+  # Traefik configuration (custom middlewares only, Traefik itself is managed by k3s)
   - traefik/middleware.yaml
   - traefik/global-https-redirect.yaml
