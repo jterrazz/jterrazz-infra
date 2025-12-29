@@ -46,6 +46,42 @@
   loop: "{{ ufw_rules }}"
   when: ufw_enabled
 
+# SSH access - public or Tailscale-only based on configuration
+- name: Configure SSH access (public)
+  community.general.ufw:
+    rule: "{{ item.rule }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    comment: "{{ item.comment | default('') }}"
+    from_ip: "{{ item.from | default('any') }}"
+  loop: "{{ ufw_ssh_rules_public }}"
+  when:
+    - ufw_enabled
+    - not ssh_tailscale_only
+
+- name: Configure SSH access (Tailscale only)
+  community.general.ufw:
+    rule: "{{ item.rule }}"
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    comment: "{{ item.comment | default('') }}"
+    from_ip: "{{ item.from | default('any') }}"
+  loop: "{{ ufw_ssh_rules_tailscale }}"
+  when:
+    - ufw_enabled
+    - ssh_tailscale_only
+
+- name: Remove public SSH rule when Tailscale-only mode
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    delete: true
+  when:
+    - ufw_enabled
+    - ssh_tailscale_only
+  ignore_errors: true
+
 - name: Enable UFW
   community.general.ufw:
     state: enabled

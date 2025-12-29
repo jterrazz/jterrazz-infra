@@ -1,4 +1,4 @@
 config:
-  jterrazz-infra:serverType: cx22
+  jterrazz-infra:serverType: cax21
   jterrazz-infra:location: nbg1
   jterrazz-infra:image: ubuntu-24.04

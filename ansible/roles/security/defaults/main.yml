@@ -2,16 +2,14 @@
 # Security Role - Default Variables
 
 # SSH Configuration
-# SECURITY: Root login disabled by default - use 'ubuntu' user with sudo
 ssh_port: 22
-ssh_permit_root_login: "no"
+ssh_permit_root_login: "prohibit-password" # Allow root with key only
 ssh_password_authentication: "no"
 ssh_pubkey_authentication: "yes"
 ssh_max_auth_tries: 3
 ssh_client_alive_interval: 300
 ssh_client_alive_count_max: 2
-ssh_allowed_users:
-  - ubuntu
+ssh_allowed_users: [] # Empty = allow all users with valid keys
 
 # Firewall (UFW)
 ufw_enabled: true
@@ -19,14 +17,16 @@ ufw_default_incoming: "deny"
 ufw_default_outgoing: "allow"
 ufw_default_forward: "deny"
 
-# Base firewall rules - SSH, HTTP, HTTPS only open to public
-# Kubernetes API restricted to private networks
+# Lock SSH to Tailscale only (set to true after Tailscale is confirmed working)
+# First deploy needs public SSH access, subsequent deploys use Tailscale
+ssh_tailscale_only: false
+
+# Base firewall rules
 ufw_rules:
-  # Public services
-  - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
+  # HTTP/HTTPS - public
   - { port: "80", proto: "tcp", rule: "allow", comment: "HTTP" }
   - { port: "443", proto: "tcp", rule: "allow", comment: "HTTPS" }
-  # Kubernetes API - private networks only
+  # Kubernetes API - Tailscale/private only
   - {
       port: "6443",
       proto: "tcp",
@@ -54,6 +54,19 @@ ufw_rules:
       rule: "allow",
       from: "192.168.0.0/16",
       comment: "K8s API (Private)",
+    }
+
+# SSH rules - separate so we can conditionally restrict them
+ufw_ssh_rules_public:
+  - { port: "22", proto: "tcp", rule: "allow", comment: "SSH (public)" }
+
+ufw_ssh_rules_tailscale:
+  - {
+      port: "22",
+      proto: "tcp",
+      rule: "allow",
+      from: "100.64.0.0/10",
+      comment: "SSH (Tailscale only)",
     }
 
 # Fail2ban

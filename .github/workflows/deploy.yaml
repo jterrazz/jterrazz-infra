@@ -1,6 +1,8 @@
 name: Deploy
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -8,11 +10,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  infrastructure:
-    name: Pulumi Deploy
+  deploy:
+    name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    outputs:
-      server_ip: ${{ steps.pulumi.outputs.serverIp }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,11 +20,12 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
+      - name: Install Pulumi dependencies
         working-directory: pulumi
         run: npm install
 
-      - uses: pulumi/actions@v5
+      - name: Pulumi Deploy
+        uses: pulumi/actions@v5
         id: pulumi
         with:
           command: up
@@ -34,31 +35,25 @@ jobs:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
-  configure:
-    name: Ansible Configure
-    runs-on: ubuntu-latest
-    needs: infrastructure
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install Ansible
-        run: pip install ansible kubernetes
+        run: pip install ansible
 
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+          echo "${{ steps.pulumi.outputs.sshPrivateKey }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
 
       - name: Wait for SSH
         run: |
           for i in {1..30}; do
-            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@${{ needs.infrastructure.outputs.server_ip }} "echo ready" && break
+            ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o ConnectTimeout=5 -i ~/.ssh/id_ed25519 root@${{ steps.pulumi.outputs.serverIp }} "echo ready" && break
+            echo "Waiting for SSH... (attempt $i)"
             sleep 10
           done
 
@@ -67,4 +62,6 @@ jobs:
         run: |
           ansible-playbook playbooks/site.yml \
             -i inventories/production/hosts.yml \
-            -e "ansible_host=${{ needs.infrastructure.outputs.server_ip }}"
+            -e "ansible_host=${{ steps.pulumi.outputs.serverIp }}" \
+            -e "ansible_ssh_private_key_file=~/.ssh/id_ed25519" \
+            -e "environment_type=production"

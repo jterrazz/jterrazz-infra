@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pulumi/pulumi": "^3.0.0",
-    "@pulumi/hcloud": "^1.0.0"
+    "@pulumi/hcloud": "^1.0.0",
+    "@pulumi/tls": "^5.0.0"
   }
 }

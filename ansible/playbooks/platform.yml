@@ -1,59 +1,112 @@
 ---
 # Platform Services Playbook
 # Bootstraps ArgoCD via Helm, then lets ArgoCD manage everything
+# All kubectl/helm commands run ON the VPS (no external k8s API access needed)
 
 - name: Platform Services Deployment
   hosts: all
-  become: false
+  become: true
   gather_facts: true
 
   vars:
     env_type: "{{ environment_type | default('local') }}"
-    kubeconfig_file: "{{ 'local-' if env_type == 'local' else '' }}kubeconfig.yaml"
-    kubeconfig_path: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
     argocd_namespace: platform-gitops
     argocd_version: "7.7.5"
+    kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
+    manifest_dest: /tmp/k8s-manifests
 
   tasks:
     - name: Wait for Traefik to be ready
       ansible.builtin.shell: |
         kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=1s
-      delegate_to: localhost
       environment:
-        KUBECONFIG: "{{ kubeconfig_path }}"
+        KUBECONFIG: "{{ kubeconfig_remote }}"
       register: traefik_wait
       retries: 60
       delay: 2
       until: traefik_wait.rc == 0
       changed_when: false
 
+    # Copy infrastructure manifests to VPS
+    - name: Create manifest directory on VPS
+      ansible.builtin.file:
+        path: "{{ manifest_dest }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy infrastructure manifests to VPS
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../kubernetes/"
+        dest: "{{ manifest_dest }}/kubernetes/"
+        mode: "0644"
+
     # Apply base infrastructure (namespaces, network policies, storage config)
     - name: Deploy base infrastructure manifests
       ansible.builtin.command:
-        cmd: kubectl apply -k kubernetes/infrastructure/environments/{{ env_type }}
-        chdir: "{{ playbook_dir }}/../.."
-      delegate_to: localhost
+        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ env_type }}
       environment:
-        KUBECONFIG: "{{ kubeconfig_path }}"
+        KUBECONFIG: "{{ kubeconfig_remote }}"
       register: infra_result
       changed_when: "'created' in infra_result.stdout or 'configured' in infra_result.stdout"
 
-    # Bootstrap ArgoCD via Helm (one-time, then ArgoCD manages itself)
-    - name: Add ArgoCD Helm repository
-      kubernetes.core.helm_repository:
-        name: argo
-        repo_url: https://argoproj.github.io/argo-helm
-      delegate_to: localhost
+    # Install Helm on VPS if not present
+    - name: Check if Helm is installed
+      ansible.builtin.command: which helm
+      register: helm_check
+      changed_when: false
+      failed_when: false
 
-    - name: Bootstrap ArgoCD via Helm
-      kubernetes.core.helm:
-        name: argocd
-        chart_ref: argo/argo-cd
-        chart_version: "{{ argocd_version }}"
-        release_namespace: "{{ argocd_namespace }}"
-        create_namespace: true
-        kubeconfig: "{{ kubeconfig_path }}"
-        values:
+    - name: Install Helm
+      when: helm_check.rc != 0
+      block:
+        - name: Download Helm install script
+          ansible.builtin.get_url:
+            url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+            dest: /tmp/get_helm.sh
+            mode: "0755"
+
+        - name: Run Helm install script
+          ansible.builtin.command: /tmp/get_helm.sh
+          environment:
+            DESIRED_VERSION: v3.14.0
+
+        - name: Cleanup Helm install script
+          ansible.builtin.file:
+            path: /tmp/get_helm.sh
+            state: absent
+
+    # Bootstrap ArgoCD via Helm
+    - name: Add ArgoCD Helm repository
+      ansible.builtin.command: helm repo add argo https://argoproj.github.io/argo-helm
+      register: repo_add
+      changed_when: "'has been added' in repo_add.stdout"
+      failed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      changed_when: false
+
+    - name: Check if ArgoCD is already installed
+      ansible.builtin.command: helm status argocd -n {{ argocd_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: argocd_status
+      changed_when: false
+      failed_when: false
+
+    - name: Create ArgoCD namespace
+      ansible.builtin.command: kubectl create namespace {{ argocd_namespace }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: ns_create
+      changed_when: "'created' in ns_create.stdout"
+      failed_when: false
+
+    - name: Create ArgoCD Helm values file
+      ansible.builtin.copy:
+        dest: /tmp/argocd-values.yaml
+        mode: "0644"
+        content: |
           configs:
             params:
               server.insecure: true
@@ -106,79 +159,64 @@
                 memory: 32Mi
               limits:
                 memory: 64Mi
-        wait: true
-        wait_timeout: 300s
-      delegate_to: localhost
+
+    - name: Install/Upgrade ArgoCD via Helm
+      ansible.builtin.command: >
+        helm upgrade --install argocd argo/argo-cd
+        --namespace {{ argocd_namespace }}
+        --version {{ argocd_version }}
+        --values /tmp/argocd-values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: helm_result
+      changed_when: "'has been upgraded' in helm_result.stdout or 'has been installed' in helm_result.stdout"
 
     - name: Wait for ArgoCD to be ready
       ansible.builtin.command:
         cmd: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=120s
-      delegate_to: localhost
       environment:
-        KUBECONFIG: "{{ kubeconfig_path }}"
+        KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: false
 
-    # Apply platform services (ArgoCD Applications for Helm charts)
+    # Apply platform services (ArgoCD Applications)
     - name: Find platform service manifests
       ansible.builtin.find:
-        paths: "{{ playbook_dir }}/../../kubernetes/platform"
+        paths: "{{ manifest_dest }}/kubernetes/platform"
         patterns: "*.yml,*.yaml"
-      delegate_to: localhost
       register: platform_apps
 
     - name: Apply platform services
-      kubernetes.core.k8s:
-        state: present
-        src: "{{ item.path }}"
-        kubeconfig: "{{ kubeconfig_path }}"
-      delegate_to: localhost
+      ansible.builtin.command: kubectl apply -f {{ item.path }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
       loop: "{{ platform_apps.files }}"
       when: platform_apps.files | length > 0
+      register: platform_result
+      changed_when: "'created' in platform_result.stdout or 'configured' in platform_result.stdout"
 
     # Apply user applications
     - name: Find application manifests
       ansible.builtin.find:
-        paths: "{{ playbook_dir }}/../../kubernetes/applications"
+        paths: "{{ manifest_dest }}/kubernetes/applications"
         patterns: "*.yml,*.yaml"
-      delegate_to: localhost
       register: argocd_apps
 
     - name: Apply ArgoCD applications
-      kubernetes.core.k8s:
-        state: present
-        src: "{{ item.path }}"
-        kubeconfig: "{{ kubeconfig_path }}"
-      delegate_to: localhost
+      ansible.builtin.command: kubectl apply -f {{ item.path }}
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
       loop: "{{ argocd_apps.files }}"
       when: argocd_apps.files | length > 0
+      register: apps_result
+      changed_when: "'created' in apps_result.stdout or 'configured' in apps_result.stdout"
 
-    # Cleanup orphaned applications
-    - name: Get existing ArgoCD applications
-      kubernetes.core.k8s_info:
-        api_version: argoproj.io/v1alpha1
-        kind: Application
-        namespace: "{{ argocd_namespace }}"
-        kubeconfig: "{{ kubeconfig_path }}"
-      delegate_to: localhost
-      register: existing_apps
-
-    - name: Build list of expected application names
-      ansible.builtin.set_fact:
-        expected_app_names: "{{ (platform_apps.files + argocd_apps.files) | map(attribute='path') | map('basename') | map('regex_replace', '\\.(yml|yaml)$', '') | list }}"
-
-    - name: Remove orphaned ArgoCD applications
-      kubernetes.core.k8s:
-        api_version: argoproj.io/v1alpha1
-        kind: Application
-        name: "{{ item.metadata.name }}"
-        namespace: "{{ argocd_namespace }}"
+    # Cleanup
+    - name: Cleanup temporary manifests
+      ansible.builtin.file:
+        path: "{{ manifest_dest }}"
         state: absent
-        kubeconfig: "{{ kubeconfig_path }}"
-      delegate_to: localhost
-      loop: "{{ existing_apps.resources | default([]) }}"
-      when:
-        - existing_apps.resources is defined
-        - item.metadata.name not in expected_app_names
 
     - name: Deployment complete
       ansible.builtin.debug:
@@ -188,5 +226,3 @@
           ArgoCD: Bootstrapped via Helm v{{ argocd_version }}
           Platform services: {{ platform_apps.files | length }} registered
           Applications: {{ argocd_apps.files | length }} registered
-
-          Kubeconfig: {{ kubeconfig_path }}
