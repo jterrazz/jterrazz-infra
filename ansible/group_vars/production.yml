@@ -3,17 +3,9 @@
 
 environment_type: production
 
-# Security - strict
+# Security
 skip_security: false
 skip_tailscale: false
-
-# SSH - no root
-ssh_permit_root_login: "no"
-ssh_allowed_users:
-  - ubuntu
-
-# Tailscale
-tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
 
 # k3s - auto-generate token
 k3s_token: ""

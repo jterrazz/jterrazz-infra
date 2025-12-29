@@ -38,7 +38,7 @@
   changed_when: false
   failed_when: false
 
-- name: Connect to Tailscale using OAuth (preferred)
+- name: Connect to Tailscale
   ansible.builtin.command: >
     tailscale up
     --client-id={{ tailscale_oauth_client_id }}
@@ -53,26 +53,8 @@
     - tailscale_oauth_client_secret != ""
     - tailscale_connected.rc != 0
 
-- name: Connect to Tailscale using auth key (legacy)
-  ansible.builtin.command: >
-    tailscale up
-    --auth-key={{ tailscale_auth_key }}
-    --hostname={{ tailscale_hostname }}
-    {% if tailscale_advertise_routes %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
-    {% if tailscale_accept_routes %}--accept-routes{% endif %}
-    {% if tailscale_accept_dns %}--accept-dns{% endif %}
-  when:
-    - tailscale_oauth_client_id == ""
-    - tailscale_auth_key != ""
-    - tailscale_connected.rc != 0
-
 - name: Get Tailscale IP
   ansible.builtin.command: tailscale ip -4
   register: tailscale_ip
   changed_when: false
   failed_when: false
-
-- name: Display Tailscale status
-  ansible.builtin.debug:
-    msg: "Tailscale IP: {{ tailscale_ip.stdout | default('Not connected') }}"
-  when: tailscale_ip.rc == 0

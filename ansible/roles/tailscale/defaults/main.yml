@@ -1,12 +1,9 @@
 ---
 # Tailscale role default variables
 
-# OAuth credentials (no expiration - preferred for automation)
+# OAuth credentials (no expiration)
 tailscale_oauth_client_id: ""
 tailscale_oauth_client_secret: ""
-
-# Legacy auth key (expires in 90 days max)
-tailscale_auth_key: ""
 
 # Device configuration
 tailscale_hostname: "{{ inventory_hostname | regex_replace('[^a-zA-Z0-9-]', '-') }}"
@@ -14,7 +11,6 @@ tailscale_tags: ["tag:ci"]
 tailscale_advertise_routes: []
 tailscale_accept_routes: false
 tailscale_accept_dns: true
-tailscale_shields_up: false
 
 # Tailscale service configuration
 tailscale_service_enabled: true

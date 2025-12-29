@@ -21,7 +21,3 @@ storage_base_path: "/var/lib/k8s-data"
 # Security - defaults for local
 skip_security: false
 skip_tailscale: true
-ssh_permit_root_login: "yes"
-ssh_allowed_users:
-  - root
-  - ubuntu
