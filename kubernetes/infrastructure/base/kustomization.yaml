@@ -14,9 +14,6 @@ resources:
   # Namespaces
   - platform-namespaces.yaml
 
-  # Storage (k3s local-path provisioner config)
-  - storage/
-
   # Network policies
   - network-policies/
 

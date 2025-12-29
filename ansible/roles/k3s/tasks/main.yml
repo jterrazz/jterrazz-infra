@@ -147,3 +147,38 @@
     dest: /root/.kube/config
     remote_src: true
     mode: "0600"
+
+# Configure local-path provisioner to use /var/lib/k8s-data
+- name: Create persistent storage directory
+  ansible.builtin.file:
+    path: /var/lib/k8s-data
+    state: directory
+    mode: "0755"
+
+- name: Wait for local-path-provisioner to be ready
+  ansible.builtin.command: >
+    kubectl wait --for=condition=available deployment/local-path-provisioner
+    -n kube-system --timeout=120s
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  changed_when: false
+
+- name: Configure local-path provisioner storage path
+  ansible.builtin.shell: |
+    kubectl patch configmap local-path-config -n kube-system --type=merge -p '
+    {
+      "data": {
+        "config.json": "{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/k8s-data\"]}]}"
+      }
+    }'
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  register: local_path_patch
+  changed_when: "'patched' in local_path_patch.stdout"
+
+- name: Restart local-path-provisioner to apply config
+  ansible.builtin.command: >
+    kubectl rollout restart deployment/local-path-provisioner -n kube-system
+  environment:
+    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+  when: local_path_patch.changed
