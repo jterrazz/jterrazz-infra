@@ -11,6 +11,9 @@ labels:
     includeSelectors: false
 
 resources:
+  # Storage (local-path-provisioner with predictable paths)
+  - storage/
+
   # Namespaces
   - platform-namespaces.yaml
 

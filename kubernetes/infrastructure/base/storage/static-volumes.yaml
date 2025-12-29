@@ -1,0 +1,92 @@
+---
+# Static Storage - Simple hostPath PVs with predictable paths
+# Data stored in: /var/lib/k8s-data/{app}/{component}
+#
+# This approach uses static PersistentVolumes with hostPath.
+# PVs are pre-bound to specific PVCs using claimRef.
+# Simple, predictable, no dynamic provisioner complexity.
+
+# StorageClass for manual/static provisioning
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: manual
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+---
+# SigNoz - ClickHouse data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-clickhouse
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/clickhouse
+    type: DirectoryOrCreate
+  claimRef:
+    name: data-volumeclaim-template-chi-signoz-clickhouse-cluster-0-0-0
+    namespace: platform-observability
+---
+# SigNoz - Zookeeper data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-zookeeper
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/zookeeper
+    type: DirectoryOrCreate
+  claimRef:
+    name: data-signoz-zookeeper-0
+    namespace: platform-observability
+---
+# SigNoz - Query Service data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-query-service
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/query-service
+    type: DirectoryOrCreate
+  claimRef:
+    name: signoz-db-signoz-query-service-0
+    namespace: platform-observability
+---
+# SigNoz - Alertmanager data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-alertmanager
+spec:
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/alertmanager
+    type: DirectoryOrCreate
+  claimRef:
+    name: storage-signoz-alertmanager-0
+    namespace: platform-observability

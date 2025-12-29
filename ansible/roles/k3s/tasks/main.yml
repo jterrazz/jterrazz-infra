@@ -148,70 +148,23 @@
     remote_src: true
     mode: "0600"
 
-# Configure local-path provisioner to use /var/lib/k8s-data
-- name: Create persistent storage directory
+# Create persistent storage directories for static PVs
+# These use hostPath volumes with predictable paths
+- name: Create base storage directory
   ansible.builtin.file:
     path: /var/lib/k8s-data
     state: directory
     mode: "0755"
 
-- name: Wait for local-path-provisioner to be ready
-  ansible.builtin.command: >
-    kubectl wait --for=condition=available deployment/local-path-provisioner
-    -n kube-system --timeout=120s
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  changed_when: false
-
-- name: Configure local-path provisioner storage path
-  ansible.builtin.shell: |
-    kubectl patch configmap local-path-config -n kube-system --type=merge -p '
-    {
-      "data": {
-        "config.json": "{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/k8s-data\"]}]}"
-      }
-    }'
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: local_path_patch
-  changed_when: "'patched' in local_path_patch.stdout"
-
-- name: Restart local-path-provisioner to apply config
-  ansible.builtin.command: >
-    kubectl rollout restart deployment/local-path-provisioner -n kube-system
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  when: local_path_patch.changed
-
-# Configure StorageClass with Retain policy (data persists after PVC deletion)
-- name: Check current StorageClass reclaim policy
-  ansible.builtin.shell: |
-    kubectl get storageclass local-path -o jsonpath='{.reclaimPolicy}'
-  environment:
-    KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-  register: current_reclaim_policy
-  changed_when: false
-
-- name: Recreate StorageClass with Retain policy
-  when: current_reclaim_policy.stdout != 'Retain'
-  block:
-    - name: Delete existing StorageClass
-      ansible.builtin.command: kubectl delete storageclass local-path
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
-
-    - name: Create StorageClass with Retain policy
-      ansible.builtin.shell: |
-        kubectl apply -f - <<EOF
-        apiVersion: storage.k8s.io/v1
-        kind: StorageClass
-        metadata:
-          name: local-path
-          annotations:
-            storageclass.kubernetes.io/is-default-class: "true"
-        provisioner: rancher.io/local-path
-        reclaimPolicy: Retain
-        volumeBindingMode: WaitForFirstConsumer
-        EOF
-      environment:
-        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+- name: Create SigNoz storage directories
+  ansible.builtin.file:
+    path: "/var/lib/k8s-data/signoz/{{ item.name }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ item.uid }}"
+    group: "{{ item.gid }}"
+  loop:
+    - { name: "clickhouse", uid: "101", gid: "101" }
+    - { name: "zookeeper", uid: "1000", gid: "1000" }
+    - { name: "query-service", uid: "1000", gid: "1000" }
+    - { name: "alertmanager", uid: "1000", gid: "1000" }
