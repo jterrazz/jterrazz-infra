@@ -32,7 +32,7 @@ ansible: ## Run Ansible (idempotent - safe to re-run)
 
 ##@ Production
 
-deploy: ## Deploy to production
+deploy: ## Deploy to production (Pulumi + Ansible)
 	./scripts/bootstrap.sh
 
 ##@ Utilities
@@ -40,7 +40,8 @@ deploy: ## Deploy to production
 deps: ## Check tools
 	@command -v multipass >/dev/null 2>&1 && echo "✓ Multipass" || echo "✗ Multipass"
 	@command -v ansible >/dev/null 2>&1 && echo "✓ Ansible" || echo "✗ Ansible"
-	@command -v terraform >/dev/null 2>&1 && echo "✓ Terraform" || echo "✗ Terraform"
+	@command -v pulumi >/dev/null 2>&1 && echo "✓ Pulumi" || echo "✗ Pulumi"
+	@command -v node >/dev/null 2>&1 && echo "✓ Node.js" || echo "✗ Node.js"
 	@command -v kubectl >/dev/null 2>&1 && echo "✓ kubectl" || echo "✗ kubectl"
 
 clean: ## Cleanup everything

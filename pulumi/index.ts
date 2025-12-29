@@ -4,7 +4,7 @@ import * as hcloud from "@pulumi/hcloud";
 const config = new pulumi.Config();
 
 // Configuration with defaults
-const serverType = config.get("serverType") || "cx22";
+const serverType = config.get("serverType") || "cx23";
 const location = config.get("location") || "nbg1";
 const image = config.get("image") || "ubuntu-24.04";
 

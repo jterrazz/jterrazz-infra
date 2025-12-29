@@ -1,34 +1,22 @@
-# Operating System
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
 
-# Local development environment
+# Local development
 local-data/
 local-kubeconfig.yaml
-ansible/kubeconfig
-.local-env
+kubeconfig.yaml
 
-# Terraform
-*.tfstate
-*.tfstate.*
-.terraform/
-.terraform.lock.hcl
-terraform.tfvars
+# Pulumi
+pulumi/node_modules/
+pulumi/bin/
 
 # Ansible
-ansible/group_vars/all/vault.yml
 *.retry
 .ansible/
 
@@ -40,19 +28,7 @@ id_ed25519*
 
 # Logs
 *.log
-logs/
 
-# Temporary files
-*.tmp
-*.temp
-.cache/
-
-# Backup files
-*.bak
-*.backup
-*.orig
-*~
-
-# Environment variables
+# Environment
 .env
 .env.local
