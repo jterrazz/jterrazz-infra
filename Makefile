@@ -1,88 +1,76 @@
-# Jterrazz Infrastructure - Simplified Makefile
-# Essential commands for daily development and deployment
+# Jterrazz Infrastructure Makefile
 
 .DEFAULT_GOAL := help
-.PHONY: help start stop clean ansible status deploy deps vm ssh
+.PHONY: help start stop clean ansible status deploy deps vm ssh sync
 
 # Colors
 GREEN := \033[32m
-YELLOW := \033[33m  
+YELLOW := \033[33m
 BLUE := \033[34m
 RED := \033[31m
 NC := \033[0m
 
 ##@ Main Commands
 
-start: ## Complete setup - VM, K3s cluster, and applications ready
-	@echo "$(GREEN)🚀 Starting Complete Local Environment Setup$(NC)"
-	@echo "$(BLUE)This will create VM, configure security, install K3s, and deploy apps$(NC)"
-	@echo
+start: ## Complete setup - VM, K3s, and apps
+	@echo "$(GREEN)Starting local environment...$(NC)"
 	./scripts/local-dev.sh full
 
-stop: ## Delete VM and cleanup everything
+stop: ## Delete VM and cleanup
 	@echo "$(RED)Deleting VM...$(NC)"
 	./scripts/local-dev.sh delete
 
 ssh: ## SSH into the local VM
-	@echo "$(GREEN)Connecting to VM...$(NC)"
 	./scripts/local-dev.sh ssh
 
-status: ## Show VM health, services, and application URLs
-	@echo "$(BLUE)Checking VM status...$(NC)"
+status: ## Show services and URLs
 	./scripts/local-dev.sh status
 
-##@ Sub-commands
+##@ Application Management
 
-vm: ## Create VM with SSH access
-	@echo "$(GREEN)Creating Ubuntu VM...$(NC)"
+sync: ## Sync ArgoCD apps (no Ansible, fast)
+	@echo "$(GREEN)Syncing applications...$(NC)"
+	./scripts/sync-apps.sh local
+
+sync-prod: ## Sync ArgoCD apps to production
+	@echo "$(GREEN)Syncing production applications...$(NC)"
+	./scripts/sync-apps.sh production
+
+##@ Infrastructure
+
+vm: ## Create VM only (no config)
 	./scripts/local-dev.sh create
 
-ansible: ## Configure VM security and system setup
-	@echo "$(GREEN)Running Ansible on VM...$(NC)"
+ansible: ## Run full Ansible playbook
 	./scripts/local-dev.sh ansible
 
-
-
-##@ Production
-
-deploy: ## Deploy infrastructure and apps to production
-	@echo "$(GREEN)Deploying to production...$(NC)"
+deploy: ## Deploy to production (Terraform + Ansible)
 	./scripts/bootstrap.sh
 
 ##@ Utilities
 
-deps: ## Check required tools and dependencies
+deps: ## Check required tools
 	@echo "$(BLUE)Checking dependencies...$(NC)"
-	@echo "Local environment:"
-	@command -v multipass >/dev/null 2>&1 && echo "  OK Multipass" || echo "  MISSING Multipass (required - brew install multipass)"
-	@command -v ansible >/dev/null 2>&1 && echo "  OK Ansible" || echo "  MISSING Ansible (required - brew install ansible)"
-	@echo "Production deployment:"
-	@command -v terraform >/dev/null 2>&1 && echo "  OK Terraform" || echo "  MISSING Terraform (for production)"
-	@echo "Optional tools:"
-	@command -v kubectl >/dev/null 2>&1 && echo "  OK kubectl" || echo "  MISSING kubectl (recommended)"
+	@command -v multipass >/dev/null 2>&1 && echo "  ✓ Multipass" || echo "  ✗ Multipass (brew install multipass)"
+	@command -v ansible >/dev/null 2>&1 && echo "  ✓ Ansible" || echo "  ✗ Ansible (brew install ansible)"
+	@command -v terraform >/dev/null 2>&1 && echo "  ✓ Terraform" || echo "  ✗ Terraform (brew install terraform)"
+	@command -v kubectl >/dev/null 2>&1 && echo "  ✓ kubectl" || echo "  ✗ kubectl (brew install kubectl)"
 
-clean: ## Force delete VM and cleanup all files
-	@echo "$(RED)Cleaning local environment...$(NC)"
-	@echo "$(BLUE)→ Force deleting VM 'jterrazz-infra'...$(NC)"
-	@multipass delete jterrazz-infra --purge 2>/dev/null || echo "VM already deleted or doesn't exist"
-	@echo "$(BLUE)→ Cleaning up local files...$(NC)"
-	@rm -f local-kubeconfig.yaml ansible/local-kubeconfig.yaml kubeconfig
+clean: ## Force cleanup everything
+	@echo "$(RED)Cleaning environment...$(NC)"
+	@multipass delete jterrazz-infra --purge 2>/dev/null || true
+	@rm -f local-kubeconfig.yaml kubeconfig.yaml
 	@rm -rf local-data/
-	@echo "$(GREEN)✓ Environment cleaned successfully$(NC)"
+	@echo "$(GREEN)Done$(NC)"
 
 ##@ Help
 
-help: ## Display this help message
-	@echo "$(GREEN)Jterrazz Infrastructure - Essential Commands$(NC)"
+help: ## Show this help
+	@echo "$(GREEN)Jterrazz Infrastructure$(NC)"
 	@echo ""
-	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(YELLOW)%-15s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ { printf "  $(YELLOW)%-12s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(BLUE)%s$(NC)\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 	@echo ""
-	@echo "$(BLUE)Quick Start:$(NC)"
-	@echo "  make start                  # Complete setup - everything ready!"
-	@echo "  make status                 # Check VM health and show URLs"
-	@echo "  make ssh                    # SSH into your VM"
-	@echo "  make stop                   # Delete VM"
-	@echo ""
-	@echo "$(BLUE)Advanced:$(NC)"
-	@echo "  make vm                     # Create VM only"
-	@echo "  make deploy                 # Production deployment"
+	@echo "Workflow:"
+	@echo "  1. make start     # First time setup"
+	@echo "  2. make sync      # After adding/changing apps"
+	@echo "  3. make status    # Check services"
