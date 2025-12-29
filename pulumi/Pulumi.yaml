@@ -1,0 +1,3 @@
+name: jterrazz-infra
+runtime: nodejs
+description: Hetzner VPS for k3s Kubernetes cluster

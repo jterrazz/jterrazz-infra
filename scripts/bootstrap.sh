@@ -5,14 +5,14 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-readonly TERRAFORM_DIR="$PROJECT_DIR/terraform"
-readonly ANSIBLE_DIR="$PROJECT_DIR/ansible"
+PULUMI_DIR="$PROJECT_DIR/pulumi"
+ANSIBLE_DIR="$PROJECT_DIR/ansible"
 
 check_prerequisites() {
     section "Checking Prerequisites"
 
     local missing=()
-    for tool in terraform ansible-playbook; do
+    for tool in pulumi node ansible-playbook; do
         command -v "$tool" &>/dev/null || missing+=("$tool")
     done
 
@@ -24,27 +24,22 @@ check_prerequisites() {
     success "Prerequisites OK"
 }
 
-deploy_terraform() {
+deploy_pulumi() {
     section "Deploying Infrastructure"
 
-    cd "$TERRAFORM_DIR"
+    cd "$PULUMI_DIR"
 
-    terraform init
-    terraform plan -out=tfplan
+    npm install
+    pulumi up --stack production
 
-    read -p "Apply changes? (y/N) " -n 1 -r
-    echo
-    [[ $REPLY =~ ^[Yy]$ ]] || exit 0
-
-    terraform apply tfplan
     success "Infrastructure deployed"
 }
 
 run_ansible() {
     section "Configuring Server"
 
-    cd "$TERRAFORM_DIR"
-    local server_ip=$(terraform output -raw server_ip)
+    cd "$PULUMI_DIR"
+    local server_ip=$(pulumi stack output serverIp --stack production)
 
     info "Waiting for SSH..."
     for i in {1..24}; do
@@ -63,22 +58,22 @@ run_ansible() {
 show_summary() {
     section "Deployment Complete"
 
-    cd "$TERRAFORM_DIR"
+    cd "$PULUMI_DIR"
     echo
-    echo "Server IP: $(terraform output -raw server_ip)"
+    echo "Server IP: $(pulumi stack output serverIp --stack production)"
     echo "Kubeconfig: ./kubeconfig.yaml"
     echo
     echo "Next steps:"
     echo "  1. export KUBECONFIG=./kubeconfig.yaml"
     echo "  2. kubectl get nodes"
-    echo "  3. Access ArgoCD at https://argocd.yourdomain.com"
+    echo "  3. Access ArgoCD"
 }
 
 main() {
     section "Production Deployment"
 
     check_prerequisites
-    deploy_terraform
+    deploy_pulumi
     run_ansible
     show_summary
 }
@@ -86,7 +81,7 @@ main() {
 case "${1:-}" in
     --help|-h)
         echo "Usage: $0"
-        echo "Deploys production infrastructure via Terraform + Ansible"
+        echo "Deploys production infrastructure via Pulumi + Ansible"
         ;;
     *)
         main

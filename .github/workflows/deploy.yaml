@@ -2,84 +2,46 @@ name: Deploy
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment to deploy"
-        required: true
-        default: "production"
-        type: choice
-        options:
-          - production
 
 concurrency:
-  group: deploy-${{ github.event.inputs.environment }}
+  group: deploy-production
   cancel-in-progress: false
 
 jobs:
-  terraform:
-    name: Terraform Apply
+  infrastructure:
+    name: Pulumi Deploy
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
-    defaults:
-      run:
-        working-directory: terraform
     outputs:
-      server_ip: ${{ steps.output.outputs.server_ip }}
+      server_ip: ${{ steps.pulumi.outputs.serverIp }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/setup-node@v4
         with:
-          terraform_version: "1.6"
+          node-version: "20"
 
-      - name: Configure Terraform Backend
-        run: |
-          cat > backend.tf << EOF
-          terraform {
-            cloud {
-              organization = "${{ vars.TF_CLOUD_ORG }}"
-              workspaces {
-                name = "${{ vars.TF_CLOUD_WORKSPACE }}"
-              }
-            }
-          }
-          EOF
+      - name: Install dependencies
+        working-directory: pulumi
+        run: npm install
+
+      - uses: pulumi/actions@v5
+        id: pulumi
+        with:
+          command: up
+          stack-name: production
+          work-dir: pulumi
         env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
-      - name: Initialize
-        run: terraform init
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-
-      - name: Plan
-        run: terraform plan -out=tfplan
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-          TF_VAR_hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
-          TF_VAR_cloudflare_api_token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-
-      - name: Apply
-        run: terraform apply -auto-approve tfplan
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-
-      - name: Get Outputs
-        id: output
-        run: echo "server_ip=$(terraform output -raw server_ip)" >> $GITHUB_OUTPUT
-        env:
-          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
-
-  ansible:
-    name: Ansible Deploy
+  configure:
+    name: Ansible Configure
     runs-on: ubuntu-latest
-    needs: terraform
-    environment: ${{ github.event.inputs.environment }}
+    needs: infrastructure
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -90,13 +52,19 @@ jobs:
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/hetzner-key
-          chmod 600 ~/.ssh/hetzner-key
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-      - name: Run Ansible Playbook
+      - name: Wait for SSH
+        run: |
+          for i in {1..30}; do
+            ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ubuntu@${{ needs.infrastructure.outputs.server_ip }} "echo ready" && break
+            sleep 10
+          done
+
+      - name: Run Ansible
         working-directory: ansible
         run: |
           ansible-playbook playbooks/site.yml \
             -i inventories/production/hosts.yml \
-            -e "ansible_host=${{ needs.terraform.outputs.server_ip }}" \
-            -e "vault_tailscale_auth_key=${{ secrets.TAILSCALE_AUTH_KEY }}"
+            -e "ansible_host=${{ needs.infrastructure.outputs.server_ip }}"

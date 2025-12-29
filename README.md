@@ -1,83 +1,49 @@
 # Jterrazz Infrastructure
 
-Infrastructure as Code for Kubernetes with local development and production deployment.
+Minimal Kubernetes infrastructure with local development and production deployment.
+
+## Stack
+
+```
+Local (Multipass)              Production (Hetzner)
+├── k3s + Traefik              ├── k3s + Traefik
+├── ArgoCD                     ├── ArgoCD
+└── Your Apps                  └── Your Apps
+```
 
 ## Quick Start
 
 ```bash
-make start    # Complete local setup
+# Local development
+make start    # Full setup
 make status   # Check services
 make ssh      # Access VM
-```
-
-## Architecture
-
-```
-Local (Multipass VM)          Production (Hetzner VPS)
-├── k3s Kubernetes            ├── k3s Kubernetes
-├── Traefik Ingress           ├── Traefik + Let's Encrypt
-├── ArgoCD (GitOps)           ├── ArgoCD (GitOps)
-├── Portainer                 ├── Portainer
-├── Self-signed TLS           ├── Tailscale VPN
-└── mDNS (*.local)            └── Cloudflare DNS
-```
-
-## Commands
-
-```bash
-# Local
-make start    # Create VM + deploy everything
-make status   # Show services and URLs
-make ssh      # SSH into VM
-make stop     # Delete VM
 
 # Production
-make deploy   # Deploy via Terraform + Ansible
+make deploy   # Deploy to Hetzner
 ```
 
 ## Project Structure
 
 ```
-├── ansible/
-│   ├── playbooks/           # Split playbooks (base, security, k3s, etc.)
-│   ├── roles/               # k3s, security, storage, tailscale
-│   ├── inventories/         # local/, production/
-│   └── group_vars/          # Environment variables
+├── ansible/              # Server configuration (idempotent)
+│   ├── playbooks/        # base, security, k3s, platform
+│   ├── roles/            # k3s, security, storage, tailscale
+│   └── inventories/      # local, production
 │
-├── kubernetes/
-│   ├── applications/        # ArgoCD app definitions
-│   └── infrastructure/
-│       ├── base/            # Shared (argocd, portainer, traefik)
-│       └── environments/    # local/, production/ overlays
+├── kubernetes/           # K8s manifests (Kustomize)
+│   ├── applications/     # Your ArgoCD apps
+│   └── infrastructure/   # Platform (ArgoCD, Traefik config)
 │
-├── terraform/
-│   ├── modules/             # hetzner-server, cloudflare-dns
-│   ├── main.tf
-│   └── variables.tf
+├── pulumi/               # Infrastructure as Code (Hetzner VPS)
+│   └── index.ts          # TypeScript
 │
-└── scripts/                 # local-dev.sh, bootstrap.sh
-```
-
-## Storage
-
-Uses k3s built-in `local-path` StorageClass. Add to your app:
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: my-app-data
-spec:
-  accessModes: [ReadWriteOnce]
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 5Gi
+└── scripts/              # Automation
 ```
 
 ## Deploy Applications
 
-Create ArgoCD application:
+Add an ArgoCD application:
 
 ```yaml
 # kubernetes/applications/my-app.yaml
@@ -102,31 +68,32 @@ spec:
       - CreateNamespace=true
 ```
 
-## Security
-
-- SSH: Key-only, no root login (production)
-- Firewall: UFW with minimal ports
-- Network Policies: Default-deny
-- Tailscale: VPN for private access
-- Auto-updates: Unattended security patches
-
-## Prerequisites
-
-**Local:** Multipass, Ansible
-**Production:** Terraform, Hetzner account
-
-```bash
-# macOS
-brew install multipass ansible terraform
-```
+Then push - ArgoCD auto-syncs, or run `make ansible` to apply immediately.
 
 ## Production Setup
 
-Create `terraform/terraform.tfvars`:
+1. Create Pulumi account (free): https://app.pulumi.com
+2. Set secrets:
+   ```bash
+   cd pulumi
+   pulumi config set --secret sshPublicKey "ssh-ed25519 ..."
+   export HCLOUD_TOKEN="your-hetzner-token"
+   ```
+3. Deploy: `make deploy`
 
-```hcl
-hcloud_token   = "your-token"
-ssh_public_key = "ssh-ed25519 ..."
+## GitHub Actions
+
+- **validate.yaml** - Runs on PR/push (lint, syntax check)
+- **deploy.yaml** - Manual trigger for production deploy
+
+Required secrets:
+- `PULUMI_ACCESS_TOKEN`
+- `HCLOUD_TOKEN`
+- `SSH_PRIVATE_KEY`
+
+## Prerequisites
+
+```bash
+# macOS
+brew install multipass ansible pulumi node
 ```
-
-Then run `make deploy`.
