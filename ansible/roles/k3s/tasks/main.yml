@@ -78,6 +78,8 @@
 - name: Install k3s
   ansible.builtin.shell: |
     INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh
+  args:
+    creates: /usr/local/bin/k3s
   environment:
     K3S_TOKEN: "{{ k3s_cluster_token }}"
   when: k3s_needs_install

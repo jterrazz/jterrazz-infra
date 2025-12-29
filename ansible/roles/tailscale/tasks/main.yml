@@ -32,9 +32,9 @@
     enabled: "{{ tailscale_service_enabled }}"
     state: "{{ tailscale_service_state }}"
 
-- name: Check Tailscale status
-  ansible.builtin.command: tailscale status --json
-  register: tailscale_status
+- name: Check if already connected to Tailscale
+  ansible.builtin.shell: tailscale status --json | grep -q '"BackendState":"Running"'
+  register: tailscale_connected
   changed_when: false
   failed_when: false
 
@@ -48,8 +48,7 @@
     {% if tailscale_accept_dns %}--accept-dns{% endif %}
   when:
     - tailscale_auth_key != ""
-    - tailscale_status.rc != 0 or "Stopped" in tailscale_status.stdout
-  changed_when: true
+    - tailscale_connected.rc != 0
 
 - name: Get Tailscale IP
   ansible.builtin.command: tailscale ip -4
