@@ -1,34 +1,5 @@
-# Local-specific ingresses for all services
 ---
-# Infrastructure Dashboard Ingress
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: dashboard-local-ingress
-  namespace: platform-management
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
-spec:
-  tls:
-    - hosts:
-        - infra.local
-      secretName: local-tls-secret
-  rules:
-    - host: infra.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: dashboard-service
-                port:
-                  number: 80
-
----
-# ArgoCD Ingress
+# ArgoCD Ingress (local)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -37,7 +8,6 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
 spec:
   tls:
     - hosts:
@@ -54,31 +24,3 @@ spec:
                 name: argocd-server
                 port:
                   number: 80
-
----
-# Portainer Ingress
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: portainer-local-ingress
-  namespace: platform-management
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.middlewares: platform-ingress-https-redirect@kubernetescrd
-spec:
-  tls:
-    - hosts:
-        - portainer.local
-      secretName: local-tls-secret
-  rules:
-    - host: portainer.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: portainer
-                port:
-                  number: 9000

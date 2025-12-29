@@ -1,24 +1,11 @@
 ---
 # Default Deny Network Policies
-# Each namespace gets default-deny, services explicitly allow traffic
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
-  namespace: platform-management
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny-all
-  namespace: platform-dns
+  namespace: platform-gitops
 spec:
   podSelector: {}
   policyTypes:

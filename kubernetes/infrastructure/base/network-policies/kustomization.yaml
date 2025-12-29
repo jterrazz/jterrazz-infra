@@ -6,5 +6,4 @@ metadata:
 
 resources:
   - default-deny.yaml
-  - platform-management.yaml
   - platform-ingress.yaml

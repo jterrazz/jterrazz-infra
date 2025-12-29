@@ -4,18 +4,10 @@ kind: Kustomization
 metadata:
   name: infrastructure-production
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: false
 
 resources:
   - ../../base
-  - patches/dashboard-ingress.yaml
-
-patches:
-  - path: patches/dashboard-content.yaml
-
-images:
-  - name: portainer/portainer-ce
-    newTag: "2.19.4"
-  - name: nginx
-    newTag: "alpine"

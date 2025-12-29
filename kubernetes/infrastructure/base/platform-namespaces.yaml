@@ -1,14 +1,12 @@
 ---
 # Platform Namespaces
-# Core namespaces for infrastructure services
 
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: platform-management
+  name: platform-gitops
   labels:
-    app.kubernetes.io/component: management
-    pod-security.kubernetes.io/enforce: baseline
+    app.kubernetes.io/component: gitops
 
 ---
 apiVersion: v1
@@ -17,22 +15,3 @@ metadata:
   name: platform-ingress
   labels:
     app.kubernetes.io/component: ingress
-    pod-security.kubernetes.io/enforce: baseline
-
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: platform-gitops
-  labels:
-    app.kubernetes.io/component: gitops
-    pod-security.kubernetes.io/enforce: baseline
-
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: platform-dns
-  labels:
-    app.kubernetes.io/component: dns
-    pod-security.kubernetes.io/enforce: baseline
