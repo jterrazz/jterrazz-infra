@@ -14,9 +14,9 @@ Unattended-Upgrade::Package-Blacklist {
 Unattended-Upgrade::DevRelease "false";
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
-{% if auto_reboot_enabled %}
+{% if security_auto_reboot_enabled %}
 Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "{{ auto_reboot_time }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ security_auto_reboot_time }}";
 {% else %}
 Unattended-Upgrade::Automatic-Reboot "false";
 {% endif %}
