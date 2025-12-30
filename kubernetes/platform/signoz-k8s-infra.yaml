@@ -38,16 +38,16 @@ spec:
           logsCollection:
             enabled: true
 
-        # Resource limits for the daemonset (uses ~60MB)
+        # Resource limits for the daemonset
         otelAgent:
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
-            limits:
               memory: 128Mi
+            limits:
+              memory: 256Mi
 
-        # Resource limits for cluster metrics deployment (uses ~65MB)
+        # Resource limits for cluster metrics deployment
         otelDeployment:
           resources:
             requests:
