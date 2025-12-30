@@ -1,4 +1,5 @@
 # Docker Registry - Private container registry
+# Accessible only via Tailscale VPN
 # Credentials injected by Ansible from Pulumi
 # Note: platform-registry namespace is created in platform-namespaces.yaml
 
@@ -79,37 +80,17 @@ spec:
             secretName: registry-auth
 
 ---
+# NodePort Service - accessible via Tailscale IP
 apiVersion: v1
 kind: Service
 metadata:
   name: registry
   namespace: platform-registry
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
     - port: 5000
       targetPort: 5000
+      nodePort: 30500
   selector:
     app: registry
-
----
-# Public IngressRoute (accessible from GitHub Actions)
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: registry
-  namespace: platform-registry
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: registry.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "{{ server_ip }}"
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`registry.jterrazz.com`)
-      kind: Rule
-      services:
-        - name: registry
-          port: 5000
-  tls:
-    secretName: registry-tls
