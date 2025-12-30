@@ -19,7 +19,8 @@ spec:
         global:
           storageClass: manual
 
-        # ClickHouse - Data storage (needs 2GB+ for stable operation)
+        # ClickHouse - Data storage (main memory consumer)
+        # With 8GB server, give ClickHouse 3GB for stable operation
         clickhouse:
           persistence:
             enabled: true
@@ -27,9 +28,9 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 1536Mi
-            limits:
               memory: 2Gi
+            limits:
+              memory: 3Gi
           # Zookeeper is under clickhouse
           zookeeper:
             image:
@@ -44,18 +45,18 @@ spec:
                 cpu: 50m
                 memory: 256Mi
               limits:
-                memory: 384Mi
+                memory: 512Mi
 
-        # Query Service (signoz-0 pod, uses ~175MB)
+        # Query Service
         queryService:
           resources:
             requests:
-              cpu: 50m
+              cpu: 100m
               memory: 200Mi
             limits:
-              memory: 400Mi
+              memory: 1Gi
 
-        # Frontend (embedded in queryService in v0.105+)
+        # Frontend
         frontend:
           resources:
             requests:
@@ -73,14 +74,14 @@ spec:
             limits:
               memory: 128Mi
 
-        # OpenTelemetry Collector (uses ~185MB)
+        # OpenTelemetry Collector - needs room to buffer data
         otelCollector:
           resources:
             requests:
-              cpu: 50m
-              memory: 200Mi
+              cpu: 100m
+              memory: 256Mi
             limits:
-              memory: 300Mi
+              memory: 512Mi
 
   destination:
     server: https://kubernetes.default.svc
