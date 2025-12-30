@@ -25,6 +25,9 @@ resources:
   - traefik/global-https-redirect.yaml
   - traefik/internal-ingresses.yaml
 
+  # Registry pull secret for app namespaces
+  - registry-pull-secret.yaml
+
   # cert-manager ClusterIssuers (requires cert-manager CRDs to be installed first)
   # Applied after cert-manager is deployed by ArgoCD
   # - cert-manager/
