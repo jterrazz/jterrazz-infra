@@ -31,3 +31,11 @@ metadata:
   name: platform-observability
   labels:
     app.kubernetes.io/component: observability
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-registry
+  labels:
+    app.kubernetes.io/component: registry
