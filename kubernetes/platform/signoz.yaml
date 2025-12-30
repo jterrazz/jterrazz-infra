@@ -28,7 +28,7 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 2Gi
+              memory: 3Gi
             limits:
               memory: 4Gi
           # Zookeeper is under clickhouse
@@ -36,25 +36,25 @@ spec:
             image:
               registry: docker.io
               repository: signoz/zookeeper
-              tag: "3.7.1"
+              tag: "3.9.3"
             persistence:
               enabled: true
               size: 1Gi
             resources:
               requests:
                 cpu: 50m
-                memory: 256Mi
-              limits:
                 memory: 512Mi
+              limits:
+                memory: 1Gi
 
         # Query Service
         queryService:
           resources:
             requests:
               cpu: 100m
-              memory: 200Mi
+              memory: 128Mi
             limits:
-              memory: 1Gi
+              memory: 512Mi
 
         # Frontend
         frontend:
@@ -79,7 +79,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 128Mi
             limits:
               memory: 512Mi
 
