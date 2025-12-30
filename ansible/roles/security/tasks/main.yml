@@ -26,6 +26,14 @@
   notify: Restart SSH
 
 # UFW Firewall
+# Disable IPv6 in UFW since Hetzner servers don't have IPv6 enabled by default
+- name: Disable IPv6 in UFW
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: "^IPV6="
+    line: "IPV6=no"
+  when: ufw_enabled
+
 - name: Configure UFW defaults
   community.general.ufw:
     direction: "{{ item.direction }}"
