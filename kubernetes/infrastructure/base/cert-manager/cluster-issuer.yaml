@@ -45,3 +45,31 @@ spec:
           dnsNames:
             - signoz.jterrazz.com
             - argocd.jterrazz.com
+---
+# Certificate for ArgoCD
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-tls
+  namespace: platform-gitops
+spec:
+  secretName: argocd-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - argocd.jterrazz.com
+---
+# Certificate for SigNoz
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: signoz-tls
+  namespace: platform-observability
+spec:
+  secretName: signoz-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - signoz.jterrazz.com

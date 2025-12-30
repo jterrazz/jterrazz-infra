@@ -1,36 +1,8 @@
 ---
-# Internal services with automatic TLS via cert-manager
-# DNS records auto-managed by external-dns
+# Internal services IngressRoutes
+# TLS certificates managed separately by cert-manager (after CRDs are installed)
 
-# Certificate for ArgoCD
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: argocd-tls
-  namespace: platform-gitops
-spec:
-  secretName: argocd-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - argocd.jterrazz.com
----
-# Certificate for SigNoz
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: signoz-tls
-  namespace: platform-observability
-spec:
-  secretName: signoz-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - signoz.jterrazz.com
----
-# ArgoCD IngressRoute with TLS
+# ArgoCD IngressRoute
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -50,7 +22,7 @@ spec:
   tls:
     secretName: argocd-tls
 ---
-# SigNoz IngressRoute with TLS
+# SigNoz IngressRoute
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
