@@ -26,16 +26,8 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
 
-        # SECURITY: Only manage these specific subdomains
-        domainFilters:
-          - jterrazz.com
-
-        # SECURITY: Regex filter - ONLY signoz and argocd subdomains
+        # SECURITY: Regex filter - ONLY signoz and argocd subdomains allowed
         regexDomainFilter: "^(signoz|argocd)\\.jterrazz\\.com$"
-
-        # SECURITY: Exclude the root domain
-        excludeDomains:
-          - jterrazz.com
 
         # Only create records, don't delete unmanaged ones
         policy: upsert-only
