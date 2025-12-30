@@ -55,6 +55,14 @@ ufw_rules:
       from: "192.168.0.0/16",
       comment: "K8s API (Private)",
     }
+  # Docker Registry NodePort - Tailscale only
+  - {
+      port: "30500",
+      proto: "tcp",
+      rule: "allow",
+      from: "100.64.0.0/10",
+      comment: "Registry NodePort (Tailscale only)",
+    }
 
 # SSH rules - separate so we can conditionally restrict them
 ufw_ssh_rules_public:
