@@ -44,3 +44,24 @@ spec:
           port: 8080
   tls:
     secretName: signoz-tls
+---
+# Docker Registry IngressRoute
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: registry
+  namespace: platform-registry
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: registry.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "{{ tailscale_ip }}"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`registry.jterrazz.com`)
+      kind: Rule
+      services:
+        - name: registry
+          port: 5000
+  tls:
+    secretName: registry-tls
