@@ -58,6 +58,13 @@
         mode: "0644"
 
     # Registry secrets from Pulumi (registry_password must be passed as extra var)
+    - name: Install apache2-utils for htpasswd
+      ansible.builtin.apt:
+        name: apache2-utils
+        state: present
+        update_cache: yes
+      when: registry_password is defined and registry_password | length > 0
+
     - name: Generate htpasswd hash for registry
       ansible.builtin.shell: |
         htpasswd -nbB deploy "{{ registry_password }}"
