@@ -30,6 +30,7 @@ spec:
         domainFilters:
           - signoz.jterrazz.com
           - argocd.jterrazz.com
+          - registry.jterrazz.com
 
         # Only create records, don't delete unmanaged ones
         policy: upsert-only
