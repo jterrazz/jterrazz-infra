@@ -23,6 +23,7 @@ spec:
           dnsNames:
             - signoz.jterrazz.com
             - argocd.jterrazz.com
+            - registry.jterrazz.com
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -45,6 +46,7 @@ spec:
           dnsNames:
             - signoz.jterrazz.com
             - argocd.jterrazz.com
+            - registry.jterrazz.com
 ---
 # Certificate for ArgoCD
 apiVersion: cert-manager.io/v1
@@ -73,3 +75,17 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - signoz.jterrazz.com
+---
+# Certificate for Docker Registry
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: registry-tls
+  namespace: platform-registry
+spec:
+  secretName: registry-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - registry.jterrazz.com
