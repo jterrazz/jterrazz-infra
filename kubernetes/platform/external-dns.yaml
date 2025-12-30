@@ -26,15 +26,21 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
 
-        # SECURITY: Regex filter - ONLY signoz and argocd subdomains allowed
-        regexDomainFilter: "^(signoz|argocd)\\.jterrazz\\.com$"
+        # SECURITY: Domain filter - ONLY signoz and argocd subdomains allowed
+        domainFilters:
+          - signoz.jterrazz.com
+          - argocd.jterrazz.com
 
         # Only create records, don't delete unmanaged ones
         policy: upsert-only
 
-        # Only watch IngressRoute resources (Traefik)
+        # Watch IngressRoute resources (Traefik)
         sources:
           - traefik-proxy
+
+        # Disable legacy Traefik API group to avoid timeouts
+        extraArgs:
+          - --traefik-disable-legacy
 
         # Add ownership label to managed records
         txtOwnerId: "jterrazz-k8s"
@@ -48,7 +54,7 @@ spec:
             memory: 64Mi
 
         # Log what it's doing
-        logLevel: info
+        logLevel: debug
   destination:
     server: https://kubernetes.default.svc
     namespace: external-dns

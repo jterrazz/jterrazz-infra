@@ -1,8 +1,7 @@
 ---
 # Internal services IngressRoutes
-# NOTE: This file is overwritten by Ansible template at deploy time
-# The template adds the external-dns target annotation with Tailscale IP
-# See: ansible/templates/kubernetes/internal-ingresses.yaml.j2
+# TLS certificates managed separately by cert-manager (after CRDs are installed)
+# Target annotation uses Tailscale IP for DNS records
 
 # ArgoCD IngressRoute
 apiVersion: traefik.io/v1alpha1
@@ -12,7 +11,7 @@ metadata:
   namespace: platform-gitops
   annotations:
     external-dns.alpha.kubernetes.io/hostname: argocd.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "REPLACED_BY_ANSIBLE"
+    external-dns.alpha.kubernetes.io/target: "{{ tailscale_ip }}"
 spec:
   entryPoints:
     - websecure
@@ -33,7 +32,7 @@ metadata:
   namespace: platform-observability
   annotations:
     external-dns.alpha.kubernetes.io/hostname: signoz.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "REPLACED_BY_ANSIBLE"
+    external-dns.alpha.kubernetes.io/target: "{{ tailscale_ip }}"
 spec:
   entryPoints:
     - websecure

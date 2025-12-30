@@ -40,6 +40,23 @@
         dest: "{{ manifest_dest }}/kubernetes/"
         mode: "0644"
 
+    # Get Tailscale IP for DNS target annotation
+    - name: Get Tailscale IP
+      ansible.builtin.command: tailscale ip -4
+      register: tailscale_ip_result
+      changed_when: false
+
+    - name: Set Tailscale IP fact
+      ansible.builtin.set_fact:
+        tailscale_ip: "{{ tailscale_ip_result.stdout | trim }}"
+
+    # Template IngressRoutes with Tailscale IP for external-dns target
+    - name: Template internal ingresses with Tailscale IP
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/kubernetes/internal-ingresses.yaml.j2"
+        dest: "{{ manifest_dest }}/kubernetes/infrastructure/base/traefik/internal-ingresses.yaml"
+        mode: "0644"
+
     # Make released PVs available for rebinding (for data persistence across redeployments)
     - name: Clear claimRef from released PVs
       ansible.builtin.shell: |
