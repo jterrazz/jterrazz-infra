@@ -1,0 +1,32 @@
+---
+# ClusterIssuers for cert-manager (applied after cert-manager is ready)
+# SECURITY: Strictly limited to signoz.jterrazz.com and argocd.jterrazz.com ONLY
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager-issuers
+  namespace: platform-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Ensure cert-manager is deployed first
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jterrazz/jterrazz-infra.git
+    path: kubernetes/infrastructure/base/cert-manager
+    targetRevision: HEAD
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m

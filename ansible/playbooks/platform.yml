@@ -192,6 +192,50 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: false
 
+    # Create namespaces for cert-manager and external-dns secrets
+    - name: Create cert-manager namespace
+      ansible.builtin.command: kubectl create namespace cert-manager
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: cm_ns
+      changed_when: "'created' in cm_ns.stdout"
+      failed_when: false
+
+    - name: Create external-dns namespace
+      ansible.builtin.command: kubectl create namespace external-dns
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: ed_ns
+      changed_when: "'created' in ed_ns.stdout"
+      failed_when: false
+
+    # Deploy Cloudflare API token for cert-manager and external-dns
+    - name: Create Cloudflare API token secret for cert-manager
+      ansible.builtin.shell: |
+        kubectl create secret generic cloudflare-api-token \
+          --from-literal=api-token="{{ cloudflare_api_token }}" \
+          --namespace cert-manager \
+          --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: cloudflare_api_token is defined and cloudflare_api_token | length > 0
+      register: cm_secret
+      changed_when: "'created' in cm_secret.stdout or 'configured' in cm_secret.stdout"
+      no_log: true
+
+    - name: Create Cloudflare API token secret for external-dns
+      ansible.builtin.shell: |
+        kubectl create secret generic cloudflare-api-token \
+          --from-literal=api-token="{{ cloudflare_api_token }}" \
+          --namespace external-dns \
+          --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: cloudflare_api_token is defined and cloudflare_api_token | length > 0
+      register: ed_secret
+      changed_when: "'created' in ed_secret.stdout or 'configured' in ed_secret.stdout"
+      no_log: true
+
     # Apply platform services (ArgoCD Applications)
     - name: Find platform service manifests
       ansible.builtin.find:

@@ -1,12 +1,43 @@
 ---
-# Internal services accessible only via Tailscale
-# DNS records point to Tailscale IP (100.x.x.x), so only accessible from Tailscale network
+# Internal services with automatic TLS via cert-manager
+# DNS records auto-managed by external-dns
 
+# Certificate for ArgoCD
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-tls
+  namespace: platform-gitops
+spec:
+  secretName: argocd-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - argocd.jterrazz.com
+---
+# Certificate for SigNoz
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: signoz-tls
+  namespace: platform-observability
+spec:
+  secretName: signoz-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - signoz.jterrazz.com
+---
+# ArgoCD IngressRoute with TLS
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: argocd
   namespace: platform-gitops
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: argocd.jterrazz.com
 spec:
   entryPoints:
     - websecure
@@ -16,13 +47,17 @@ spec:
       services:
         - name: argocd-server
           port: 80
-  tls: {}
+  tls:
+    secretName: argocd-tls
 ---
+# SigNoz IngressRoute with TLS
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: signoz
   namespace: platform-observability
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: signoz.jterrazz.com
 spec:
   entryPoints:
     - websecure
@@ -32,4 +67,5 @@ spec:
       services:
         - name: signoz
           port: 8080
-  tls: {}
+  tls:
+    secretName: signoz-tls
