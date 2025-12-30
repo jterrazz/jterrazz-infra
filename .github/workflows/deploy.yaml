@@ -9,20 +9,31 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+  HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+
 jobs:
   deploy:
     name: Deploy Infrastructure
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    environment: production
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Pulumi: Provision Infrastructure ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: pulumi/package-lock.json
 
       - name: Install Pulumi dependencies
         working-directory: pulumi
-        run: npm install
+        run: npm ci
 
       - name: Pulumi Deploy
         uses: pulumi/actions@v5
@@ -31,10 +42,8 @@ jobs:
           command: up
           stack-name: production
           work-dir: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
+      # --- Ansible: Configure Server ---
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -48,16 +57,24 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ steps.pulumi.outputs.sshPrivateKey }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
       - name: Wait for SSH
         run: |
+          SERVER_IP="${{ steps.pulumi.outputs.serverIp }}"
+          echo "Waiting for SSH on $SERVER_IP..."
           for i in {1..30}; do
-            ssh -o StrictHostKeyChecking=no -o IdentitiesOnly=yes -o ConnectTimeout=5 -i ~/.ssh/id_ed25519 root@${{ steps.pulumi.outputs.serverIp }} "echo ready" && break
-            echo "Waiting for SSH... (attempt $i)"
+            if ssh -o ConnectTimeout=5 -i ~/.ssh/id_ed25519 root@$SERVER_IP "echo ready" 2>/dev/null; then
+              echo "SSH is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30 - waiting 10s..."
             sleep 10
           done
+          echo "SSH connection failed after 30 attempts"
+          exit 1
 
-      - name: Run Ansible
+      - name: Run Ansible Playbook
         working-directory: ansible
         run: |
           ansible-playbook playbooks/site.yml \
@@ -67,3 +84,14 @@ jobs:
             -e "environment_type=production" \
             -e "tailscale_oauth_client_id=${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}" \
             -e "tailscale_oauth_client_secret=${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}"
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Resource | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Server IP | \`${{ steps.pulumi.outputs.serverIp }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Server Name | \`${{ steps.pulumi.outputs.serverName }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
