@@ -83,9 +83,17 @@
     - name: Template registry pull secret for app namespaces
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../templates/kubernetes/registry-pull-secret.yaml.j2"
-        dest: "{{ manifest_dest }}/kubernetes/infrastructure/base/registry-pull-secret.yaml"
+        dest: "{{ manifest_dest }}/registry-pull-secret.yaml"
         mode: "0644"
       when: registry_password is defined and registry_password | length > 0
+
+    - name: Apply registry pull secret
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/registry-pull-secret.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: registry_password is defined and registry_password | length > 0
+      register: pull_secret_result
+      changed_when: "'created' in pull_secret_result.stdout or 'configured' in pull_secret_result.stdout"
 
     # Make released PVs available for rebinding (for data persistence across redeployments)
     - name: Clear claimRef from released PVs

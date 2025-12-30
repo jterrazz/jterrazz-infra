@@ -84,7 +84,8 @@ jobs:
             -e "environment_type=production" \
             -e "tailscale_oauth_client_id=${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}" \
             -e "tailscale_oauth_client_secret=${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}" \
-            -e "cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}"
+            -e "cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -e "registry_password=${{ steps.pulumi.outputs.dockerRegistryPassword }}"
 
       - name: Deployment Summary
         if: always()
