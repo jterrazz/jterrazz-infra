@@ -14,8 +14,14 @@ env:
   HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
 jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/validate.yaml
+    secrets: inherit
+
   deploy:
     name: Deploy Infrastructure
+    needs: validate
     runs-on: ubuntu-latest
     environment: production
 
