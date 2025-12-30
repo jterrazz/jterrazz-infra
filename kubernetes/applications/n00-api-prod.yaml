@@ -1,26 +1,23 @@
-# ArgoCD Application for fakenews-api
-# API service deployment to production
+# ArgoCD Application for n00-api
+# News API service deployment to production
 
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: fakenews-api-prod
+  name: n00-api-prod
   namespace: platform-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: https://github.com/jterrazz/fakenews-api.git
+    repoURL: https://github.com/jterrazz/n00-api.git
     targetRevision: HEAD
-    path: . # Look in root directory first
-    directory:
-      include: "*.{yaml,yml}"
-      recurse: true
+    path: k8s
   destination:
     server: https://kubernetes.default.svc
-    namespace: app-fakenews-api-prod
+    namespace: app-n00-api-prod
   syncPolicy:
     automated:
       prune: true
