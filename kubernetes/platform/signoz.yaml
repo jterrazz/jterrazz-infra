@@ -20,7 +20,7 @@ spec:
           storageClass: manual
 
         # ClickHouse - Data storage (main memory consumer)
-        # With 8GB server, give ClickHouse 3GB for stable operation
+        # With 8GB server, give ClickHouse 4GB for stable operation
         clickhouse:
           persistence:
             enabled: true
@@ -30,7 +30,7 @@ spec:
               cpu: 200m
               memory: 2Gi
             limits:
-              memory: 3Gi
+              memory: 4Gi
           # Zookeeper is under clickhouse
           zookeeper:
             image:
