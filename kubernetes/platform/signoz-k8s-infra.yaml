@@ -34,9 +34,10 @@ spec:
           # Kubernetes events
           clusterMetrics:
             enabled: true
-          # Container logs
+          # Container logs - DISABLED to reduce ClickHouse load
+          # Re-enable once system stabilizes
           logsCollection:
-            enabled: true
+            enabled: false
 
         # Resource limits for the daemonset (collects host/pod metrics)
         otelAgent:
