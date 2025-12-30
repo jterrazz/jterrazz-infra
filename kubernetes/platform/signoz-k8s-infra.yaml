@@ -38,13 +38,23 @@ spec:
           logsCollection:
             enabled: true
 
-        # Resource limits for the daemonset
-        resources:
-          requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            memory: 256Mi
+        # Resource limits for the daemonset (uses ~60MB)
+        otelAgent:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+
+        # Resource limits for cluster metrics deployment (uses ~65MB)
+        otelDeployment:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-observability
