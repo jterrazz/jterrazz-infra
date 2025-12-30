@@ -14,11 +14,15 @@
     argocd_version: "7.7.5"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
     manifest_dest: /tmp/k8s-manifests
+    templates_dir: "{{ playbook_dir }}/../templates"
 
   tasks:
     - name: Wait for Traefik to be ready
-      ansible.builtin.shell: |
-        kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=1s
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl wait --for=condition=complete job -l helmcharts.helm.cattle.io/chart=traefik -n kube-system --timeout=1s
+        executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: traefik_wait
@@ -43,17 +47,17 @@
     # Get Tailscale IP for DNS target annotation
     - name: Get Tailscale IP
       ansible.builtin.command: tailscale ip -4
-      register: tailscale_ip_result
+      register: platform_tailscale_ip_result
       changed_when: false
 
     - name: Set Tailscale IP fact
       ansible.builtin.set_fact:
-        tailscale_ip: "{{ tailscale_ip_result.stdout | trim }}"
+        tailscale_ip: "{{ platform_tailscale_ip_result.stdout | trim }}"
 
     # Template IngressRoutes with Tailscale IP for external-dns target
     - name: Template internal ingresses with Tailscale IP
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/kubernetes/internal-ingresses.yaml.j2"
+        src: "{{ templates_dir }}/kubernetes/internal-ingresses.yaml.j2"
         dest: "{{ manifest_dest }}/kubernetes/infrastructure/base/traefik/internal-ingresses.yaml"
         mode: "0644"
 
@@ -62,12 +66,15 @@
       ansible.builtin.apt:
         name: apache2-utils
         state: present
-        update_cache: yes
+        update_cache: true
       when: registry_password is defined and registry_password | length > 0
 
     - name: Generate htpasswd hash for registry
-      ansible.builtin.shell: |
-        htpasswd -nbB deploy "{{ registry_password }}"
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          htpasswd -nbB deploy "{{ registry_password }}"
+        executable: /bin/bash
       register: htpasswd_result
       changed_when: false
       no_log: true
@@ -82,14 +89,14 @@
 
     - name: Template registry manifest with secrets
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/kubernetes/registry.yaml.j2"
+        src: "{{ templates_dir }}/kubernetes/registry.yaml.j2"
         dest: "{{ manifest_dest }}/kubernetes/platform/registry.yaml"
         mode: "0644"
       when: registry_password is defined and registry_password | length > 0
 
     - name: Template registry pull secret for app namespaces
       ansible.builtin.template:
-        src: "{{ playbook_dir }}/../templates/kubernetes/registry-pull-secret.yaml.j2"
+        src: "{{ templates_dir }}/kubernetes/registry-pull-secret.yaml.j2"
         dest: "{{ manifest_dest }}/registry-pull-secret.yaml"
         mode: "0644"
       when: registry_password is defined and registry_password | length > 0
@@ -104,10 +111,13 @@
 
     # Make released PVs available for rebinding (for data persistence across redeployments)
     - name: Clear claimRef from released PVs
-      ansible.builtin.shell: |
-        for pv in $(kubectl get pv -o jsonpath='{.items[?(@.status.phase=="Released")].metadata.name}'); do
-          kubectl patch pv $pv -p '{"spec":{"claimRef":null}}' --type=merge
-        done
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for pv in $(kubectl get pv -o jsonpath='{.items[?(@.status.phase=="Released")].metadata.name}'); do
+            kubectl patch pv $pv -p '{"spec":{"claimRef":null}}' --type=merge
+          done
+        executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: pv_clear
@@ -143,6 +153,7 @@
           ansible.builtin.command: /tmp/get_helm.sh
           environment:
             DESIRED_VERSION: v3.14.0
+          changed_when: true
 
         - name: Cleanup Helm install script
           ansible.builtin.file:
@@ -273,11 +284,14 @@
 
     # Deploy Cloudflare API token for cert-manager and external-dns
     - name: Create Cloudflare API token secret for cert-manager
-      ansible.builtin.shell: |
-        kubectl create secret generic cloudflare-api-token \
-          --from-literal=api-token="{{ cloudflare_api_token }}" \
-          --namespace cert-manager \
-          --dry-run=client -o yaml | kubectl apply -f -
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic cloudflare-api-token \
+            --from-literal=api-token="{{ cloudflare_api_token }}" \
+            --namespace cert-manager \
+            --dry-run=client -o yaml | kubectl apply -f -
+        executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       when: cloudflare_api_token is defined and cloudflare_api_token | length > 0
@@ -286,11 +300,14 @@
       no_log: true
 
     - name: Create Cloudflare API token secret for external-dns
-      ansible.builtin.shell: |
-        kubectl create secret generic cloudflare-api-token \
-          --from-literal=api-token="{{ cloudflare_api_token }}" \
-          --namespace external-dns \
-          --dry-run=client -o yaml | kubectl apply -f -
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic cloudflare-api-token \
+            --from-literal=api-token="{{ cloudflare_api_token }}" \
+            --namespace external-dns \
+            --dry-run=client -o yaml | kubectl apply -f -
+        executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       when: cloudflare_api_token is defined and cloudflare_api_token | length > 0

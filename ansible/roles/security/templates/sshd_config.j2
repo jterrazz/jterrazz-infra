@@ -1,7 +1,7 @@
 # SSH Daemon Configuration
 # Managed by Ansible - Do not edit manually
 
-Port {{ ssh_port }}
+Port {{ security_ssh_port }}
 AddressFamily inet
 ListenAddress 0.0.0.0
 Protocol 2
@@ -17,21 +17,21 @@ MACs hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com
 KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384
 
 # Authentication
-PermitRootLogin {{ ssh_permit_root_login }}
-PubkeyAuthentication {{ ssh_pubkey_authentication }}
-PasswordAuthentication {{ ssh_password_authentication }}
+PermitRootLogin {{ security_ssh_permit_root_login }}
+PubkeyAuthentication {{ security_ssh_pubkey_authentication }}
+PasswordAuthentication {{ security_ssh_password_authentication }}
 ChallengeResponseAuthentication no
 GSSAPIAuthentication no
 UsePAM yes
 
 # Limits
-MaxAuthTries {{ ssh_max_auth_tries }}
+MaxAuthTries {{ security_ssh_max_auth_tries }}
 MaxSessions 3
 MaxStartups 3:50:10
 
 # Timeouts
-ClientAliveInterval {{ ssh_client_alive_interval }}
-ClientAliveCountMax {{ ssh_client_alive_count_max }}
+ClientAliveInterval {{ security_ssh_client_alive_interval }}
+ClientAliveCountMax {{ security_ssh_client_alive_count_max }}
 LoginGraceTime 30
 
 # Restrictions
@@ -47,8 +47,8 @@ SyslogFacility AUTH
 LogLevel VERBOSE
 
 # User Access
-{% if ssh_allowed_users %}
-AllowUsers {{ ssh_allowed_users | join(' ') }}
+{% if security_ssh_allowed_users %}
+AllowUsers {{ security_ssh_allowed_users | join(' ') }}
 {% endif %}
 
 # SFTP

@@ -32,17 +32,17 @@
     path: /etc/default/ufw
     regexp: "^IPV6="
     line: "IPV6=no"
-  when: ufw_enabled
+  when: security_ufw_enabled
 
 - name: Configure UFW defaults
   community.general.ufw:
     direction: "{{ item.direction }}"
     policy: "{{ item.policy }}"
   loop:
-    - { direction: "incoming", policy: "{{ ufw_default_incoming }}" }
-    - { direction: "outgoing", policy: "{{ ufw_default_outgoing }}" }
-    - { direction: "routed", policy: "{{ ufw_default_forward }}" }
-  when: ufw_enabled
+    - { direction: "incoming", policy: "{{ security_ufw_default_incoming }}" }
+    - { direction: "outgoing", policy: "{{ security_ufw_default_outgoing }}" }
+    - { direction: "routed", policy: "{{ security_ufw_default_forward }}" }
+  when: security_ufw_enabled
 
 - name: Configure UFW rules
   community.general.ufw:
@@ -51,8 +51,8 @@
     proto: "{{ item.proto | default('tcp') }}"
     comment: "{{ item.comment | default('') }}"
     from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ ufw_rules }}"
-  when: ufw_enabled
+  loop: "{{ security_ufw_rules }}"
+  when: security_ufw_enabled
 
 # SSH access - public or Tailscale-only based on configuration
 - name: Configure SSH access (public)
@@ -62,10 +62,10 @@
     proto: "{{ item.proto | default('tcp') }}"
     comment: "{{ item.comment | default('') }}"
     from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ ufw_ssh_rules_public }}"
+  loop: "{{ security_ufw_ssh_rules_public }}"
   when:
-    - ufw_enabled
-    - not ssh_tailscale_only
+    - security_ufw_enabled
+    - not security_ssh_tailscale_only
 
 - name: Configure SSH access (Tailscale only)
   community.general.ufw:
@@ -74,10 +74,10 @@
     proto: "{{ item.proto | default('tcp') }}"
     comment: "{{ item.comment | default('') }}"
     from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ ufw_ssh_rules_tailscale }}"
+  loop: "{{ security_ufw_ssh_rules_tailscale }}"
   when:
-    - ufw_enabled
-    - ssh_tailscale_only
+    - security_ufw_enabled
+    - security_ssh_tailscale_only
 
 - name: Remove public SSH rule when Tailscale-only mode
   community.general.ufw:
@@ -86,14 +86,14 @@
     proto: tcp
     delete: true
   when:
-    - ufw_enabled
-    - ssh_tailscale_only
-  ignore_errors: true
+    - security_ufw_enabled
+    - security_ssh_tailscale_only
+  failed_when: false
 
 - name: Enable UFW
   community.general.ufw:
     state: enabled
-  when: ufw_enabled
+  when: security_ufw_enabled
 
 # Fail2ban
 - name: Configure fail2ban
@@ -103,14 +103,14 @@
     mode: "0644"
     backup: true
   notify: Restart fail2ban
-  when: fail2ban_enabled
+  when: security_fail2ban_enabled
 
 - name: Enable fail2ban
   ansible.builtin.systemd:
     name: fail2ban
     enabled: true
     state: started
-  when: fail2ban_enabled
+  when: security_fail2ban_enabled
 
 # Automatic Updates
 - name: Configure automatic updates
@@ -118,14 +118,14 @@
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: "0644"
-  when: auto_updates_enabled
+  when: security_auto_updates_enabled
 
 - name: Configure unattended upgrades
   ansible.builtin.template:
     src: 50unattended-upgrades.j2
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: "0644"
-  when: auto_updates_enabled
+  when: security_auto_updates_enabled
 
 # Kernel Hardening
 - name: Configure kernel security parameters
@@ -134,7 +134,7 @@
     value: "{{ item.value }}"
     state: present
     reload: true
-  loop: "{{ kernel_security_params }}"
+  loop: "{{ security_kernel_params }}"
 
 # System Hardening
 - name: Secure shared memory
@@ -144,7 +144,7 @@
     fstype: tmpfs
     opts: defaults,noexec,nosuid
     state: present
-  when: secure_shared_memory
+  when: security_secure_shared_memory
 
 - name: Disable uncommon network protocols
   ansible.builtin.blockinfile:
@@ -156,7 +156,7 @@
       install sctp /bin/true
       install rds /bin/true
       install tipc /bin/true
-  when: disable_uncommon_protocols
+  when: security_disable_uncommon_protocols
 
 # Audit Logging
 - name: Enable auditd

@@ -54,7 +54,7 @@ jobs:
 
       - name: Ansible Lint
         working-directory: ansible
-        run: ansible-lint playbooks/ || true
+        run: ansible-lint playbooks/
 
       - name: Syntax Check
         working-directory: ansible

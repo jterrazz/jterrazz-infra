@@ -2,15 +2,15 @@
 # Managed by Ansible
 
 [DEFAULT]
-ignoreip = {{ fail2ban_ignoreip }}
-bantime = {{ fail2ban_bantime }}
-findtime = {{ fail2ban_findtime }}
-maxretry = {{ fail2ban_maxretry }}
+ignoreip = {{ security_fail2ban_ignoreip }}
+bantime = {{ security_fail2ban_bantime }}
+findtime = {{ security_fail2ban_findtime }}
+maxretry = {{ security_fail2ban_maxretry }}
 backend = systemd
 
 [sshd]
 enabled = true
-port = {{ ssh_port }}
+port = {{ security_ssh_port }}
 filter = sshd
 logpath = /var/log/auth.log
-maxretry = {{ fail2ban_maxretry }}
+maxretry = {{ security_fail2ban_maxretry }}
