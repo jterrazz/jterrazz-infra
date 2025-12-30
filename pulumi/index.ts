@@ -1,6 +1,7 @@
 import * as pulumi from "@pulumi/pulumi";
 import * as hcloud from "@pulumi/hcloud";
 import * as tls from "@pulumi/tls";
+import * as random from "@pulumi/random";
 
 const config = new pulumi.Config();
 
@@ -18,6 +19,12 @@ const sshKeyPair = new tls.PrivateKey("main", {
 const sshKey = new hcloud.SshKey("main", {
   name: "jterrazz-infra",
   publicKey: sshKeyPair.publicKeyOpenssh,
+});
+
+// Generate Docker Registry password (stored encrypted in Pulumi state)
+const registryPassword = new random.RandomPassword("registry-password", {
+  length: 32,
+  special: false,
 });
 
 // Cloud-init to setup SSH key and packages
@@ -52,3 +59,6 @@ export const serverStatus = server.status;
 
 // SSH private key (secret - for Ansible to use)
 export const sshPrivateKey = pulumi.secret(sshKeyPair.privateKeyOpenssh);
+
+// Docker Registry credentials (secret - for GitHub Actions and k8s)
+export const dockerRegistryPassword = pulumi.secret(registryPassword.result);
