@@ -1,0 +1,120 @@
+# Docker Registry - Private container registry
+# Credentials injected by Ansible from Pulumi
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-registry
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-auth
+  namespace: platform-registry
+type: Opaque
+stringData:
+  htpasswd: "{{ registry_htpasswd }}"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-data
+  namespace: platform-registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: manual
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: platform-registry
+  labels:
+    app: registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+        - name: registry
+          image: registry:2
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REGISTRY_AUTH
+              value: "htpasswd"
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Registry"
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: "/auth/htpasswd"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: registry-data
+        - name: auth
+          secret:
+            secretName: registry-auth
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: platform-registry
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: registry
+
+---
+# Public IngressRoute (accessible from GitHub Actions)
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: registry
+  namespace: platform-registry
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: registry.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "{{ server_ip }}"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`registry.jterrazz.com`)
+      kind: Rule
+      services:
+        - name: registry
+          port: 5000
+  tls:
+    secretName: registry-tls

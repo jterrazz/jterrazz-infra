@@ -57,6 +57,36 @@
         dest: "{{ manifest_dest }}/kubernetes/infrastructure/base/traefik/internal-ingresses.yaml"
         mode: "0644"
 
+    # Registry secrets from Pulumi (registry_password must be passed as extra var)
+    - name: Generate htpasswd hash for registry
+      ansible.builtin.shell: |
+        htpasswd -nbB deploy "{{ registry_password }}"
+      register: htpasswd_result
+      changed_when: false
+      no_log: true
+      when: registry_password is defined and registry_password | length > 0
+
+    - name: Set registry facts
+      ansible.builtin.set_fact:
+        registry_htpasswd: "{{ htpasswd_result.stdout | trim }}"
+        server_ip: "{{ hostvars[inventory_hostname]['ansible_host'] | default(ansible_default_ipv4.address) }}"
+      when: registry_password is defined and registry_password | length > 0
+      no_log: true
+
+    - name: Template registry manifest with secrets
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/kubernetes/registry.yaml.j2"
+        dest: "{{ manifest_dest }}/kubernetes/platform/registry.yaml"
+        mode: "0644"
+      when: registry_password is defined and registry_password | length > 0
+
+    - name: Template registry pull secret for app namespaces
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/kubernetes/registry-pull-secret.yaml.j2"
+        dest: "{{ manifest_dest }}/kubernetes/infrastructure/base/registry-pull-secret.yaml"
+        mode: "0644"
+      when: registry_password is defined and registry_password | length > 0
+
     # Make released PVs available for rebinding (for data persistence across redeployments)
     - name: Clear claimRef from released PVs
       ansible.builtin.shell: |
