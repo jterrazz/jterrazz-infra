@@ -26,12 +26,9 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
 
-        # Domain filter - only jterrazz.com zone
+        # Domain filter - jterrazz.com zone
         domainFilters:
           - jterrazz.com
-        
-        # SECURITY: Regex filter to only allow specific subdomains
-        regexDomainFilter: "^(signoz|argocd|registry)\.jterrazz\.com$"
 
         # Only create records, don't delete unmanaged ones
         policy: upsert-only
