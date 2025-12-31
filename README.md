@@ -1,4 +1,4 @@
-# Jterrazz Infrastructure
+# @jterrazz/infra
 
 Minimal Kubernetes infrastructure with local development and production deployment on Hetzner Cloud.
 
