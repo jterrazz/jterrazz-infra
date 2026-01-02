@@ -1,0 +1,16 @@
+---
+# Traefik HelmChartConfig
+# Configures the k3s-managed Traefik instance with global middleware defaults
+
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    # Apply rate-limit middleware globally to the websecure entrypoint
+    ports:
+      websecure:
+        middlewares:
+          - platform-ingress-rate-limit@kubernetescrd
