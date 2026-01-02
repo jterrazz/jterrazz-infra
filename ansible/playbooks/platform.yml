@@ -315,6 +315,26 @@
       changed_when: "'created' in ed_secret.stdout or 'configured' in ed_secret.stdout"
       no_log: true
 
+    - name: Create GitHub PAT secret for ArgoCD private repos
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic github-private-repos \
+            --from-literal=type=git \
+            --from-literal=url=https://github.com/jterrazz \
+            --from-literal=username=jterrazz \
+            --from-literal=password="{{ github_pat }}" \
+            --namespace {{ argocd_namespace }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label secret github-private-repos -n {{ argocd_namespace }} argocd.argoproj.io/secret-type=repo-creds --overwrite
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: github_pat is defined and github_pat | length > 0
+      register: github_secret
+      changed_when: "'created' in github_secret.stdout or 'configured' in github_secret.stdout"
+      no_log: true
+
     # Apply platform services (ArgoCD Applications)
     - name: Find platform service manifests
       ansible.builtin.find:
