@@ -22,7 +22,7 @@ spec:
 
 ---
 # IP whitelist for private access (Tailscale + private networks)
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: private-access
@@ -40,7 +40,7 @@ spec:
 
 ---
 # HTTPS redirect
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: https-redirect
