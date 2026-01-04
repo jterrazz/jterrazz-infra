@@ -96,7 +96,9 @@ jobs:
             -e "tailscale_oauth_client_secret=${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}" \
             -e "cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -e "registry_password=${{ steps.pulumi.outputs.dockerRegistryPassword }}" \
-            -e "github_pat=${{ secrets.ARGOCD_GITHUB_PAT }}"
+            -e "github_pat=${{ secrets.ARGOCD_GITHUB_PAT }}" \
+            -e "infisical_client_id=${{ secrets.INFISICAL_CLIENT_ID }}" \
+            -e "infisical_client_secret=${{ secrets.INFISICAL_CLIENT_SECRET }}"
 
       - name: Generate Deployment Summary
         if: always()
@@ -108,7 +110,7 @@ jobs:
           MINUTES=$((DURATION / 60))
           SECONDS=$((DURATION % 60))
           DURATION_STR="${MINUTES}m ${SECONDS}s"
-          
+
           # Run deployment summary script
           chmod +x scripts/deployment-summary.sh
           scripts/deployment-summary.sh \

@@ -335,6 +335,32 @@
       changed_when: "'created' in github_secret.stdout or 'configured' in github_secret.stdout"
       no_log: true
 
+    # Create Infisical credentials for the secrets operator
+    - name: Create platform-secrets namespace
+      ansible.builtin.command: kubectl create namespace platform-secrets
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: ps_ns
+      changed_when: "'created' in ps_ns.stdout"
+      failed_when: false
+
+    - name: Create Infisical credentials secret
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic infisical-credentials \
+            --from-literal=clientId="{{ infisical_client_id }}" \
+            --from-literal=clientSecret="{{ infisical_client_secret }}" \
+            --namespace platform-secrets \
+            --dry-run=client -o yaml | kubectl apply -f -
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: infisical_client_id is defined and infisical_client_id | length > 0
+      register: infisical_secret
+      changed_when: "'created' in infisical_secret.stdout or 'configured' in infisical_secret.stdout"
+      no_log: true
+
     # Apply platform services (ArgoCD Applications)
     - name: Find platform service manifests
       ansible.builtin.find:
