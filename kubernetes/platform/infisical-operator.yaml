@@ -11,9 +11,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://infisical.github.io/infisical-helm-charts
+    repoURL: https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
     chart: secrets-operator
-    targetRevision: 0.7.2
+    targetRevision: 0.10.5
     helm:
       values: |
         resources:
