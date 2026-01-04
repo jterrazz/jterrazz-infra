@@ -53,6 +53,7 @@ Minimal Kubernetes infrastructure with local development and production deployme
 | **SigNoz** | Observability (traces, metrics, logs) |
 | **Cert-Manager** | Automatic Let's Encrypt certificates |
 | **External-DNS** | Automatic Cloudflare DNS management |
+| **Infisical Operator** | Automated secrets management |
 | **Tailscale** | Private VPN for secure access |
 | **Docker Registry** | Private container registry |
 
@@ -371,6 +372,46 @@ Allow from Tailscale (100.64.0.0/10): 6443/tcp (K8s API)
 2. Create Certificate and IngressRoute for your service
 
 3. External-DNS will auto-create the DNS record
+
+## Secrets Management with Infisical
+
+The Infisical Operator syncs secrets from Infisical to Kubernetes Secrets automatically.
+
+### Setup
+
+1. Create a project in Infisical (e.g., `jterrazz-apps`)
+2. Organize secrets in folders (e.g., `/n00-api`, `/n00-web`)
+3. Create a Machine Identity with **Viewer** role
+4. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` to GitHub Secrets
+
+### Using in Applications
+
+Add an `InfisicalSecret` resource to sync secrets:
+
+```yaml
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: my-app-infisical
+spec:
+  hostAPI: https://app.infisical.com
+  resyncInterval: 60
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: jterrazz-apps
+        envSlug: prod
+        secretsPath: /my-app
+      credentialsRef:
+        secretName: infisical-credentials
+        secretNamespace: platform-secrets
+  managedSecretReference:
+    secretName: my-app-secrets
+    secretType: Opaque
+```
+
+The operator creates a Kubernetes Secret (`my-app-secrets`) that your deployment can reference via `secretKeyRef`.
+
 
 ## Observability with SigNoz
 
