@@ -59,10 +59,6 @@ spec:
                     <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
                     <flush_interval_milliseconds>60000</flush_interval_milliseconds>
                   </text_log>
-                  <!-- Limit background operations for 8GB server -->
-                  <background_pool_size>2</background_pool_size>
-                  <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
-                  <max_threads>2</max_threads>
                 </clickhouse>
           # Zookeeper is under clickhouse
           zookeeper:
