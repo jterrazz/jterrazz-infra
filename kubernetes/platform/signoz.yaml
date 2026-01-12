@@ -33,9 +33,8 @@ spec:
               cpu: "1"
               memory: 5Gi
           # Disable expensive internal logging via ClickHouse Operator config
-          configuration:
-            files:
-              config.d/disable_expensive_logs.xml: |
+          files:
+            config.d/disable_expensive_logs.xml: |
                 <clickhouse>
                   <!-- Disable trace_log (biggest memory/disk consumer) -->
                   <trace_log remove="1"/>
