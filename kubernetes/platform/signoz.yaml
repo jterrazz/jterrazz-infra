@@ -32,37 +32,39 @@ spec:
             limits:
               cpu: "1"
               memory: 5Gi
-          # Reduce memory/CPU usage for small server
-          additionalConfigFiles:
-            resource_limits.xml: |
-              <clickhouse>
-                <!-- Disable expensive internal logging -->
-                <trace_log remove="1"/>
-                <query_thread_log remove="1"/>
-                <processors_profile_log remove="1"/>
-                <!-- TTL for remaining system logs -->
-                <text_log>
-                  <flush_interval_milliseconds>60000</flush_interval_milliseconds>
-                  <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
-                </text_log>
-                <metric_log>
-                  <flush_interval_milliseconds>60000</flush_interval_milliseconds>
-                  <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
-                </metric_log>
-                <part_log>
-                  <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
-                </part_log>
-                <query_log>
-                  <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
-                </query_log>
-                <!-- Limit background merges to reduce memory pressure -->
-                <background_pool_size>2</background_pool_size>
-                <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
-                <max_bytes_to_merge_at_max_space_in_pool>161061273</max_bytes_to_merge_at_max_space_in_pool>
-                <!-- Reduce memory for merges -->
-                <merge_max_block_size>4096</merge_max_block_size>
-                <max_threads>2</max_threads>
-              </clickhouse>
+          # Disable expensive internal logging via ClickHouse Operator config
+          configuration:
+            files:
+              config.d/disable_expensive_logs.xml: |
+                <clickhouse>
+                  <!-- Disable trace_log (biggest memory/disk consumer) -->
+                  <trace_log remove="1"/>
+                  <!-- Disable query_thread_log -->
+                  <query_thread_log remove="1"/>
+                  <!-- Disable processors_profile_log -->
+                  <processors_profile_log remove="1"/>
+                  <!-- Disable asynchronous_metric_log (high volume) -->
+                  <asynchronous_metric_log remove="1"/>
+                  <!-- Reduce TTL on remaining logs to 1 day -->
+                  <query_log>
+                    <ttl>event_date + INTERVAL 1 DAY DELETE</ttl>
+                  </query_log>
+                  <part_log>
+                    <ttl>event_date + INTERVAL 1 DAY DELETE</ttl>
+                  </part_log>
+                  <metric_log>
+                    <ttl>event_date + INTERVAL 1 DAY DELETE</ttl>
+                    <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+                  </metric_log>
+                  <text_log>
+                    <ttl>event_date + INTERVAL 1 DAY DELETE</ttl>
+                    <flush_interval_milliseconds>60000</flush_interval_milliseconds>
+                  </text_log>
+                  <!-- Limit background operations for 8GB server -->
+                  <background_pool_size>2</background_pool_size>
+                  <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
+                  <max_threads>2</max_threads>
+                </clickhouse>
           # Zookeeper is under clickhouse
           zookeeper:
             image:
