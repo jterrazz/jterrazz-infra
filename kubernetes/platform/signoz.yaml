@@ -36,29 +36,11 @@ spec:
           files:
             config.d/disable_expensive_logs.xml: |
                 <clickhouse>
-                  <!-- Disable trace_log (biggest memory/disk consumer) -->
+                  <!-- Disable expensive internal logs to save memory/disk -->
                   <trace_log remove="1"/>
-                  <!-- Disable query_thread_log -->
                   <query_thread_log remove="1"/>
-                  <!-- Disable processors_profile_log -->
                   <processors_profile_log remove="1"/>
-                  <!-- Disable asynchronous_metric_log (high volume) -->
                   <asynchronous_metric_log remove="1"/>
-                  <!-- Keep remaining logs for 14 days -->
-                  <query_log>
-                    <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
-                  </query_log>
-                  <part_log>
-                    <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
-                  </part_log>
-                  <metric_log>
-                    <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
-                    <flush_interval_milliseconds>60000</flush_interval_milliseconds>
-                  </metric_log>
-                  <text_log>
-                    <ttl>event_date + INTERVAL 14 DAY DELETE</ttl>
-                    <flush_interval_milliseconds>60000</flush_interval_milliseconds>
-                  </text_log>
                 </clickhouse>
           # Zookeeper is under clickhouse
           zookeeper:
