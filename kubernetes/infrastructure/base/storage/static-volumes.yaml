@@ -126,3 +126,30 @@ spec:
               operator: In
               values:
                 - jterrazz-vps
+---
+# n8n - Workflow automation data
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: n8n-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/n8n/data
+    type: DirectoryOrCreate
+  claimRef:
+    name: n8n-data
+    namespace: platform-automation
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps

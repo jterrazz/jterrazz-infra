@@ -168,3 +168,11 @@
     - { name: "zookeeper", uid: "1000", gid: "1000" }
     - { name: "data", uid: "1000", gid: "1000" }
     - { name: "alertmanager", uid: "1000", gid: "1000" }
+
+- name: Create n8n storage directory
+  ansible.builtin.file:
+    path: /var/lib/k8s-data/n8n/data
+    state: directory
+    mode: "0755"
+    owner: "1000"
+    group: "1000"
