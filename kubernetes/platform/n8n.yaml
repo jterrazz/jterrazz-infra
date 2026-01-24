@@ -18,15 +18,13 @@ spec:
       targetRevision: 1.16.25
       helm:
         values: |
-          # Main n8n configuration
+          # Main node configuration
           main:
-            # Persistence - uses dynamic local-path provisioner
+            editorBaseUrl: "https://n8n.jterrazz.com"
             persistence:
               enabled: true
               storageClass: local-path
               size: 1Gi
-
-            # Resource limits for small VPS
             resources:
               requests:
                 cpu: 50m
@@ -34,32 +32,11 @@ spec:
               limits:
                 memory: 512Mi
 
-          # n8n configuration via extraEnvVars
-          config:
-            executions:
-              pruneData: "true"
-              pruneDataMaxAge: "168"
-            generic:
-              timezone: "Europe/Paris"
-
-          # Webhook URL configuration
-          n8n:
-            encryption_key: ""
+          # Timezone configuration
+          timezone: "Europe/Paris"
 
           # Disable built-in ingress (we use Traefik IngressRoute)
           ingress:
-            enabled: false
-
-          # Disable redis (not needed for single instance)
-          redis:
-            enabled: false
-
-          # Disable workers (single instance mode)
-          worker:
-            enabled: false
-
-          # Disable webhook (single instance mode)
-          webhook:
             enabled: false
     # Source 2: IngressRoute + Certificate
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
