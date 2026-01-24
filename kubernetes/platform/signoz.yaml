@@ -1,6 +1,7 @@
 ---
 # SigNoz - Observability Platform
 # APM, Metrics, Logs, Traces
+# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,90 +11,94 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://charts.signoz.io
-    chart: signoz
-    targetRevision: 0.106.0
-    helm:
-      values: |
-        global:
-          storageClass: manual
+  sources:
+    # Source 1: Helm chart
+    - repoURL: https://charts.signoz.io
+      chart: signoz
+      targetRevision: 0.106.0
+      helm:
+        values: |
+          global:
+            storageClass: local-path
 
-        # ClickHouse - Data storage (main memory consumer)
-        # With 8GB server, give ClickHouse 4GB for stable operation
-        clickhouse:
-          persistence:
-            enabled: true
-            size: 10Gi
-          resources:
-            requests:
-              cpu: 800m
-              memory: 3Gi
-            limits:
-              cpu: "1"
-              memory: 5Gi
-          # Disable expensive internal logging via ClickHouse Operator config
-          files:
-            config.d/disable_expensive_logs.xml: |
-                <clickhouse>
-                  <!-- Disable expensive internal logs to save memory/disk -->
-                  <trace_log remove="1"/>
-                  <query_thread_log remove="1"/>
-                  <processors_profile_log remove="1"/>
-                  <asynchronous_metric_log remove="1"/>
-                </clickhouse>
-          # Zookeeper is under clickhouse
-          zookeeper:
-            image:
-              registry: docker.io
-              repository: signoz/zookeeper
-              tag: "3.9.3"
+          # ClickHouse - Data storage (main memory consumer)
+          # With 8GB server, give ClickHouse 4GB for stable operation
+          clickhouse:
             persistence:
               enabled: true
-              size: 1Gi
+              size: 10Gi
             resources:
               requests:
-                cpu: 50m
-                memory: 512Mi
+                cpu: 800m
+                memory: 3Gi
               limits:
-                memory: 1Gi
+                cpu: "1"
+                memory: 5Gi
+            # Disable expensive internal logging via ClickHouse Operator config
+            files:
+              config.d/disable_expensive_logs.xml: |
+                  <clickhouse>
+                    <!-- Disable expensive internal logs to save memory/disk -->
+                    <trace_log remove="1"/>
+                    <query_thread_log remove="1"/>
+                    <processors_profile_log remove="1"/>
+                    <asynchronous_metric_log remove="1"/>
+                  </clickhouse>
+            # Zookeeper is under clickhouse
+            zookeeper:
+              image:
+                registry: docker.io
+                repository: signoz/zookeeper
+                tag: "3.9.3"
+              persistence:
+                enabled: true
+                size: 1Gi
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 512Mi
+                limits:
+                  memory: 1Gi
 
-        # Query Service
-        queryService:
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              memory: 512Mi
+          # Query Service
+          queryService:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
 
-        # Frontend
-        frontend:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
+          # Frontend
+          frontend:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
 
-        # Alert Manager
-        alertmanager:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 128Mi
+          # Alert Manager
+          alertmanager:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
 
-        # OpenTelemetry Collector - needs room to buffer data
-        otelCollector:
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              memory: 512Mi
-
+          # OpenTelemetry Collector - needs room to buffer data
+          otelCollector:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                memory: 512Mi
+    # Source 2: IngressRoute + Certificate
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/signoz-resources
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-observability

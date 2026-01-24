@@ -1,0 +1,36 @@
+---
+# SigNoz IngressRoute - Private access via Tailscale
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: signoz
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: signoz.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "100.109.91.57"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`signoz.jterrazz.com`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-ingress
+      services:
+        - name: signoz
+          port: 8080
+  tls:
+    secretName: signoz-tls
+---
+# TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: signoz-tls
+spec:
+  secretName: signoz-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - signoz.jterrazz.com

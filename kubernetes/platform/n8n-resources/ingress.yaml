@@ -1,0 +1,36 @@
+---
+# n8n IngressRoute - Private access via Tailscale
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: n8n
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: n8n.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "100.109.91.57"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`n8n.jterrazz.com`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-ingress
+      services:
+        - name: n8n
+          port: 5678
+  tls:
+    secretName: n8n-tls
+---
+# TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: n8n-tls
+spec:
+  secretName: n8n-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - n8n.jterrazz.com

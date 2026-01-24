@@ -1,16 +1,17 @@
 ---
-# Static Storage - Simple hostPath PVs with predictable paths
-# Data stored in: /var/lib/k8s-data/{app}/{component}
+# Storage Configuration
 #
-# This approach uses static PersistentVolumes with hostPath.
-# PVs are pre-bound to specific PVCs using claimRef.
-# Simple, predictable, no dynamic provisioner complexity.
+# All apps use the K3s built-in local-path provisioner:
+# - Dynamic provisioning (no pre-created PVs needed)
+# - Data stored in: /var/lib/rancher/k3s/storage/
+# - Automatic cleanup on PVC deletion
 #
-# Note: nodeAffinity is required because once set by Kubernetes (on first bind
-# with WaitForFirstConsumer), it becomes immutable. We set it explicitly to
-# match the single k3s node (jterrazz-vps).
+# To use in apps, set: storageClass: local-path
+# The PVC will be automatically provisioned when the pod starts.
 
-# StorageClass for manual/static provisioning
+# Note: The "manual" StorageClass is kept for backward compatibility
+# but should not be used for new deployments.
+
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -18,138 +19,3 @@ metadata:
 provisioner: kubernetes.io/no-provisioner
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
----
-# SigNoz - ClickHouse data
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: signoz-clickhouse
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/signoz/clickhouse
-    type: DirectoryOrCreate
-  claimRef:
-    name: data-volumeclaim-template-chi-signoz-clickhouse-cluster-0-0-0
-    namespace: platform-observability
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps
----
-# SigNoz - Zookeeper data
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: signoz-zookeeper
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/signoz/zookeeper
-    type: DirectoryOrCreate
-  claimRef:
-    name: data-signoz-zookeeper-0
-    namespace: platform-observability
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps
----
-# SigNoz - Main app data (v0.105+)
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: signoz-data
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/signoz/data
-    type: DirectoryOrCreate
-  claimRef:
-    name: signoz-db-signoz-0
-    namespace: platform-observability
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps
----
-# SigNoz - Alertmanager data
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: signoz-alertmanager
-spec:
-  capacity:
-    storage: 100Mi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/signoz/alertmanager
-    type: DirectoryOrCreate
-  claimRef:
-    name: storage-signoz-alertmanager-0
-    namespace: platform-observability
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps
----
-# n8n - Workflow automation data
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: n8n-data
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/n8n/data
-    type: DirectoryOrCreate
-  claimRef:
-    name: n8n-data
-    namespace: platform-automation
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps

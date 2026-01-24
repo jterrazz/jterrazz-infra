@@ -24,7 +24,6 @@ resources:
   - traefik/traefik-config.yaml
   - traefik/middleware.yaml
   - traefik/global-https-redirect.yaml
-  - traefik/internal-ingresses.yaml
 
   # cert-manager ClusterIssuers (requires cert-manager CRDs to be installed first)
   # Applied after cert-manager is deployed by ArgoCD

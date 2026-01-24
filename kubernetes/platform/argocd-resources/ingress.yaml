@@ -1,0 +1,36 @@
+---
+# ArgoCD IngressRoute - Private access via Tailscale
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: argocd.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "100.109.91.57"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`argocd.jterrazz.com`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-ingress
+      services:
+        - name: argocd-server
+          port: 80
+  tls:
+    secretName: argocd-tls
+---
+# TLS Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-tls
+spec:
+  secretName: argocd-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - argocd.jterrazz.com

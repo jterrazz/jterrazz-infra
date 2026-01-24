@@ -1,6 +1,7 @@
 ---
 # n8n - Workflow Automation Platform
 # Self-hosted alternative to Zapier/Make
+# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,50 +11,54 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://8gears.container-registry.com/chartrepo/library
-    chart: n8n
-    targetRevision: 0.25.2
-    helm:
-      values: |
-        # Persistence
-        persistence:
-          enabled: true
-          storageClass: manual
-          size: 1Gi
-          existingClaim: n8n-data
+  sources:
+    # Source 1: Helm chart (OCI registry)
+    - repoURL: oci://8gears.container-registry.com/library
+      chart: n8n
+      targetRevision: 2.0.1
+      helm:
+        values: |
+          # Main n8n configuration
+          main:
+            # Persistence - uses dynamic local-path provisioner
+            persistence:
+              enabled: true
+              type: dynamic
+              storageClass: local-path
+              size: 1Gi
 
-        # Resource limits for small VPS
-        resources:
-          requests:
-            cpu: 50m
-            memory: 256Mi
-          limits:
-            memory: 512Mi
+            # Resource limits for small VPS
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
 
-        # Configuration
-        config:
-          executions:
-            pruneData: "true"
-            pruneDataMaxAge: 168  # 7 days in hours
+            # n8n configuration
+            config:
+              executions:
+                pruneData: "true"
+                pruneDataMaxAge: 168
+              generic:
+                timezone: "Europe/Paris"
+              n8n:
+                protocol: "https"
+                host: "n8n.jterrazz.com"
+                editor:
+                  baseUrl: "https://n8n.jterrazz.com/"
 
-        # n8n specific settings
-        extraEnv:
-          - name: N8N_PROTOCOL
-            value: "https"
-          - name: N8N_HOST
-            value: "n8n.jterrazz.com"
-          - name: WEBHOOK_URL
-            value: "https://n8n.jterrazz.com/"
-          - name: N8N_EDITOR_BASE_URL
-            value: "https://n8n.jterrazz.com/"
-          - name: GENERIC_TIMEZONE
-            value: "Europe/Paris"
+          # Disable built-in ingress (we use Traefik IngressRoute)
+          ingress:
+            enabled: false
 
-        # Disable built-in ingress (we use Traefik IngressRoute)
-        ingress:
-          enabled: false
-
+          # Disable valkey/redis (not needed for single instance)
+          valkey:
+            enabled: false
+    # Source 2: IngressRoute + Certificate
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/n8n-resources
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-automation

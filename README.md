@@ -45,17 +45,18 @@ Minimal Kubernetes infrastructure with local development and production deployme
 
 ## Stack
 
-| Component | Purpose |
-|-----------|---------|
-| **K3s** | Lightweight Kubernetes |
-| **Traefik** | Ingress controller with automatic TLS |
-| **ArgoCD** | GitOps continuous deployment |
-| **SigNoz** | Observability (traces, metrics, logs) |
-| **Cert-Manager** | Automatic Let's Encrypt certificates |
-| **External-DNS** | Automatic Cloudflare DNS management |
-| **Infisical Operator** | Automated secrets management |
-| **Tailscale** | Private VPN for secure access |
-| **Docker Registry** | Private container registry |
+| Component              | Purpose                               |
+| ---------------------- | ------------------------------------- |
+| **K3s**                | Lightweight Kubernetes                |
+| **Traefik**            | Ingress controller with automatic TLS |
+| **ArgoCD**             | GitOps continuous deployment          |
+| **SigNoz**             | Observability (traces, metrics, logs) |
+| **Cert-Manager**       | Automatic Let's Encrypt certificates  |
+| **External-DNS**       | Automatic Cloudflare DNS management   |
+| **Infisical Operator** | Automated secrets management          |
+| **Tailscale**          | Private VPN for secure access         |
+| **Docker Registry**    | Private container registry            |
+| **n8n**                | Workflow automation                   |
 
 ## Quick Start
 
@@ -74,54 +75,84 @@ make deploy   # Deploy to Hetzner (or push to main)
 ```
 ├── ansible/                    # Server configuration
 │   ├── playbooks/              # Orchestration playbooks
-│   │   ├── site.yml            # Main entry point
-│   │   ├── base.yml            # System packages, users
-│   │   ├── security.yml        # UFW, fail2ban, SSH hardening
-│   │   ├── kubernetes.yml      # K3s installation
-│   │   └── platform.yml        # ArgoCD, platform services
-│   ├── roles/                  # Reusable roles
-│   │   ├── k3s/                # K3s installation
-│   │   ├── security/           # Firewall, fail2ban
-│   │   ├── storage/            # Persistent volumes
-│   │   └── tailscale/          # VPN setup
-│   ├── templates/              # Jinja2 templates
-│   │   └── kubernetes/         # K8s manifests with secrets
-│   └── inventories/            # Host definitions
+│   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
 ├── kubernetes/                 # GitOps manifests (ArgoCD syncs these)
-│   ├── applications/           # Your app definitions
-│   ├── platform/               # Platform ArgoCD apps
-│   └── infrastructure/         # Base resources
-│       └── base/
-│           ├── cert-manager/   # TLS certificates
-│           ├── traefik/        # Ingress configuration
-│           └── platform-namespaces.yaml
+│   ├── infrastructure/         # Base capabilities (rarely changes)
+│   │   └── base/
+│   │       ├── storage/        # StorageClass definitions
+│   │       ├── traefik/        # Middlewares (private-access, rate-limit)
+│   │       ├── cert-manager/   # ClusterIssuers (wildcard for *.jterrazz.com)
+│   │       └── network-policies/
+│   │
+│   ├── platform/               # Platform services (one file per app)
+│   │   ├── argocd.yaml         # ArgoCD + IngressRoute + Certificate
+│   │   ├── signoz.yaml         # SigNoz + IngressRoute + Certificate
+│   │   ├── n8n.yaml            # n8n + IngressRoute + Certificate
+│   │   └── ...
+│   │
+│   └── applications/           # Your app definitions
 │
-├── pulumi/                     # Infrastructure as Code
-│   └── index.ts                # Hetzner VPS + secrets
-│
-├── scripts/                    # Automation scripts
-└── data/                       # Local data (gitignored)
-    ├── kubeconfig/             # Fetched kubeconfig
-    └── ssh/                    # Local SSH keys
+├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
+└── scripts/                    # Automation scripts
+```
+
+## Self-Contained Apps Pattern
+
+Each platform service is **fully self-contained** in a single ArgoCD Application:
+
+```yaml
+# kubernetes/platform/my-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  sources:
+    # Source 1: Helm chart
+    - repoURL: https://charts.example.com
+      chart: my-app
+      helm:
+        values: |
+          persistence:
+            storageClass: local-path  # Dynamic provisioning
+          ingress:
+            enabled: false  # We use Traefik IngressRoute
+
+    # Source 2: IngressRoute + Certificate
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      path: kubernetes/platform/my-app-resources
+```
+
+**Adding a new app = one file** (+ a resources directory for ingress/certs).
+
+### Internal vs External Services
+
+```yaml
+# Internal (Tailscale-only) - add private-access middleware
+middlewares:
+  - name: private-access
+    namespace: platform-ingress
+
+# External (Public) - no private-access middleware
+middlewares:
+  - name: rate-limit
+    namespace: platform-ingress
 ```
 
 ## Services & Access
 
-### Public Services (via Traefik Ingress)
-Your applications are exposed publicly on ports 80/443.
-
 ### Private Services (via Tailscale)
 
-| Service | URL | Access |
-|---------|-----|--------|
-| ArgoCD | `https://argocd.jterrazz.com` | Tailscale only |
-| SigNoz | `https://signoz.jterrazz.com` | Tailscale only |
-| Registry | `https://registry.jterrazz.com` | Tailscale only |
+| Service  | URL                             | Purpose             |
+| -------- | ------------------------------- | ------------------- |
+| ArgoCD   | `https://argocd.jterrazz.com`   | GitOps dashboard    |
+| SigNoz   | `https://signoz.jterrazz.com`   | Observability       |
+| Registry | `https://registry.jterrazz.com` | Container images    |
+| n8n      | `https://n8n.jterrazz.com`      | Workflow automation |
 
 All private services:
-- Use valid Let's Encrypt TLS certificates
-- DNS points to Tailscale IP (not public IP)
+
+- Use valid Let's Encrypt TLS certificates (wildcard for \*.jterrazz.com)
+- DNS points to Tailscale IP
 - Only accessible when connected to Tailscale VPN
 
 ### ArgoCD Admin Password
@@ -131,11 +162,18 @@ kubectl -n platform-gitops get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d
 ```
 
+## Storage
+
+All apps use the K3s built-in `local-path` provisioner:
+
+- **Dynamic provisioning**: No pre-created PVs needed
+- **Data location**: `/var/lib/rancher/k3s/storage/`
+- **Usage**: Set `storageClass: local-path` in Helm values
+
 ## Private Docker Registry
 
-The infrastructure includes a private Docker registry for your container images.
-
 ### Registry Access
+
 - **URL**: `registry.jterrazz.com`
 - **Auth**: htpasswd (username: `deploy`)
 - **Password**: Stored in Pulumi state
@@ -150,16 +188,6 @@ docker login registry.jterrazz.com -u deploy
 
 ### Using from CI (GitHub Actions)
 
-Your application repos need these secrets:
-
-| Secret | Value |
-|--------|-------|
-| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID |
-| `TS_OAUTH_SECRET` | Tailscale OAuth secret |
-| `REGISTRY_USERNAME` | `deploy` |
-| `REGISTRY_PASSWORD` | From `pulumi stack output dockerRegistryPassword --show-secrets` |
-
-Example workflow:
 ```yaml
 - name: Setup Tailscale
   uses: tailscale/github-action@v2
@@ -172,81 +200,59 @@ Example workflow:
   uses: docker/login-action@v3
   with:
     registry: registry.jterrazz.com
-    username: ${{ secrets.REGISTRY_USERNAME }}
+    username: deploy
     password: ${{ secrets.REGISTRY_PASSWORD }}
-
-- name: Build and Push
-  uses: docker/build-push-action@v5
-  with:
-    push: true
-    tags: registry.jterrazz.com/my-app:latest
 ```
 
-### Using in Kubernetes Deployments
+## Certificates & DNS
+
+### How it works
+
+1. **ClusterIssuer** allows certificates for any `*.jterrazz.com` subdomain
+2. **Cert-Manager** requests certificates from Let's Encrypt via DNS-01 challenge
+3. **External-DNS** automatically creates/updates DNS records in Cloudflare
+4. Each app defines its own Certificate in its resources directory
+
+### Adding a new internal service
+
+1. Create the app manifest in `kubernetes/platform/my-app.yaml`
+2. Create `kubernetes/platform/my-app-resources/ingress.yaml`:
 
 ```yaml
-spec:
-  imagePullSecrets:
-    - name: registry-credentials  # Created by Ansible
-  containers:
-    - name: my-app
-      image: registry.jterrazz.com/my-app:latest
-```
-
-## Deploy an Application
-
-### 1. Create ArgoCD Application
-
-```yaml
-# kubernetes/applications/my-app.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
   name: my-app
-  namespace: platform-gitops
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: my-app.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: "100.109.91.57" # Tailscale IP
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/you/your-app.git
-    path: k8s
-    targetRevision: HEAD
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: app-my-app
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-```
-
-### 2. Add Registry Pull Secret (for private registry)
-
-Add to `ansible/templates/kubernetes/registry-pull-secret.yaml.j2`:
-```yaml
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`my-app.jterrazz.com`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-ingress
+      services:
+        - name: my-app
+          port: 8080
+  tls:
+    secretName: my-app-tls
 ---
-apiVersion: v1
-kind: Namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
 metadata:
-  name: app-my-app
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: registry-credentials
-  namespace: app-my-app
-type: kubernetes.io/dockerconfigjson
-stringData:
-  .dockerconfigjson: |
-    {"auths":{"registry.jterrazz.com":{"username":"deploy","password":"{{ registry_password }}"}}}
+  name: my-app-tls
+spec:
+  secretName: my-app-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - my-app.jterrazz.com
 ```
-
-### 3. Push and Deploy
-
-Push to main - ArgoCD auto-syncs your application.
 
 ## Production Setup
 
@@ -255,65 +261,22 @@ Push to main - ArgoCD auto-syncs your application.
 ```bash
 # macOS
 brew install multipass ansible pulumi node
-
-# Required accounts (free tiers available)
-# - Pulumi: https://app.pulumi.com
-# - Hetzner: https://console.hetzner.cloud
-# - Tailscale: https://tailscale.com
-# - Cloudflare: https://cloudflare.com (for DNS)
 ```
 
-### 1. Pulumi Setup
+### Required Secrets (GitHub Actions)
 
-```bash
-cd pulumi
-npm install
-pulumi login
-pulumi stack init production
-```
+| Secret                          | Description              |
+| ------------------------------- | ------------------------ |
+| `PULUMI_ACCESS_TOKEN`           | Pulumi API token         |
+| `HCLOUD_TOKEN`                  | Hetzner Cloud API token  |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | For server provisioning  |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | For server provisioning  |
+| `CLOUDFLARE_API_TOKEN`          | For DNS and certificates |
+| `ARGOCD_GITHUB_PAT`             | For private repo access  |
+| `INFISICAL_CLIENT_ID`           | For secrets management   |
+| `INFISICAL_CLIENT_SECRET`       | For secrets management   |
 
-### 2. Configure Secrets
-
-```bash
-# Hetzner API token
-pulumi config set hcloud:token <token> --secret
-
-# Cloudflare API token (for DNS and cert-manager)
-pulumi config set cloudflareApiToken <token> --secret
-
-# Tailscale OAuth (create at https://login.tailscale.com/admin/settings/oauth)
-pulumi config set tailscaleOauthClientId <client-id>
-pulumi config set tailscaleOauthClientSecret <secret> --secret
-```
-
-### 3. Tailscale ACL Configuration
-
-Add to your Tailscale ACL policy (https://login.tailscale.com/admin/acls/file):
-
-```json
-{
-  "tagOwners": {
-    "tag:server": ["autogroup:admin"],
-    "tag:ci": ["autogroup:admin"]
-  },
-  "acls": [
-    {"action": "accept", "src": ["autogroup:admin"], "dst": ["*:*"]},
-    {"action": "accept", "src": ["tag:ci"], "dst": ["tag:server:*"]}
-  ]
-}
-```
-
-### 4. GitHub Actions Secrets
-
-| Secret | Description |
-|--------|-------------|
-| `PULUMI_ACCESS_TOKEN` | Pulumi API token |
-| `HCLOUD_TOKEN` | Hetzner Cloud API token |
-| `TAILSCALE_OAUTH_CLIENT_ID` | For server provisioning |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | For server provisioning |
-| `CLOUDFLARE_API_TOKEN` | For DNS and certificates |
-
-### 5. Deploy
+### Deploy
 
 ```bash
 # Manual deploy
@@ -327,107 +290,50 @@ git push origin main
 
 ### Network Security
 
-| Port | Service | Access Level |
-|------|---------|--------------|
-| 22 | SSH | Public (key-only, fail2ban) |
-| 80 | HTTP | Public (redirects to HTTPS) |
-| 443 | HTTPS | Public (your apps) |
-| 6443 | K8s API | Tailscale + private only |
-| 30000+ | NodePorts | Blocked publicly |
+| Port | Service | Access Level                |
+| ---- | ------- | --------------------------- |
+| 22   | SSH     | Public (key-only, fail2ban) |
+| 80   | HTTP    | Public (redirects to HTTPS) |
+| 443  | HTTPS   | Public (your apps)          |
+| 6443 | K8s API | Tailscale + private only    |
 
 ### Service Security
 
-- **ArgoCD/SigNoz/Registry**: Only accessible via Tailscale VPN
-- **TLS**: All services use Let's Encrypt certificates (auto-renewed)
-- **DNS**: Managed by external-dns, points to Tailscale IPs for private services
+- **Private services**: IP whitelist via `private-access` middleware (Tailscale IPs only)
+- **TLS**: All services use Let's Encrypt certificates (wildcard for \*.jterrazz.com)
+- **DNS**: Managed by external-dns with `upsert-only` policy (won't delete unmanaged records)
 - **Secrets**: Stored in Pulumi state (encrypted), injected via Ansible
-
-### Firewall Rules (UFW)
-
-```
-Default: deny incoming, allow outgoing
-Allow: 22/tcp (SSH), 80/tcp (HTTP), 443/tcp (HTTPS)
-Allow from Tailscale (100.64.0.0/10): 6443/tcp (K8s API)
-```
-
-## Certificates & DNS
-
-### How it works
-
-1. **Cert-Manager** requests certificates from Let's Encrypt
-2. **DNS-01 Challenge**: Uses Cloudflare API to prove domain ownership
-3. **External-DNS** automatically creates/updates DNS records
-4. **Certificates** are stored as Kubernetes secrets
-
-### Adding a new domain
-
-1. Add to `ClusterIssuer` in `kubernetes/infrastructure/base/cert-manager/cluster-issuer.yaml`:
-   ```yaml
-   selector:
-     dnsNames:
-       - existing.jterrazz.com
-       - new-service.jterrazz.com  # Add here
-   ```
-
-2. Create Certificate and IngressRoute for your service
-
-3. External-DNS will auto-create the DNS record
-
-## Secrets Management with Infisical
-
-The Infisical Operator syncs secrets from Infisical to Kubernetes Secrets automatically.
-
-### Setup
-
-1. Create a project in Infisical (e.g., `jterrazz-apps`)
-2. Organize secrets in folders (e.g., `/n00-api`, `/n00-web`)
-3. Create a Machine Identity with **Viewer** role
-4. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` to GitHub Secrets
-
-### Using in Applications
-
-Add an `InfisicalSecret` resource to sync secrets:
-
-```yaml
-apiVersion: secrets.infisical.com/v1alpha1
-kind: InfisicalSecret
-metadata:
-  name: my-app-infisical
-spec:
-  hostAPI: https://app.infisical.com
-  resyncInterval: 60
-  authentication:
-    universalAuth:
-      secretsScope:
-        projectSlug: jterrazz-apps
-        envSlug: prod
-        secretsPath: /my-app
-      credentialsRef:
-        secretName: infisical-credentials
-        secretNamespace: platform-secrets
-  managedSecretReference:
-    secretName: my-app-secrets
-    secretType: Opaque
-```
-
-The operator creates a Kubernetes Secret (`my-app-secrets`) that your deployment can reference via `secretKeyRef`.
-
 
 ## Observability with SigNoz
 
 ### Sending Traces (OpenTelemetry)
 
 ```yaml
-# In your app deployment
 env:
   - name: OTEL_EXPORTER_OTLP_ENDPOINT
     value: "http://signoz-otel-collector.platform-observability:4318"
 ```
 
-### Accessing SigNoz
+## Troubleshooting
 
-1. Connect to Tailscale VPN
-2. Go to `https://signoz.jterrazz.com`
+### Check ArgoCD sync status
+
+```bash
+kubectl get applications -n platform-gitops
+```
+
+### Certificate issues
+
+```bash
+kubectl get certificates -A
+kubectl describe certificate <name> -n <namespace>
+```
+
+### View pod logs
+
+```bash
+kubectl logs -n <namespace> <pod-name>
+```
 
 ## Local Development
 
@@ -435,67 +341,5 @@ env:
 make start          # Create Multipass VM + full deploy
 make status         # Cluster status
 make ssh            # SSH into VM
-make ansible        # Re-run Ansible playbooks
-make logs           # View deployment logs
 make destroy        # Destroy VM
 ```
-
-## Troubleshooting
-
-### Check ArgoCD sync status
-```bash
-kubectl get applications -n platform-gitops
-```
-
-### View pod logs
-```bash
-kubectl logs -n <namespace> <pod-name>
-```
-
-### Certificate issues
-```bash
-kubectl get certificates -A
-kubectl describe certificate <name> -n <namespace>
-```
-
-### DNS not updating
-External-DNS uses `upsert-only` policy. To update an existing record:
-1. Delete the record in Cloudflare
-2. External-DNS will recreate it with the correct value
-
-### Registry access issues
-```bash
-# Test from Tailscale
-curl -u deploy:<password> https://registry.jterrazz.com/v2/
-
-# Check certificate
-openssl s_client -connect registry.jterrazz.com:443 -servername registry.jterrazz.com
-```
-
-## Maintenance
-
-### Updating K3s
-```bash
-# SSH to server
-curl -sfL https://get.k3s.io | sh -
-```
-
-### Rotating secrets
-```bash
-cd pulumi
-pulumi config set <secret-name> <new-value> --secret
-pulumi up
-# Then re-run Ansible to apply changes
-```
-
-### Backup
-- **Pulumi state**: Automatically stored in Pulumi Cloud
-- **Application data**: Use PersistentVolumes with appropriate backup strategy
-- **Cluster state**: ArgoCD can recreate from Git
-
-## Contributing
-
-1. Test changes locally with `make start`
-2. Create a PR
-3. CI validates Ansible syntax and Pulumi preview
-4. Merge to main triggers production deploy

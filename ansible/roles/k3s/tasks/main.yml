@@ -147,32 +147,6 @@
     dest: /root/.kube/config
     remote_src: true
     mode: "0600"
-
-# Create persistent storage directories for static PVs
-# These use hostPath volumes with predictable paths
-- name: Create base storage directory
-  ansible.builtin.file:
-    path: /var/lib/k8s-data
-    state: directory
-    mode: "0755"
-
-- name: Create SigNoz storage directories
-  ansible.builtin.file:
-    path: "/var/lib/k8s-data/signoz/{{ item.name }}"
-    state: directory
-    mode: "0755"
-    owner: "{{ item.uid }}"
-    group: "{{ item.gid }}"
-  loop:
-    - { name: "clickhouse", uid: "101", gid: "101" }
-    - { name: "zookeeper", uid: "1000", gid: "1000" }
-    - { name: "data", uid: "1000", gid: "1000" }
-    - { name: "alertmanager", uid: "1000", gid: "1000" }
-
-- name: Create n8n storage directory
-  ansible.builtin.file:
-    path: /var/lib/k8s-data/n8n/data
-    state: directory
-    mode: "0755"
-    owner: "1000"
-    group: "1000"
+# Storage is handled by k3s local-path provisioner
+# Data stored in: /var/lib/rancher/k3s/storage/
+# No manual directory creation needed - provisioner handles it automatically

@@ -1,13 +1,18 @@
 ---
 # ClusterIssuer for Let's Encrypt using Cloudflare DNS-01 challenge
 # Works with private IPs - only requires DNS access
+#
+# Uses dnsZones selector to allow ANY subdomain of jterrazz.com
+# This is safe because:
+# - Cloudflare API token is scoped to jterrazz.com zone only
+# - You control what Certificates you create in the cluster
+# - DNS-01 challenge proves domain ownership
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
   name: letsencrypt-production
 spec:
   acme:
-    # Let's Encrypt production server
     server: https://acme-v02.api.letsencrypt.org/directory
     email: podcasterr@proton.me
     privateKeySecretRef:
@@ -18,13 +23,9 @@ spec:
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
-        # SECURITY: Only issue certs for these specific domains
         selector:
-          dnsNames:
-            - signoz.jterrazz.com
-            - argocd.jterrazz.com
-            - registry.jterrazz.com
-            - n8n.jterrazz.com
+          dnsZones:
+            - jterrazz.com
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -44,64 +45,5 @@ spec:
               name: cloudflare-api-token
               key: api-token
         selector:
-          dnsNames:
-            - signoz.jterrazz.com
-            - argocd.jterrazz.com
-            - registry.jterrazz.com
-            - n8n.jterrazz.com
----
-# Certificate for ArgoCD
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: argocd-tls
-  namespace: platform-gitops
-spec:
-  secretName: argocd-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - argocd.jterrazz.com
----
-# Certificate for SigNoz
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: signoz-tls
-  namespace: platform-observability
-spec:
-  secretName: signoz-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - signoz.jterrazz.com
----
-# Certificate for Docker Registry
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: registry-tls
-  namespace: platform-registry
-spec:
-  secretName: registry-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - registry.jterrazz.com
----
-# Certificate for n8n
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: n8n-tls
-  namespace: platform-automation
-spec:
-  secretName: n8n-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - n8n.jterrazz.com
+          dnsZones:
+            - jterrazz.com

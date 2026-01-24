@@ -1,6 +1,7 @@
 ---
 # ArgoCD - GitOps Controller
 # Manages itself after bootstrap via Helm
+# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,64 +11,69 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://argoproj.github.io/argo-helm
-    chart: argo-cd
-    targetRevision: 7.7.5
-    helm:
-      values: |
-        global:
-          domain: argocd.local
-        configs:
-          params:
-            server.insecure: true
-          cm:
-            timeout.reconciliation: 180s
-        server:
-          ingress:
-            enabled: false
-        redis:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
-        controller:
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              memory: 512Mi
-        repoServer:
-          resources:
-            requests:
-              cpu: 50m
-              memory: 256Mi
-            limits:
-              memory: 512Mi
-        applicationSet:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
-        notifications:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 64Mi
-        dex:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 64Mi
+  sources:
+    # Source 1: Helm chart
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 7.7.5
+      helm:
+        values: |
+          global:
+            domain: argocd.local
+          configs:
+            params:
+              server.insecure: true
+            cm:
+              timeout.reconciliation: 180s
+          server:
+            ingress:
+              enabled: false
+          redis:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+          controller:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+          repoServer:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+          applicationSet:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                memory: 128Mi
+          notifications:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+          dex:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+    # Source 2: IngressRoute + Certificate
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/argocd-resources
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-gitops
