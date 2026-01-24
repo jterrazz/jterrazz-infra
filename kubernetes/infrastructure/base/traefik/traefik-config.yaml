@@ -14,3 +14,7 @@ spec:
       websecure:
         middlewares:
           - platform-ingress-rate-limit@kubernetescrd
+    # Allow cross-namespace middleware references (required for private-access middleware)
+    providers:
+      kubernetesCRD:
+        allowCrossNamespace: true
