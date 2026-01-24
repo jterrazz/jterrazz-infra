@@ -24,6 +24,7 @@ spec:
             - signoz.jterrazz.com
             - argocd.jterrazz.com
             - registry.jterrazz.com
+            - n8n.jterrazz.com
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -47,6 +48,7 @@ spec:
             - signoz.jterrazz.com
             - argocd.jterrazz.com
             - registry.jterrazz.com
+            - n8n.jterrazz.com
 ---
 # Certificate for ArgoCD
 apiVersion: cert-manager.io/v1
@@ -89,3 +91,17 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - registry.jterrazz.com
+---
+# Certificate for n8n
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: n8n-tls
+  namespace: platform-automation
+spec:
+  secretName: n8n-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - n8n.jterrazz.com
