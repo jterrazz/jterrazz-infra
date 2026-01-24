@@ -147,20 +147,3 @@
     dest: /root/.kube/config
     remote_src: true
     mode: "0600"
-# Static storage directories for apps that need persistent data
-# These directories survive app deletion (unlike dynamic local-path provisioner)
-- name: Create base storage directory
-  ansible.builtin.file:
-    path: /var/lib/k8s-data
-    state: directory
-    mode: "0755"
-
-- name: Create app storage directories
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: directory
-    mode: "0777"
-  loop:
-    - /var/lib/k8s-data/n8n
-    - /var/lib/k8s-data/signoz/clickhouse
-    - /var/lib/k8s-data/signoz/db

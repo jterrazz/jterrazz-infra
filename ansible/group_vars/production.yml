@@ -3,9 +3,8 @@
 
 environment_type: production
 
-# Security
-skip_security: false
+# Enable Tailscale VPN (disabled by default in all.yml for local dev)
 skip_tailscale: false
 
-# k3s - auto-generate token
+# Auto-generate k3s token (local uses fixed token for simplicity)
 k3s_token: ""

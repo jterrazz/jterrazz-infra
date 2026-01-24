@@ -1,5 +1,0 @@
----
-# Default Deny Network Policies
-# Note: Platform namespaces (gitops, ingress, observability) don't use default-deny
-# because their Helm charts manage their own network policies.
-# This file is kept for reference - add app namespace policies here if needed.

@@ -11,20 +11,9 @@ labels:
     includeSelectors: false
 
 resources:
-  # Storage (local-path-provisioner with predictable paths)
   - storage/
-
-  # Namespaces
   - platform-namespaces.yaml
-
-  # Network policies
   - network-policies/
-
-  # Traefik configuration (custom middlewares only, Traefik itself is managed by k3s)
   - traefik/traefik-config.yaml
   - traefik/middleware.yaml
   - traefik/global-https-redirect.yaml
-
-  # cert-manager ClusterIssuers (requires cert-manager CRDs to be installed first)
-  # Applied after cert-manager is deployed by ArgoCD
-  # - cert-manager/

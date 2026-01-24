@@ -1,8 +1,9 @@
 ---
-# Storage Setup - Creates base directory for k3s local-path-provisioner
-# The k3s local-path-provisioner will create subdirectories for each PVC automatically
+# Storage Setup
+# Creates directories for Kubernetes persistent volumes
 
-- name: Create base storage directory for Kubernetes PVCs
+# Base directory for all k8s storage
+- name: Create base storage directory
   ansible.builtin.file:
     path: /var/lib/k8s-data
     state: directory
@@ -10,9 +11,14 @@
     owner: root
     group: root
 
-- name: Ensure storage directory has correct permissions
+# Static storage directories for apps that need persistent data
+# These directories survive app deletion (unlike dynamic local-path provisioner)
+- name: Create app storage directories
   ansible.builtin.file:
-    path: /var/lib/k8s-data
+    path: "{{ item }}"
     state: directory
-    mode: "0755"
-    recurse: false
+    mode: "0777"
+  loop:
+    - /var/lib/k8s-data/n8n
+    - /var/lib/k8s-data/signoz/clickhouse
+    - /var/lib/k8s-data/signoz/db

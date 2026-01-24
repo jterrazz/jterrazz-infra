@@ -9,7 +9,7 @@
   gather_facts: true
 
   vars:
-    env_type: "{{ environment_type | default('local') }}"
+    environment: "{{ environment_type | default('local') }}"
     argocd_namespace: platform-gitops
     argocd_version: "9.3.5"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
@@ -120,7 +120,7 @@
     # Apply base infrastructure (namespaces, network policies, storage config)
     - name: Deploy base infrastructure manifests
       ansible.builtin.command:
-        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ env_type }}
+        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ environment }}
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: infra_result
@@ -329,14 +329,7 @@
       no_log: true
 
     # Create Infisical credentials for the secrets operator
-    - name: Create platform-secrets namespace
-      ansible.builtin.command: kubectl create namespace platform-secrets
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: ps_ns
-      changed_when: "'created' in ps_ns.stdout"
-      failed_when: false
-
+    # Note: platform-secrets namespace is created by base infrastructure kustomization
     - name: Create Infisical credentials secret
       ansible.builtin.shell:
         cmd: |

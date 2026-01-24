@@ -33,8 +33,8 @@ Minimal Kubernetes infrastructure with local development and production deployme
 │  │  │  (Ingress)  │  │   (GitOps)  │  │ (Observability) │  │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │   │
-│  │  │  Registry   │  │ Cert-Manager│  │  External-DNS   │  │   │
-│  │  │  (Private)  │  │(Let's Encr.)│  │  (Cloudflare)   │  │   │
+│  │  │     n8n     │  │ Cert-Manager│  │  External-DNS   │  │   │
+│  │  │ (Workflows) │  │(Let's Encr.)│  │  (Cloudflare)   │  │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │   │
 │  │  ┌───────────────────────────────────────────────────┐  │   │
 │  │  │              Your Applications                    │  │   │
@@ -55,7 +55,6 @@ Minimal Kubernetes infrastructure with local development and production deployme
 | **External-DNS**       | Automatic Cloudflare DNS management   |
 | **Infisical Operator** | Automated secrets management          |
 | **Tailscale**          | Private VPN for secure access         |
-| **Docker Registry**    | Private container registry            |
 | **n8n**                | Workflow automation                   |
 
 ## Quick Start
@@ -82,14 +81,29 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │   └── base/
 │   │       ├── storage/        # StorageClass definitions
 │   │       ├── traefik/        # Middlewares (private-access, rate-limit)
-│   │       ├── cert-manager/   # ClusterIssuers (wildcard for *.jterrazz.com)
 │   │       └── network-policies/
 │   │
-│   ├── platform/               # Platform services (one file per app)
-│   │   ├── argocd.yaml         # ArgoCD + IngressRoute + Certificate
-│   │   ├── signoz.yaml         # SigNoz + IngressRoute + Certificate
-│   │   ├── n8n.yaml            # n8n + IngressRoute + Certificate
-│   │   └── ...
+│   ├── platform/               # Platform services (one folder per app)
+│   │   ├── argocd/
+│   │   │   ├── app.yaml        # ArgoCD Application
+│   │   │   └── ingress.yaml    # IngressRoute + Certificate
+│   │   ├── signoz/
+│   │   │   ├── app.yaml
+│   │   │   ├── ingress.yaml
+│   │   │   └── storage.yaml    # Static PV/PVC
+│   │   ├── n8n/
+│   │   │   ├── app.yaml
+│   │   │   ├── ingress.yaml
+│   │   │   └── storage.yaml
+│   │   ├── cert-manager/
+│   │   │   ├── app.yaml
+│   │   │   └── issuers.yaml    # ClusterIssuers
+│   │   ├── external-dns/
+│   │   │   └── app.yaml
+│   │   ├── infisical/
+│   │   │   └── app.yaml
+│   │   └── signoz-k8s-infra/
+│   │       └── app.yaml
 │   │
 │   └── applications/           # Your app definitions
 │
@@ -97,12 +111,21 @@ make deploy   # Deploy to Hetzner (or push to main)
 └── scripts/                    # Automation scripts
 ```
 
-## Self-Contained Apps Pattern
+## App-Centric Folder Pattern
 
-Each platform service is **fully self-contained** in a single ArgoCD Application:
+Each platform service is **fully self-contained** in its own folder:
+
+```
+kubernetes/platform/my-app/
+├── app.yaml        # ArgoCD Application (helm chart + references this folder)
+├── ingress.yaml    # IngressRoute + Certificate
+└── storage.yaml    # PV/PVC (if needed)
+```
+
+The ArgoCD Application uses multi-source to deploy both the Helm chart and local resources:
 
 ```yaml
-# kubernetes/platform/my-app.yaml
+# kubernetes/platform/my-app/app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 spec:
@@ -112,17 +135,17 @@ spec:
       chart: my-app
       helm:
         values: |
-          persistence:
-            storageClass: local-path  # Dynamic provisioning
           ingress:
             enabled: false  # We use Traefik IngressRoute
 
-    # Source 2: IngressRoute + Certificate
+    # Source 2: Resources from this folder (ingress, storage, etc.)
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-      path: kubernetes/platform/my-app-resources
+      path: kubernetes/platform/my-app
+      directory:
+        exclude: "app.yaml" # Don't apply the Application itself
 ```
 
-**Adding a new app = one file** (+ a resources directory for ingress/certs).
+**Adding a new app = one folder** with clear file responsibilities.
 
 ### Internal vs External Services
 
@@ -142,16 +165,15 @@ middlewares:
 
 ### Private Services (via Tailscale)
 
-| Service  | URL                             | Purpose             |
-| -------- | ------------------------------- | ------------------- |
-| ArgoCD   | `https://argocd.jterrazz.com`   | GitOps dashboard    |
-| SigNoz   | `https://signoz.jterrazz.com`   | Observability       |
-| Registry | `https://registry.jterrazz.com` | Container images    |
-| n8n      | `https://n8n.jterrazz.com`      | Workflow automation |
+| Service | URL                           | Purpose             |
+| ------- | ----------------------------- | ------------------- |
+| ArgoCD  | `https://argocd.jterrazz.com` | GitOps dashboard    |
+| SigNoz  | `https://signoz.jterrazz.com` | Observability       |
+| n8n     | `https://n8n.jterrazz.com`    | Workflow automation |
 
 All private services:
 
-- Use valid Let's Encrypt TLS certificates (wildcard for \*.jterrazz.com)
+- Use valid Let's Encrypt TLS certificates
 - DNS points to Tailscale IP
 - Only accessible when connected to Tailscale VPN
 
@@ -164,59 +186,97 @@ kubectl -n platform-gitops get secret argocd-initial-admin-secret \
 
 ## Storage
 
-All apps use the K3s built-in `local-path` provisioner:
+### Dynamic Storage (local-path)
 
-- **Dynamic provisioning**: No pre-created PVs needed
+For ephemeral data, use the K3s built-in `local-path` provisioner:
+
 - **Data location**: `/var/lib/rancher/k3s/storage/`
+- **Behavior**: PVCs get UUID-named folders, deleted when PVC is deleted
 - **Usage**: Set `storageClass: local-path` in Helm values
 
-## Private Docker Registry
+### Static Storage (manual)
 
-### Registry Access
-
-- **URL**: `registry.jterrazz.com`
-- **Auth**: htpasswd (username: `deploy`)
-- **Password**: Stored in Pulumi state
-
-```bash
-# Get registry password
-cd pulumi && pulumi stack output dockerRegistryPassword --show-secrets
-
-# Docker login
-docker login registry.jterrazz.com -u deploy
-```
-
-### Using from CI (GitHub Actions)
+For persistent data that survives app deletion (databases, user data):
 
 ```yaml
-- name: Setup Tailscale
-  uses: tailscale/github-action@v2
-  with:
-    oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-    oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-    tags: tag:ci
-
-- name: Login to Registry
-  uses: docker/login-action@v3
-  with:
-    registry: registry.jterrazz.com
-    username: deploy
-    password: ${{ secrets.REGISTRY_PASSWORD }}
+# storage.yaml - Static PV with Retain policy
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-app-data
+spec:
+  capacity:
+    storage: 1Gi
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/my-app
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
 ```
+
+Current static volumes:
+
+- `/var/lib/k8s-data/n8n` - n8n workflows and credentials
+- `/var/lib/k8s-data/signoz/clickhouse` - SigNoz traces, metrics, logs
+- `/var/lib/k8s-data/signoz/db` - SigNoz user accounts, dashboards
 
 ## Certificates & DNS
 
 ### How it works
 
-1. **ClusterIssuer** allows certificates for any `*.jterrazz.com` subdomain
+1. **ClusterIssuer** (in `platform/cert-manager/issuers.yaml`) allows certificates for any `*.jterrazz.com` subdomain
 2. **Cert-Manager** requests certificates from Let's Encrypt via DNS-01 challenge
 3. **External-DNS** automatically creates/updates DNS records in Cloudflare
-4. Each app defines its own Certificate in its resources directory
+4. Each app defines its own Certificate in its `ingress.yaml`
 
 ### Adding a new internal service
 
-1. Create the app manifest in `kubernetes/platform/my-app.yaml`
-2. Create `kubernetes/platform/my-app-resources/ingress.yaml`:
+1. Create folder `kubernetes/platform/my-app/`
+
+2. Create `app.yaml`:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  namespace: platform-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.example.com
+      chart: my-app
+      targetRevision: 1.0.0
+      helm:
+        values: |
+          ingress:
+            enabled: false
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/my-app
+      directory:
+        exclude: "app.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-namespace
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+3. Create `ingress.yaml`:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -253,6 +313,8 @@ spec:
   dnsNames:
     - my-app.jterrazz.com
 ```
+
+4. (Optional) Create `storage.yaml` if you need persistent data.
 
 ## Production Setup
 
@@ -300,7 +362,7 @@ git push origin main
 ### Service Security
 
 - **Private services**: IP whitelist via `private-access` middleware (Tailscale IPs only)
-- **TLS**: All services use Let's Encrypt certificates (wildcard for \*.jterrazz.com)
+- **TLS**: All services use Let's Encrypt certificates
 - **DNS**: Managed by external-dns with `upsert-only` policy (won't delete unmanaged records)
 - **Secrets**: Stored in Pulumi state (encrypted), injected via Ansible
 

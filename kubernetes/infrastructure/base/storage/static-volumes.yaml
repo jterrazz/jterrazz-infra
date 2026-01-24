@@ -1,16 +1,18 @@
 ---
-# Storage Configuration
+# Storage Classes
 #
-# All apps use the K3s built-in local-path provisioner:
-# - Dynamic provisioning (no pre-created PVs needed)
-# - Data stored in: /var/lib/rancher/k3s/storage/
-# - Automatic cleanup on PVC deletion
+# Two storage options available:
 #
-# To use in apps, set: storageClass: local-path
-# The PVC will be automatically provisioned when the pod starts.
-
-# Note: The "manual" StorageClass is kept for backward compatibility
-# but should not be used for new deployments.
+# 1. local-path (K3s built-in) - For ephemeral data
+#    - Dynamic provisioning
+#    - Data deleted when PVC is deleted
+#    - Location: /var/lib/rancher/k3s/storage/
+#
+# 2. manual - For persistent data that survives app deletion
+#    - Static provisioning (requires pre-created PV)
+#    - Data retained when PVC is deleted (Retain policy)
+#    - Location: /var/lib/k8s-data/
+#    - Used by: n8n, SigNoz (clickhouse, db)
 
 apiVersion: storage.k8s.io/v1
 kind: StorageClass

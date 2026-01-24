@@ -1,6 +1,6 @@
 ---
 # SigNoz - Observability Platform
-# APM, Metrics, Logs, Traces
+# APM, Metrics, Logs, Traces + Kubernetes Infrastructure Monitoring
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,19 +11,15 @@ metadata:
 spec:
   project: default
   sources:
-    # Source 1: Helm chart
+    # Source 1: SigNoz core (ClickHouse, query-service, frontend, etc.)
     - repoURL: https://charts.signoz.io
       chart: signoz
       targetRevision: 0.108.0
       helm:
         values: |
           global:
-            # Use local-path for StatefulSet volumes (zookeeper, signoz-db)
-            # ClickHouse uses static 'manual' PV defined in storage.yaml
             storageClass: local-path
 
-          # ClickHouse - Data storage (main memory consumer)
-          # Uses static PV for data persistence across app deletion
           clickhouse:
             persistence:
               enabled: true
@@ -36,17 +32,14 @@ spec:
               limits:
                 cpu: "1"
                 memory: 5Gi
-            # Disable expensive internal logging via ClickHouse Operator config
             files:
               config.d/disable_expensive_logs.xml: |
                   <clickhouse>
-                    <!-- Disable expensive internal logs to save memory/disk -->
                     <trace_log remove="1"/>
                     <query_thread_log remove="1"/>
                     <processors_profile_log remove="1"/>
                     <asynchronous_metric_log remove="1"/>
                   </clickhouse>
-            # Zookeeper - coordination metadata only (low resource needs)
             zookeeper:
               image:
                 registry: docker.io
@@ -62,7 +55,6 @@ spec:
                 limits:
                   memory: 256Mi
 
-          # Query Service
           queryService:
             resources:
               requests:
@@ -71,7 +63,6 @@ spec:
               limits:
                 memory: 512Mi
 
-          # Frontend
           frontend:
             resources:
               requests:
@@ -80,7 +71,6 @@ spec:
               limits:
                 memory: 128Mi
 
-          # Alert Manager
           alertmanager:
             resources:
               requests:
@@ -89,7 +79,6 @@ spec:
               limits:
                 memory: 128Mi
 
-          # OpenTelemetry Collector - needs room to buffer data
           otelCollector:
             resources:
               requests:
@@ -97,7 +86,47 @@ spec:
                 memory: 128Mi
               limits:
                 memory: 512Mi
-    # Source 2: Additional resources from this folder
+
+    # Source 2: K8s infrastructure monitoring (DaemonSet for host/pod metrics)
+    - repoURL: https://charts.signoz.io
+      chart: k8s-infra
+      targetRevision: 0.15.0
+      helm:
+        values: |
+          otelCollectorEndpoint: signoz-otel-collector.platform-observability:4317
+
+          presets:
+            otlpExporter:
+              enabled: true
+            hostMetrics:
+              enabled: true
+              collectionInterval: 60s
+            kubeletMetrics:
+              enabled: true
+              collectionInterval: 60s
+              insecureSkipVerify: true
+            clusterMetrics:
+              enabled: true
+            logsCollection:
+              enabled: false
+
+          otelAgent:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 128Mi
+              limits:
+                memory: 256Mi
+
+          otelDeployment:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+              limits:
+                memory: 256Mi
+
+    # Source 3: Local resources (ingress, storage)
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
       path: kubernetes/platform/signoz

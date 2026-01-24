@@ -5,5 +5,4 @@ metadata:
   name: network-policies
 
 resources:
-  - default-deny.yaml
   - platform-ingress.yaml
