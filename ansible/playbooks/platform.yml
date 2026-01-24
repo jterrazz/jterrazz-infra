@@ -11,7 +11,7 @@
   vars:
     env_type: "{{ environment_type | default('local') }}"
     argocd_namespace: platform-gitops
-    argocd_version: "7.7.5"
+    argocd_version: "9.3.5"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
     manifest_dest: /tmp/k8s-manifests
     templates_dir: "{{ playbook_dir }}/../templates"
