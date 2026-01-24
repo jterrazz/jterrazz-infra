@@ -1,7 +1,6 @@
 ---
 # ArgoCD - GitOps Controller
 # Manages itself after bootstrap via Helm
-# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -70,10 +69,12 @@ spec:
                 memory: 32Mi
               limits:
                 memory: 64Mi
-    # Source 2: IngressRoute + Certificate
+    # Source 2: Additional resources from this folder
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
-      path: kubernetes/platform/argocd-resources
+      path: kubernetes/platform/argocd
+      directory:
+        exclude: "app.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-gitops

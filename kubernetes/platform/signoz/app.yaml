@@ -1,7 +1,6 @@
 ---
 # SigNoz - Observability Platform
 # APM, Metrics, Logs, Traces
-# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -20,7 +19,7 @@ spec:
         values: |
           global:
             # Use local-path for StatefulSet volumes (zookeeper, signoz-db)
-            # ClickHouse uses static 'manual' PV defined in signoz-resources
+            # ClickHouse uses static 'manual' PV defined in storage.yaml
             storageClass: local-path
 
           # ClickHouse - Data storage (main memory consumer)
@@ -98,10 +97,12 @@ spec:
                 memory: 128Mi
               limits:
                 memory: 512Mi
-    # Source 2: IngressRoute + Certificate
+    # Source 2: Additional resources from this folder
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
-      path: kubernetes/platform/signoz-resources
+      path: kubernetes/platform/signoz
+      directory:
+        exclude: "app.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-observability

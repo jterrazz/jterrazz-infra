@@ -1,6 +1,6 @@
 ---
 # external-dns - Automatic DNS record management via Cloudflare
-# SECURITY: Strictly limited to signoz.jterrazz.com and argocd.jterrazz.com ONLY
+# SECURITY: Strictly limited to jterrazz.com zone ONLY
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

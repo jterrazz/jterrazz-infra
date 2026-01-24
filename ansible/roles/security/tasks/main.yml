@@ -34,19 +34,19 @@
     line: "IPV6=no"
   when: security_ufw_enabled
 
-- name: Configure UFW default incoming policy
+- name: Configure UFW default incoming policy # noqa: args[module]
   community.general.ufw:
     direction: incoming
     policy: "{{ security_ufw_default_incoming }}"
   when: security_ufw_enabled
 
-- name: Configure UFW default outgoing policy
+- name: Configure UFW default outgoing policy # noqa: args[module]
   community.general.ufw:
     direction: outgoing
     policy: "{{ security_ufw_default_outgoing }}"
   when: security_ufw_enabled
 
-- name: Configure UFW default forward policy
+- name: Configure UFW default forward policy # noqa: args[module]
   community.general.ufw:
     direction: routed
     policy: "{{ security_ufw_default_forward }}"

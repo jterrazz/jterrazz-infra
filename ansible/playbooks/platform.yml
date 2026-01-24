@@ -355,10 +355,12 @@
       no_log: true
 
     # Apply platform services (ArgoCD Applications)
-    - name: Find platform service manifests
+    # Each app has its own folder with *-app.yaml or app.yaml as Application manifests
+    - name: Find platform service app manifests
       ansible.builtin.find:
         paths: "{{ manifest_dest }}/kubernetes/platform"
-        patterns: "*.yml,*.yaml"
+        patterns: "*app.yaml"
+        recurse: true
       register: platform_apps
 
     - name: Apply platform services

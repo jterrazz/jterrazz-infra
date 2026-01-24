@@ -1,7 +1,6 @@
 ---
 # n8n - Workflow Automation Platform
 # Self-hosted alternative to Zapier/Make
-# Self-contained: includes Helm chart + IngressRoute + Certificate
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -37,10 +36,12 @@ spec:
           # Disable built-in ingress (we use Traefik IngressRoute)
           ingress:
             enabled: false
-    # Source 2: IngressRoute + Certificate
+    # Source 2: Additional resources from this folder
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
-      path: kubernetes/platform/n8n-resources
+      path: kubernetes/platform/n8n
+      directory:
+        exclude: "app.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-automation
