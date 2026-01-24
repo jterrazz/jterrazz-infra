@@ -163,3 +163,4 @@
   loop:
     - /var/lib/k8s-data/n8n
     - /var/lib/k8s-data/signoz/clickhouse
+    - /var/lib/k8s-data/signoz/db

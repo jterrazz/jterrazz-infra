@@ -35,8 +35,7 @@ spec:
   dnsNames:
     - signoz.jterrazz.com
 ---
-# Static PV for ClickHouse (main data store - most important to persist)
-# Other components (zookeeper, signoz-db) use local-path as they're less critical
+# Static PV for ClickHouse (traces, metrics, logs data)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -59,7 +58,7 @@ spec:
               values:
                 - jterrazz-vps
 ---
-# PVC for ClickHouse (name must match what the ClickHouse operator creates)
+# PVC for ClickHouse
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -72,3 +71,40 @@ spec:
     requests:
       storage: 10Gi
   volumeName: signoz-clickhouse-data
+---
+# Static PV for SigNoz DB (user accounts, dashboards, settings)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-db-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/db
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
+---
+# PVC for SigNoz DB (must match StatefulSet volumeClaimTemplate name)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: signoz-db-signoz-0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: signoz-db-data
