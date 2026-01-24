@@ -37,10 +37,6 @@ spec:
         sources:
           - traefik-proxy
 
-        # Disable legacy Traefik API group to avoid timeouts
-        extraArgs:
-          - --traefik-disable-legacy
-
         # Add ownership label to managed records
         txtOwnerId: "jterrazz-k8s"
         txtPrefix: "_external-dns."
