@@ -10,33 +10,40 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://charts.jetstack.io
-    chart: cert-manager
-    targetRevision: v1.16.2
-    helm:
-      values: |
-        installCRDs: true
-        resources:
-          requests:
-            cpu: 10m
-            memory: 32Mi
-          limits:
-            memory: 128Mi
-        webhook:
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              memory: 64Mi
-        cainjector:
+  sources:
+    # Source 1: Helm chart
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: v1.16.2
+      helm:
+        values: |
+          installCRDs: true
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
             limits:
               memory: 128Mi
+          webhook:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 64Mi
+          cainjector:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 32Mi
+              limits:
+                memory: 128Mi
+    # Source 2: ClusterIssuers from this folder
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/cert-manager
+      directory:
+        exclude: "app.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager
