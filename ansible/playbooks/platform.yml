@@ -9,7 +9,7 @@
   gather_facts: true
 
   vars:
-    environment: "{{ environment_type | default('local') }}"
+    deploy_environment: "{{ environment_type | default('local') }}"
     argocd_namespace: platform-gitops
     argocd_version: "9.3.5"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
@@ -120,7 +120,7 @@
     # Apply base infrastructure (namespaces, network policies, storage config)
     - name: Deploy base infrastructure manifests
       ansible.builtin.command:
-        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ environment }}
+        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ deploy_environment }}
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: infra_result
