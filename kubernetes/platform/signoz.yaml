@@ -47,7 +47,7 @@ spec:
                     <processors_profile_log remove="1"/>
                     <asynchronous_metric_log remove="1"/>
                   </clickhouse>
-            # Zookeeper is under clickhouse
+            # Zookeeper - coordination metadata only (low resource needs)
             zookeeper:
               image:
                 registry: docker.io
@@ -58,10 +58,10 @@ spec:
                 size: 1Gi
               resources:
                 requests:
-                  cpu: 50m
-                  memory: 512Mi
+                  cpu: 25m
+                  memory: 128Mi
                 limits:
-                  memory: 1Gi
+                  memory: 256Mi
 
           # Query Service
           queryService:
