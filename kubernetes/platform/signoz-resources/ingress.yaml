@@ -34,3 +34,114 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - signoz.jterrazz.com
+---
+# Static PV for SigNoz main database
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
+---
+# PVC for SigNoz main database
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: signoz-db-signoz-0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: signoz-data
+---
+# Static PV for ClickHouse
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-clickhouse-data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/clickhouse
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
+---
+# PVC for ClickHouse (name must match what the chart creates)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-volumeclaim-template-chi-signoz-clickhouse-cluster-0-0-0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: signoz-clickhouse-data
+---
+# Static PV for Zookeeper
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: signoz-zookeeper-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/signoz/zookeeper
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
+---
+# PVC for Zookeeper
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-signoz-zookeeper-0
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: signoz-zookeeper-data

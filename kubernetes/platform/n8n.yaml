@@ -23,8 +23,7 @@ spec:
             editorBaseUrl: "https://n8n.jterrazz.com"
             persistence:
               enabled: true
-              storageClass: local-path
-              size: 1Gi
+              existingClaim: n8n-data
             resources:
               requests:
                 cpu: 50m
