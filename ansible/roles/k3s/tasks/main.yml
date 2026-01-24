@@ -162,6 +162,4 @@
     mode: "0777"
   loop:
     - /var/lib/k8s-data/n8n
-    - /var/lib/k8s-data/signoz/data
     - /var/lib/k8s-data/signoz/clickhouse
-    - /var/lib/k8s-data/signoz/zookeeper

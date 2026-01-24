@@ -19,10 +19,12 @@ spec:
       helm:
         values: |
           global:
-            storageClass: manual
+            # Use local-path for StatefulSet volumes (zookeeper, signoz-db)
+            # ClickHouse uses static 'manual' PV defined in signoz-resources
+            storageClass: local-path
 
           # ClickHouse - Data storage (main memory consumer)
-          # With 8GB server, give ClickHouse 4GB for stable operation
+          # Uses static PV for data persistence across app deletion
           clickhouse:
             persistence:
               enabled: true
