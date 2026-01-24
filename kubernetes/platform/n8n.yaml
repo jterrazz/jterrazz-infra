@@ -12,10 +12,10 @@ metadata:
 spec:
   project: default
   sources:
-    # Source 1: Helm chart (OCI registry)
-    - repoURL: oci://8gears.container-registry.com/library
+    # Source 1: Helm chart from community-charts
+    - repoURL: https://community-charts.github.io/helm-charts
       chart: n8n
-      targetRevision: 2.0.1
+      targetRevision: 1.16.25
       helm:
         values: |
           # Main n8n configuration
@@ -23,7 +23,6 @@ spec:
             # Persistence - uses dynamic local-path provisioner
             persistence:
               enabled: true
-              type: dynamic
               storageClass: local-path
               size: 1Gi
 
@@ -35,25 +34,32 @@ spec:
               limits:
                 memory: 512Mi
 
-            # n8n configuration
-            config:
-              executions:
-                pruneData: "true"
-                pruneDataMaxAge: 168
-              generic:
-                timezone: "Europe/Paris"
-              n8n:
-                protocol: "https"
-                host: "n8n.jterrazz.com"
-                editor:
-                  baseUrl: "https://n8n.jterrazz.com/"
+          # n8n configuration via extraEnvVars
+          config:
+            executions:
+              pruneData: "true"
+              pruneDataMaxAge: "168"
+            generic:
+              timezone: "Europe/Paris"
+
+          # Webhook URL configuration
+          n8n:
+            encryption_key: ""
 
           # Disable built-in ingress (we use Traefik IngressRoute)
           ingress:
             enabled: false
 
-          # Disable valkey/redis (not needed for single instance)
-          valkey:
+          # Disable redis (not needed for single instance)
+          redis:
+            enabled: false
+
+          # Disable workers (single instance mode)
+          worker:
+            enabled: false
+
+          # Disable webhook (single instance mode)
+          webhook:
             enabled: false
     # Source 2: IngressRoute + Certificate
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
