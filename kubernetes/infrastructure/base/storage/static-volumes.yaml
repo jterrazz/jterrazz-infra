@@ -5,6 +5,10 @@
 # This approach uses static PersistentVolumes with hostPath.
 # PVs are pre-bound to specific PVCs using claimRef.
 # Simple, predictable, no dynamic provisioner complexity.
+#
+# Note: nodeAffinity is required because once set by Kubernetes (on first bind
+# with WaitForFirstConsumer), it becomes immutable. We set it explicitly to
+# match the single k3s node (jterrazz-vps).
 
 # StorageClass for manual/static provisioning
 apiVersion: storage.k8s.io/v1
@@ -33,6 +37,14 @@ spec:
   claimRef:
     name: data-volumeclaim-template-chi-signoz-clickhouse-cluster-0-0-0
     namespace: platform-observability
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
 ---
 # SigNoz - Zookeeper data
 apiVersion: v1
@@ -52,6 +64,14 @@ spec:
   claimRef:
     name: data-signoz-zookeeper-0
     namespace: platform-observability
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
 ---
 # SigNoz - Main app data (v0.105+)
 apiVersion: v1
@@ -71,6 +91,14 @@ spec:
   claimRef:
     name: signoz-db-signoz-0
     namespace: platform-observability
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
 ---
 # SigNoz - Alertmanager data
 apiVersion: v1
@@ -90,3 +118,11 @@ spec:
   claimRef:
     name: storage-signoz-alertmanager-0
     namespace: platform-observability
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
