@@ -202,12 +202,12 @@ spec:
 
 ### Conventions
 
-| Property         | Convention                            |
-| ---------------- | ------------------------------------- |
-| **Namespace**    | `app-{name}`                          |
-| **Image**        | `registry.jterrazz.com/{name}:latest` |
-| **Storage path** | `/var/lib/k8s-data/{name}/` on host   |
-| **Secrets env**  | `{name}-secrets` in Infisical         |
+| Property         | Convention                                      |
+| ---------------- | ----------------------------------------------- |
+| **Namespace**    | `app-{name}-{environment}` (staging or prod)    |
+| **Image**        | `registry.jterrazz.com/{name}:latest`           |
+| **Storage path** | `/var/lib/k8s-data/{name}/` on host             |
+| **Secrets env**  | `{name}-secrets` in Infisical (dev for staging) |
 
 ### Platform Services
 

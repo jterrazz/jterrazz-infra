@@ -6,10 +6,10 @@ Application name
 {{- end -}}
 
 {{/*
-Namespace - simple app-{name} format
+Namespace - app-{name}-{environment} format
 */}}
 {{- define "app.namespace" -}}
-app-{{ include "app.name" . }}
+app-{{ include "app.name" . }}-{{ .Values.environment }}
 {{- end -}}
 
 {{/*
@@ -47,10 +47,14 @@ Memory limit (defaults to 2x memory request)
 {{- end -}}
 
 {{/*
-Infisical environment - always prod
+Infisical environment - maps staging to dev, prod to prod
 */}}
 {{- define "app.infisicalEnv" -}}
+{{- if eq .Values.environment "staging" -}}
+dev
+{{- else -}}
 prod
+{{- end -}}
 {{- end -}}
 
 {{/*

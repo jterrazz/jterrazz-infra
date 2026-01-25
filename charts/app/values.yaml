@@ -39,3 +39,6 @@ spec:
     path: /health
     initialDelaySeconds: 10
     periodSeconds: 30
+
+# Environment (staging or prod)
+environment: staging
