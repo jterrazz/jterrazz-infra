@@ -20,19 +20,25 @@ spec:
           - list:
               elements:
                 - repo: signews-api
-          # Environments to deploy
+          # Environments to deploy (with image update config)
           - list:
               elements:
                 - environment: staging
+                  imageTag: latest
+                  updateStrategy: digest
                 - environment: prod
+                  imageTag: "v*"
+                  updateStrategy: semver
   template:
     metadata:
       name: "{{repo}}-{{environment}}"
       namespace: platform-gitops
       annotations:
         # ArgoCD Image Updater - watches registry for new images
-        argocd-image-updater.argoproj.io/image-list: app=registry.jterrazz.com/{{repo}}:latest
-        argocd-image-updater.argoproj.io/app.update-strategy: digest
+        # Staging: uses :latest tag with digest strategy (auto-deploy on every push)
+        # Prod: uses semver tags (v*) for controlled releases
+        argocd-image-updater.argoproj.io/image-list: "app=registry.jterrazz.com/{{repo}}:{{imageTag}}"
+        argocd-image-updater.argoproj.io/app.update-strategy: "{{updateStrategy}}"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
