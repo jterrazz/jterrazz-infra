@@ -270,6 +270,127 @@ spec:
     private: false
 ```
 
+## Automatic Deployment Pipeline
+
+The infrastructure uses **ArgoCD Image Updater** to automatically deploy new container images without manual intervention.
+
+### How It Works
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Push Code     │ ──► │   GitHub CI     │ ──► │ Container Image │ ──► │ Image Updater   │
+│   (main/v*)     │     │   Builds Image  │     │   Registry      │     │   Detects New   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                                                │
+                                                                                ▼
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Pod Restarts  │ ◄── │   ArgoCD Syncs  │ ◄── │ Helm Parameters │ ◄── │   Updates App   │
+│   With New Image│     │   Application   │     │   Updated       │     │   Spec          │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+### Environment Strategies
+
+| Environment | Image Tag | Strategy | Trigger                             |
+| ----------- | --------- | -------- | ----------------------------------- |
+| **Staging** | `:latest` | `digest` | Push to `main` branch               |
+| **Prod**    | `v*`      | `semver` | Create version tag (e.g., `v1.0.0`) |
+
+### Staging Deployment (Automatic)
+
+Every push to `main` triggers automatic deployment:
+
+1. CI builds and pushes image with `:latest` tag
+2. Image Updater detects new digest (same tag, different content)
+3. ArgoCD Application is updated with new image digest
+4. Pod restarts with the new image
+
+```bash
+# Just push to main - staging deploys automatically
+git push origin main
+```
+
+### Production Deployment (Version Tags)
+
+Production deployments use semantic versioning:
+
+1. Create a version tag (e.g., `v1.2.0`)
+2. CI builds and pushes image with that version tag
+3. Image Updater detects new semver tag matching `v*` pattern
+4. ArgoCD Application is updated with new version
+5. Pod restarts with the new image
+
+```bash
+# Create and push a version tag for production release
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+### Configuration
+
+The ApplicationSet in `kubernetes/applications/apps.yaml` configures both environments:
+
+```yaml
+generators:
+  - matrix:
+      generators:
+        - list:
+            elements:
+              - repo: signews-api
+        - list:
+            elements:
+              - environment: staging
+                imageTag: latest
+                updateStrategy: digest # Tracks :latest by digest
+              - environment: prod
+                imageTag: "v*"
+                updateStrategy: semver # Tracks semver tags
+```
+
+Image Updater annotations on each Application:
+
+- `argocd-image-updater.argoproj.io/image-list`: Defines which image to watch
+- `argocd-image-updater.argoproj.io/app.update-strategy`: `digest` or `semver`
+- `argocd-image-updater.argoproj.io/app.helm.image-spec`: Helm value to update
+
+### CI Workflow Requirements
+
+Your app's CI workflow (`.github/workflows/deploy.yaml`) should:
+
+1. Trigger on `main` branch AND `v*` tags
+2. Tag images with `:latest` for main branch, `:{version}` for tags
+3. Clean up old images but keep `latest` and `v*` tags
+
+```yaml
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+# Determine image tag based on trigger
+- name: Determine image tag
+  id: tag
+  run: |
+    if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+      echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+    else
+      echo "tag=latest" >> $GITHUB_OUTPUT
+    fi
+```
+
+### Monitoring Deployments
+
+```bash
+# Check Image Updater logs
+kubectl logs -n platform-gitops -l app.kubernetes.io/name=argocd-image-updater
+
+# See which images are being tracked
+kubectl get applications -n platform-gitops -o yaml | grep -A5 "image-updater"
+
+# Check ArgoCD sync status
+kubectl get applications -n platform-gitops
+```
+
 ## Services & Access
 
 ### Private Services (via Tailscale)
