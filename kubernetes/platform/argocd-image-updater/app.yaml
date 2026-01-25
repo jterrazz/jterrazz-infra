@@ -19,7 +19,7 @@ spec:
               - name: jterrazz-registry
                 prefix: registry.jterrazz.com
                 api_url: https://registry.jterrazz.com
-                credentials: secret:platform-gitops/registry-credentials#.dockerconfigjson
+                credentials: secret:platform-gitops/registry-image-updater#creds
                 default: true
           resources:
             requests:
