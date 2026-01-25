@@ -1,3 +1,6 @@
+{{- if eq (include "app.envExists" .) "true" -}}
+{{- $secrets := fromYaml (include "app.secretsConfig" .) -}}
+{{- $envVars := fromYaml (include "app.envVars" .) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,7 +8,7 @@ metadata:
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.spec.replicas }}
+  replicas: {{ include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1) }}
   selector:
     matchLabels:
       {{- include "app.selectorLabels" . | nindent 6 }}
@@ -32,14 +35,14 @@ spec:
             # Auto-injected OTEL endpoint
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://signoz-otel-collector.platform-observability:4318"
-            {{- /* User-defined environment variables */}}
-            {{- range $key, $value := .Values.spec.env }}
+            {{- /* User-defined environment variables (merged base + env override) */}}
+            {{- range $key, $value := $envVars }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
             {{- /* Secret environment variables from Infisical */}}
-            {{- if .Values.spec.secrets }}
-            {{- range .Values.spec.secrets.env }}
+            {{- if $secrets.env }}
+            {{- range $secrets.env }}
             - name: {{ . }}
               valueFrom:
                 secretKeyRef:
@@ -54,8 +57,8 @@ spec:
           {{- end }}
           resources:
             requests:
-              cpu: {{ .Values.spec.resources.cpu }}
-              memory: {{ .Values.spec.resources.memory }}
+              cpu: {{ include "app.getResource" (dict "ctx" . "key" "cpu" "default" "100m") }}
+              memory: {{ include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") }}
             limits:
               memory: {{ include "app.memoryLimit" . }}
           livenessProbe:
@@ -76,3 +79,4 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "app.name" . }}-data
       {{- end }}
+{{- end }}

@@ -6,6 +6,71 @@ Application name
 {{- end -}}
 
 {{/*
+Get current environment config (returns empty dict if not defined)
+*/}}
+{{- define "app.envConfig" -}}
+{{- $env := .Values.environment | required "environment is required" -}}
+{{- if hasKey .Values.environments $env -}}
+{{- index .Values.environments $env | toYaml -}}
+{{- else -}}
+{{- dict | toYaml -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Check if current environment is defined
+*/}}
+{{- define "app.envExists" -}}
+{{- $env := .Values.environment -}}
+{{- if and $env (hasKey .Values.environments $env) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get merged value: environment override > base spec > default
+Usage: include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1)
+*/}}
+{{- define "app.getValue" -}}
+{{- $env := .ctx.Values.environment -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .ctx.Values.environments $env -}}
+{{- $envConfig = index .ctx.Values.environments $env -}}
+{{- end -}}
+{{- if hasKey $envConfig .key -}}
+{{- index $envConfig .key -}}
+{{- else if hasKey .ctx.Values.spec .key -}}
+{{- index .ctx.Values.spec .key -}}
+{{- else -}}
+{{- .default -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get nested merged value for resources
+*/}}
+{{- define "app.getResource" -}}
+{{- $env := .ctx.Values.environment -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .ctx.Values.environments $env -}}
+{{- $envConfig = index .ctx.Values.environments $env -}}
+{{- end -}}
+{{- $envResources := dict -}}
+{{- if hasKey $envConfig "resources" -}}
+{{- $envResources = index $envConfig "resources" -}}
+{{- end -}}
+{{- if hasKey $envResources .key -}}
+{{- index $envResources .key -}}
+{{- else if hasKey .ctx.Values.spec.resources .key -}}
+{{- index .ctx.Values.spec.resources .key -}}
+{{- else -}}
+{{- .default -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Namespace - app-{name}-{environment} format
 */}}
 {{- define "app.namespace" -}}
@@ -13,7 +78,7 @@ app-{{ include "app.name" . }}-{{ .Values.environment }}
 {{- end -}}
 
 {{/*
-Image tag - always latest
+Image tag - latest for now (could be extended for versioned deploys)
 */}}
 {{- define "app.imageTag" -}}
 latest
@@ -30,10 +95,11 @@ registry.jterrazz.com/{{ include "app.name" . }}:{{ include "app.imageTag" . }}
 Memory limit (defaults to 2x memory request)
 */}}
 {{- define "app.memoryLimit" -}}
-{{- if .Values.spec.resources.memoryLimit -}}
-{{- .Values.spec.resources.memoryLimit -}}
+{{- $memLimit := include "app.getResource" (dict "ctx" . "key" "memoryLimit" "default" "") -}}
+{{- if $memLimit -}}
+{{- $memLimit -}}
 {{- else -}}
-{{- $mem := .Values.spec.resources.memory -}}
+{{- $mem := include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") -}}
 {{- if hasSuffix "Mi" $mem -}}
 {{- $val := trimSuffix "Mi" $mem | int -}}
 {{- printf "%dMi" (mul $val 2) -}}
@@ -58,6 +124,52 @@ prod
 {{- end -}}
 
 {{/*
+Get secrets config from environment
+*/}}
+{{- define "app.secretsConfig" -}}
+{{- $env := .Values.environment -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments $env -}}
+{{- $envConfig = index .Values.environments $env -}}
+{{- end -}}
+{{- if hasKey $envConfig "secrets" -}}
+{{- index $envConfig "secrets" | toYaml -}}
+{{- else -}}
+{{- dict | toYaml -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get ingress config from environment
+*/}}
+{{- define "app.ingressConfig" -}}
+{{- $env := .Values.environment -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments $env -}}
+{{- $envConfig = index .Values.environments $env -}}
+{{- end -}}
+{{- if hasKey $envConfig "ingress" -}}
+{{- index $envConfig "ingress" | toYaml -}}
+{{- else -}}
+{{- dict | toYaml -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Get env vars - merge base spec.env with environment env
+*/}}
+{{- define "app.envVars" -}}
+{{- $env := .Values.environment -}}
+{{- $baseEnv := .Values.spec.env | default dict -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments $env -}}
+{{- $envConfig = index .Values.environments $env -}}
+{{- end -}}
+{{- $envEnv := $envConfig.env | default dict -}}
+{{- merge $envEnv $baseEnv | toYaml -}}
+{{- end -}}
+
+{{/*
 Secrets name
 */}}
 {{- define "app.secretsName" -}}
@@ -70,8 +182,9 @@ Common labels
 {{- define "app.labels" -}}
 app: {{ include "app.name" . }}
 app.kubernetes.io/name: {{ include "app.name" . }}
-app.kubernetes.io/instance: {{ include "app.name" . }}
+app.kubernetes.io/instance: {{ include "app.name" . }}-{{ .Values.environment }}
 app.kubernetes.io/managed-by: helm
+environment: {{ .Values.environment }}
 {{- end -}}
 
 {{/*
@@ -79,4 +192,5 @@ Selector labels
 */}}
 {{- define "app.selectorLabels" -}}
 app: {{ include "app.name" . }}
+environment: {{ .Values.environment }}
 {{- end -}}

@@ -1,4 +1,6 @@
-{{- if .Values.spec.secrets }}
+{{- if eq (include "app.envExists" .) "true" -}}
+{{- $secrets := fromYaml (include "app.secretsConfig" .) -}}
+{{- if $secrets.path -}}
 {{- $appName := include "app.name" . -}}
 ---
 apiVersion: secrets.infisical.com/v1alpha1
@@ -15,7 +17,7 @@ spec:
       secretsScope:
         projectSlug: jterrazz
         envSlug: {{ include "app.infisicalEnv" . }}
-        secretsPath: {{ .Values.spec.secrets.path }}
+        secretsPath: {{ $secrets.path }}
       credentialsRef:
         secretName: infisical-credentials
         secretNamespace: platform-secrets
@@ -23,4 +25,5 @@ spec:
     secretName: {{ include "app.secretsName" . }}
     secretNamespace: {{ include "app.namespace" . }}
     secretType: Opaque
+{{- end }}
 {{- end }}

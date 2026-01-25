@@ -1,10 +1,11 @@
-{{- if .Values.spec.storage }}
+{{- if eq (include "app.envExists" .) "true" -}}
+{{- if .Values.spec.storage -}}
 {{- $appName := include "app.name" . -}}
 ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {{ $appName }}-data
+  name: {{ $appName }}-{{ .Values.environment }}-data
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
@@ -15,7 +16,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/{{ $appName }}
+    path: /var/lib/k8s-data/{{ $appName }}-{{ .Values.environment }}
     type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -31,4 +32,6 @@ spec:
     requests:
       storage: {{ .Values.spec.storage.size }}
   storageClassName: manual
+  volumeName: {{ $appName }}-{{ .Values.environment }}-data
+{{- end }}
 {{- end }}

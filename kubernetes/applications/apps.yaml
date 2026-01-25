@@ -1,0 +1,58 @@
+# ApplicationSet that auto-generates ArgoCD Applications for all apps
+# Apps are deployed based on their .deploy/manifest.yaml environments config
+#
+# To add a new app:
+# 1. Add the repo name to the list below
+# 2. Ensure the app has .deploy/manifest.yaml with environments.staging and/or environments.prod
+#
+# The chart will only deploy environments that are defined in the manifest.
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: platform-gitops
+spec:
+  generators:
+    - matrix:
+        generators:
+          # List of app repositories
+          - list:
+              elements:
+                - repo: signews-api
+          # Environments to deploy
+          - list:
+              elements:
+                - environment: staging
+                - environment: prod
+  template:
+    metadata:
+      name: "{{repo}}-{{environment}}"
+      namespace: platform-gitops
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      sources:
+        # Source 1: Helm chart from infra repo
+        - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+          targetRevision: HEAD
+          path: charts/app
+          helm:
+            valueFiles:
+              - $app/.deploy/manifest.yaml
+            values: |
+              environment: {{environment}}
+        # Source 2: App repo (referenced as $app for valueFiles)
+        - repoURL: "https://github.com/jterrazz/{{repo}}.git"
+          targetRevision: main
+          ref: app
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "app-{{repo}}-{{environment}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,4 +1,6 @@
-{{- if .Values.spec.ingress }}
+{{- if eq (include "app.envExists" .) "true" -}}
+{{- $ingress := fromYaml (include "app.ingressConfig" .) -}}
+{{- if $ingress.host -}}
 {{- $appName := include "app.name" . -}}
 ---
 apiVersion: traefik.io/v1alpha1
@@ -6,7 +8,7 @@ kind: IngressRoute
 metadata:
   name: {{ $appName }}
   annotations:
-    external-dns.alpha.kubernetes.io/hostname: {{ .Values.spec.ingress.host }}
+    external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
     external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
   labels:
     {{- include "app.labels" . | nindent 4 }}
@@ -14,9 +16,9 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ .Values.spec.ingress.host }}`){{ if .Values.spec.ingress.path }} && PathPrefix(`{{ .Values.spec.ingress.path }}`){{ end }}
+    - match: Host(`{{ $ingress.host }}`){{ if $ingress.path }} && PathPrefix(`{{ $ingress.path }}`){{ end }}
       kind: Rule
-      {{- if .Values.spec.ingress.private }}
+      {{- if $ingress.private }}
       middlewares:
         - name: private-access
           namespace: platform-networking
@@ -39,5 +41,6 @@ spec:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
-    - {{ .Values.spec.ingress.host }}
+    - {{ $ingress.host }}
+{{- end }}
 {{- end }}
