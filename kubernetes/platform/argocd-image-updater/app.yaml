@@ -1,0 +1,36 @@
+# ArgoCD Image Updater - automatically updates deployments when new images are pushed
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-image-updater
+  namespace: platform-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argocd-image-updater
+      targetRevision: 0.11.0
+      helm:
+        values: |
+          config:
+            registries:
+              - name: jterrazz-registry
+                prefix: registry.jterrazz.com
+                api_url: https://registry.jterrazz.com
+                credentials: pullsecret:platform-gitops/registry-credentials
+                default: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform-gitops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

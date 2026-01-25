@@ -29,6 +29,11 @@ spec:
     metadata:
       name: "{{repo}}-{{environment}}"
       namespace: platform-gitops
+      annotations:
+        # ArgoCD Image Updater - watches registry for new images
+        argocd-image-updater.argoproj.io/image-list: app=registry.jterrazz.com/{{repo}}:latest
+        argocd-image-updater.argoproj.io/app.update-strategy: digest
+        argocd-image-updater.argoproj.io/app.pull-secret: pullsecret:platform-gitops/registry-credentials
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
