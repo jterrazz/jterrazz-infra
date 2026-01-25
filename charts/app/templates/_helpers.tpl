@@ -124,35 +124,31 @@ prod
 {{- end -}}
 
 {{/*
-Get secrets config from environment
+Get secrets config - merge base spec.secrets with environment secrets override
 */}}
 {{- define "app.secretsConfig" -}}
 {{- $env := .Values.environment -}}
+{{- $baseSecrets := .Values.spec.secrets | default dict -}}
 {{- $envConfig := dict -}}
 {{- if hasKey .Values.environments $env -}}
 {{- $envConfig = index .Values.environments $env -}}
 {{- end -}}
-{{- if hasKey $envConfig "secrets" -}}
-{{- index $envConfig "secrets" | toYaml -}}
-{{- else -}}
-{{- dict | toYaml -}}
-{{- end -}}
+{{- $envSecrets := $envConfig.secrets | default dict -}}
+{{- merge $envSecrets $baseSecrets | toYaml -}}
 {{- end -}}
 
 {{/*
-Get ingress config from environment
+Get ingress config - merge base spec.ingress with environment ingress override
 */}}
 {{- define "app.ingressConfig" -}}
 {{- $env := .Values.environment -}}
+{{- $baseIngress := .Values.spec.ingress | default dict -}}
 {{- $envConfig := dict -}}
 {{- if hasKey .Values.environments $env -}}
 {{- $envConfig = index .Values.environments $env -}}
 {{- end -}}
-{{- if hasKey $envConfig "ingress" -}}
-{{- index $envConfig "ingress" | toYaml -}}
-{{- else -}}
-{{- dict | toYaml -}}
-{{- end -}}
+{{- $envIngress := $envConfig.ingress | default dict -}}
+{{- merge $envIngress $baseIngress | toYaml -}}
 {{- end -}}
 
 {{/*
