@@ -19,11 +19,12 @@ spec:
         values: |
           installCRDs: true
           # Shorter leader election lease for faster recovery after reboot
+          # Single-node cluster, so we can use aggressive timeouts
           global:
             leaderElection:
-              leaseDuration: 30s
-              renewDeadline: 20s
-              retryPeriod: 5s
+              leaseDuration: 15s
+              renewDeadline: 10s
+              retryPeriod: 2s
           resources:
             requests:
               cpu: 10m
