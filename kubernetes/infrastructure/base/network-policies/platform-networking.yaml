@@ -44,3 +44,16 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+    # Allow DNS to internet (for cert-manager DNS-01 challenge verification)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
