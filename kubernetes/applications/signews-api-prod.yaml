@@ -12,7 +12,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:jterrazz/signews-api.git
+    repoURL: https://github.com/jterrazz/signews-api.git
     targetRevision: develop
     path: k8s
   destination:
