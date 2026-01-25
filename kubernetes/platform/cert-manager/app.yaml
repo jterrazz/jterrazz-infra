@@ -18,6 +18,12 @@ spec:
       helm:
         values: |
           installCRDs: true
+          # Shorter leader election lease for faster recovery after reboot
+          global:
+            leaderElection:
+              leaseDuration: 30s
+              renewDeadline: 20s
+              retryPeriod: 5s
           resources:
             requests:
               cpu: 10m
