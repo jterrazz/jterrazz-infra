@@ -7,9 +7,7 @@ metadata:
   name: {{ $appName }}
   annotations:
     external-dns.alpha.kubernetes.io/hostname: {{ .Values.spec.ingress.host }}
-    {{- if .Values.spec.ingress.private }}
     external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
-    {{- end }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
