@@ -23,11 +23,11 @@
 #       path: /my-app
 #       env: [SECRET_KEY]
 #     env:
-#       NODE_ENV: staging
+#       NODE_ENV: production
 #
 #   prod:
 #     tag: v1.0.0
-#     replicas: 2
+#     replicas: 1
 #     ingress:
 #       host: my-app.jterrazz.com
 #       path: /

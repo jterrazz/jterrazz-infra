@@ -75,6 +75,10 @@ spec:
       path: kubernetes/platform/argocd
       directory:
         exclude: "app.yaml"
+    # Source 3: ApplicationSets for user apps
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/applications
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-gitops
