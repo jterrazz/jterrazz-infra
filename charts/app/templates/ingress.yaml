@@ -2,6 +2,20 @@
 {{- $ingress := fromYaml (include "app.ingressConfig" .) -}}
 {{- if $ingress.host -}}
 {{- $appName := include "app.name" . -}}
+{{- $hasPath := and $ingress.path (ne $ingress.path "/") -}}
+{{- if $hasPath }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $appName }}-strip-prefix
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - {{ $ingress.path }}
+{{- end }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
@@ -16,12 +30,17 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ $ingress.host }}`){{ if $ingress.path }} && PathPrefix(`{{ $ingress.path }}`){{ end }}
+    - match: Host(`{{ $ingress.host }}`){{ if $hasPath }} && PathPrefix(`{{ $ingress.path }}`){{ end }}
       kind: Rule
-      {{- if $ingress.private }}
+      {{- if or $ingress.private $hasPath }}
       middlewares:
+        {{- if $ingress.private }}
         - name: private-access
           namespace: platform-networking
+        {{- end }}
+        {{- if $hasPath }}
+        - name: {{ $appName }}-strip-prefix
+        {{- end }}
       {{- end }}
       services:
         - name: {{ $appName }}
