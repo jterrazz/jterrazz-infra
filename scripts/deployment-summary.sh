@@ -1,6 +1,7 @@
 #!/bin/bash
 # Deployment Summary Script
 # Collects comprehensive deployment information for GitHub Actions summary
+# Uses kubectl JSON output + jq for reliable parsing
 
 set -euo pipefail
 
@@ -21,51 +22,113 @@ SSH_CMD="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $SSH_KEY root@$
 
 # Helper function to run remote command
 remote() {
-    $SSH_CMD "$1" 2>/dev/null || echo "N/A"
+    $SSH_CMD "$1" 2>/dev/null || echo ""
 }
 
-# Collect data
+# Helper to run kubectl with JSON output
+kubectl_json() {
+    remote "kubectl $1 -o json 2>/dev/null" || echo "{}"
+}
+
 echo "Collecting deployment information..." >&2
 
 # Infrastructure info
-TAILSCALE_IP=$(remote "tailscale ip -4 2>/dev/null || echo ''")
-K3S_VERSION=$(remote "k3s --version 2>/dev/null | head -1 | awk '{print \$3}' || echo ''")
-OS_INFO=$(remote "grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '\"' || echo 'Linux'")
+TAILSCALE_IP=$(remote "tailscale ip -4 2>/dev/null")
+K3S_VERSION=$(remote "k3s --version 2>/dev/null | head -1 | awk '{print \$3}'")
+OS_INFO=$(remote "grep PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '\"'")
 
 # Security info
-UFW_STATUS=$(remote "ufw status | head -1 | awk '{print \$2}' || echo 'unknown'")
-FAIL2BAN_BANNED=$(remote "fail2ban-client status sshd 2>/dev/null | grep 'Currently banned' | awk '{print \$NF}' || echo '0'")
-# Simpler Tailscale check - just verify we can get an IP
-TAILSCALE_CONNECTED=$(remote "tailscale ip -4 2>/dev/null && echo 'yes' || echo 'no'")
-
-# Kubernetes info
-TOTAL_PODS=$(remote "kubectl get pods -A --no-headers 2>/dev/null | wc -l | tr -d ' '")
-RUNNING_PODS=$(remote "kubectl get pods -A --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-
-# Platform services
-ARGOCD_PODS=$(remote "kubectl get pods -n platform-gitops --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-ARGOCD_TOTAL=$(remote "kubectl get pods -n platform-gitops --no-headers 2>/dev/null | wc -l | tr -d ' '")
-# k3s traefik uses different labels - check by name pattern
-TRAEFIK_STATUS=$(remote "kubectl get pods -n kube-system --no-headers 2>/dev/null | grep -c 'traefik.*Running' || echo 0")
-CERTMGR_PODS=$(remote "kubectl get pods -n cert-manager --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-CERTMGR_TOTAL=$(remote "kubectl get pods -n cert-manager --no-headers 2>/dev/null | wc -l | tr -d ' '")
-EXTDNS_STATUS=$(remote "kubectl get pods -n external-dns --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-SIGNOZ_PODS=$(remote "kubectl get pods -n platform-observability --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-SIGNOZ_TOTAL=$(remote "kubectl get pods -n platform-observability --no-headers 2>/dev/null | wc -l | tr -d ' '")
-# Registry is optional - check if namespace exists first
-REGISTRY_EXISTS=$(remote "kubectl get ns platform-registry --no-headers 2>/dev/null && echo 'yes' || echo 'no'")
-REGISTRY_STATUS=$(remote "kubectl get pods -n platform-registry --no-headers 2>/dev/null | grep -c 'Running' || echo 0")
-
-# Applications - get sync and health status
-ARGOCD_APPS=$(remote "kubectl get applications -n platform-gitops -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status --no-headers 2>/dev/null")
-
-# Certificates with proper expiry
-CERTS_INFO=$(remote "kubectl get certificates -A -o custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status,EXPIRY:.status.notAfter --no-headers 2>/dev/null")
+UFW_STATUS=$(remote "ufw status | head -1 | awk '{print \$2}'")
+FAIL2BAN_BANNED=$(remote "fail2ban-client status sshd 2>/dev/null | grep 'Currently banned' | awk '{print \$NF}'" || echo "0")
+TAILSCALE_CONNECTED="no"
+[[ -n "$TAILSCALE_IP" ]] && TAILSCALE_CONNECTED="yes"
 
 # Resources
 CPU_USAGE=$(remote "top -bn1 | grep 'Cpu(s)' | awk '{print 100 - \$8}' | cut -d. -f1")
 MEM_INFO=$(remote "free -m | awk 'NR==2{printf \"%.1f|%.1f\", \$3/1024, \$2/1024}'")
 DISK_INFO=$(remote "df -h / | awk 'NR==2{print \$3\"|\"\$2}'")
+
+MEM_USED=$(echo "$MEM_INFO" | cut -d'|' -f1)
+MEM_TOTAL=$(echo "$MEM_INFO" | cut -d'|' -f2)
+DISK_USED=$(echo "$DISK_INFO" | cut -d'|' -f1)
+DISK_TOTAL=$(echo "$DISK_INFO" | cut -d'|' -f2)
+
+# Get all pods for total count
+ALL_PODS_JSON=$(kubectl_json "get pods -A")
+TOTAL_PODS=$(echo "$ALL_PODS_JSON" | jq '.items | length')
+RUNNING_PODS=$(echo "$ALL_PODS_JSON" | jq '[.items[] | select(.status.phase == "Running")] | length')
+
+# Platform services - using JSON for reliable parsing
+# Each service: namespace, optional name filter
+get_service_status() {
+    local namespace="$1"
+    local filter="${2:-}"
+
+    local pods_json=$(kubectl_json "get pods -n $namespace")
+
+    # Check if namespace exists (empty items means no namespace or no pods)
+    local total_items=$(echo "$pods_json" | jq '.items | length')
+    if [[ "$total_items" == "0" || "$total_items" == "null" ]]; then
+        echo "notdeployed|0|0"
+        return
+    fi
+
+    # Apply filter if provided
+    local running total
+    if [[ -n "$filter" ]]; then
+        running=$(echo "$pods_json" | jq --arg f "$filter" '[.items[] | select(.metadata.name | contains($f)) | select(.status.phase == "Running")] | length')
+        total=$(echo "$pods_json" | jq --arg f "$filter" '[.items[] | select(.metadata.name | contains($f)) | select(.status.phase != "Succeeded" and .status.phase != "Completed")] | length')
+    else
+        running=$(echo "$pods_json" | jq '[.items[] | select(.status.phase == "Running")] | length')
+        total=$(echo "$pods_json" | jq '[.items[] | select(.status.phase != "Succeeded" and .status.phase != "Completed")] | length')
+    fi
+
+    # Determine status
+    local status="down"
+    if [[ "$running" -gt 0 && "$running" -ge "$total" ]]; then
+        status="healthy"
+    elif [[ "$running" -gt 0 ]]; then
+        status="degraded"
+    fi
+
+    echo "$status|$running|$total"
+}
+
+# Get service statuses
+ARGOCD_STATUS=$(get_service_status "platform-gitops")
+TRAEFIK_STATUS=$(get_service_status "kube-system" "traefik")
+CERTMGR_STATUS=$(get_service_status "platform-networking" "cert-manager")
+EXTDNS_STATUS=$(get_service_status "platform-networking" "external-dns")
+SIGNOZ_STATUS=$(get_service_status "platform-observability")
+REGISTRY_STATUS=$(get_service_status "platform-registry")
+
+# Helper to format service row
+format_service_row() {
+    local name="$1"
+    local status_str="$2"
+
+    local status=$(echo "$status_str" | cut -d'|' -f1)
+    local running=$(echo "$status_str" | cut -d'|' -f2)
+    local total=$(echo "$status_str" | cut -d'|' -f3)
+
+    local icon pods
+    case "$status" in
+        healthy) icon="✅ Healthy" ;;
+        degraded) icon="⚠️ Degraded" ;;
+        down) icon="❌ Down" ;;
+        notdeployed) icon="⏸️ Not deployed"; pods="-" ;;
+    esac
+
+    [[ -z "${pods:-}" ]] && pods="$running/$total"
+
+    echo "| $name | $icon | $pods |"
+}
+
+# Get ArgoCD applications dynamically
+APPS_JSON=$(kubectl_json "get applications -n platform-gitops")
+
+# Get certificates dynamically
+CERTS_JSON=$(kubectl_json "get certificates -A")
 
 # Generate summary
 STATUS_EMOJI="✅"
@@ -88,37 +151,37 @@ cat << EOF
 |----------|-------|
 | Server | \`jterrazz-vps\` |
 | Public IP | \`$SERVER_IP\` |
-| Tailscale IP | \`$TAILSCALE_IP\` |
-| OS | $OS_INFO |
-| K3s | $K3S_VERSION |
+| Tailscale IP | \`${TAILSCALE_IP:-N/A}\` |
+| OS | ${OS_INFO:-Linux} |
+| K3s | ${K3S_VERSION:-N/A} |
 
 ### 🔒 Security
 | Check | Status |
 |-------|--------|
-| Firewall (UFW) | $([ "$UFW_STATUS" = "active" ] && echo "✅ Active" || echo "⚠️ $UFW_STATUS") |
-| Fail2ban | ✅ $FAIL2BAN_BANNED IPs banned |
+| Firewall (UFW) | $([ "$UFW_STATUS" = "active" ] && echo "✅ Active" || echo "⚠️ ${UFW_STATUS:-unknown}") |
+| Fail2ban | ✅ ${FAIL2BAN_BANNED:-0} IPs banned |
 | SSH | ✅ Key-only |
-| Tailscale | $(echo "$TAILSCALE_CONNECTED" | grep -q "yes" && echo "✅ Connected ($TAILSCALE_IP)" || echo "⚠️ Disconnected") |
+| Tailscale | $([ "$TAILSCALE_CONNECTED" = "yes" ] && echo "✅ Connected ($TAILSCALE_IP)" || echo "⚠️ Disconnected") |
 
 ### 📦 Platform Services
 | Service | Status | Pods |
 |---------|--------|------|
-| ArgoCD | $([ "$ARGOCD_PODS" = "$ARGOCD_TOTAL" ] && [ "$ARGOCD_TOTAL" != "0" ] && echo "✅ Healthy" || echo "⚠️ Degraded") | $ARGOCD_PODS/$ARGOCD_TOTAL |
-| Traefik | $([ "$TRAEFIK_STATUS" -ge 1 ] && echo "✅ Healthy" || echo "❌ Down") | $TRAEFIK_STATUS/1 |
-| Cert-Manager | $([ "$CERTMGR_PODS" = "$CERTMGR_TOTAL" ] && [ "$CERTMGR_TOTAL" != "0" ] && echo "✅ Healthy" || echo "⚠️ Degraded") | $CERTMGR_PODS/$CERTMGR_TOTAL |
-| External-DNS | $([ "$EXTDNS_STATUS" -ge 1 ] && echo "✅ Healthy" || echo "❌ Down") | $EXTDNS_STATUS/1 |
-| SigNoz | $([ "$SIGNOZ_PODS" = "$SIGNOZ_TOTAL" ] && [ "$SIGNOZ_TOTAL" != "0" ] && echo "✅ Healthy" || echo "⚠️ Degraded") | $SIGNOZ_PODS/$SIGNOZ_TOTAL |
-| Registry | $(echo "$REGISTRY_EXISTS" | grep -q "yes" && ([ "$REGISTRY_STATUS" -ge 1 ] && echo "✅ Healthy" || echo "❌ Down") || echo "⏸️ Not deployed") | $(echo "$REGISTRY_EXISTS" | grep -q "yes" && echo "$REGISTRY_STATUS/1" || echo "-") |
+$(format_service_row "ArgoCD" "$ARGOCD_STATUS")
+$(format_service_row "Traefik" "$TRAEFIK_STATUS")
+$(format_service_row "Cert-Manager" "$CERTMGR_STATUS")
+$(format_service_row "External-DNS" "$EXTDNS_STATUS")
+$(format_service_row "SigNoz" "$SIGNOZ_STATUS")
+$(format_service_row "Registry" "$REGISTRY_STATUS")
 
 ### 📱 Applications
 | App | Sync Status | Health |
 |-----|-------------|--------|
 EOF
 
-# Parse applications
-if [[ -n "$ARGOCD_APPS" && "$ARGOCD_APPS" != "N/A" ]]; then
-    echo "$ARGOCD_APPS" | while read -r name sync health; do
-        [[ -z "$name" ]] && continue
+# Parse applications from JSON
+app_count=$(echo "$APPS_JSON" | jq '.items | length')
+if [[ "$app_count" -gt 0 && "$app_count" != "null" ]]; then
+    echo "$APPS_JSON" | jq -r '.items[] | "\(.metadata.name)|\(.status.sync.status // "Unknown")|\(.status.health.status // "Unknown")"' | while IFS='|' read -r name sync health; do
         sync_icon="✅"
         [[ "$sync" != "Synced" ]] && sync_icon="⚠️"
         echo "| $name | $sync_icon $sync | $health |"
@@ -134,29 +197,18 @@ cat << EOF
 |--------|--------|---------|
 EOF
 
-# Parse certificates
-if [[ -n "$CERTS_INFO" && "$CERTS_INFO" != "N/A" ]]; then
-    echo "$CERTS_INFO" | while read -r name ready expiry; do
-        [[ -z "$name" ]] && continue
+# Parse certificates from JSON
+cert_count=$(echo "$CERTS_JSON" | jq '.items | length')
+if [[ "$cert_count" -gt 0 && "$cert_count" != "null" ]]; then
+    echo "$CERTS_JSON" | jq -r '.items[] | "\(.metadata.name)|\(.status.conditions[]? | select(.type == "Ready") | .status // "Unknown")|\(.status.notAfter // "Unknown")"' | while IFS='|' read -r name ready expiry; do
         status_icon="✅ Valid"
         [[ "$ready" != "True" ]] && status_icon="⚠️ Pending"
-        # Format expiry date
-        if [[ "$expiry" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
-            expiry_date="${expiry:0:10}"
-        else
-            expiry_date="$expiry"
-        fi
+        expiry_date="${expiry:0:10}"
         echo "| $name | $status_icon | $expiry_date |"
     done
 else
     echo "| No certificates | - | - |"
 fi
-
-# Parse memory and disk
-MEM_USED=$(echo "$MEM_INFO" | cut -d'|' -f1)
-MEM_TOTAL=$(echo "$MEM_INFO" | cut -d'|' -f2)
-DISK_USED=$(echo "$DISK_INFO" | cut -d'|' -f1)
-DISK_TOTAL=$(echo "$DISK_INFO" | cut -d'|' -f2)
 
 cat << EOF
 
