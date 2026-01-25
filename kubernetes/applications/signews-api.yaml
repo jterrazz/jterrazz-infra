@@ -5,7 +5,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: signews-api-prod
+  name: signews-api
   namespace: platform-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -19,15 +19,13 @@ spec:
       helm:
         valueFiles:
           - $app/.deploy/manifest.yaml
-        values: |
-          branch: main
     # Source 2: App values (referenced as $app)
     - repoURL: https://github.com/jterrazz/signews-api.git
       targetRevision: main
       ref: app
   destination:
     server: https://kubernetes.default.svc
-    namespace: app-signews-api-prod
+    namespace: app-signews-api
   syncPolicy:
     automated:
       prune: true

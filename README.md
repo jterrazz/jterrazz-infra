@@ -164,11 +164,11 @@ spec:
 Create an ArgoCD Application in `kubernetes/applications/` that combines the chart with your app's manifest:
 
 ```yaml
-# kubernetes/applications/my-app-prod.yaml
+# kubernetes/applications/my-app.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app-prod
+  name: my-app
   namespace: platform-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -182,8 +182,6 @@ spec:
       helm:
         valueFiles:
           - $app/.deploy/manifest.yaml # Values from the app repo
-        values: |
-          branch: main                    # prod or feature branch
 
     # Source 2: Reference to the app repository
     - repoURL: https://github.com/jterrazz/my-app.git
@@ -192,7 +190,7 @@ spec:
 
   destination:
     server: https://kubernetes.default.svc
-    namespace: app-my-app-prod # Auto-created
+    namespace: app-my-app # Auto-created
 
   syncPolicy:
     automated:
@@ -204,12 +202,12 @@ spec:
 
 ### Conventions
 
-| Property         | Convention                                 |
-| ---------------- | ------------------------------------------ |
-| **Namespace**    | `app-{name}-prod` or `app-{name}-{branch}` |
-| **Image**        | `registry.jterrazz.com/{name}:{branch}`    |
-| **Storage path** | `/var/lib/k8s-data/{name}/` on host        |
-| **Secrets env**  | `{name}-secrets` in Infisical              |
+| Property         | Convention                            |
+| ---------------- | ------------------------------------- |
+| **Namespace**    | `app-{name}`                          |
+| **Image**        | `registry.jterrazz.com/{name}:latest` |
+| **Storage path** | `/var/lib/k8s-data/{name}/` on host   |
+| **Secrets env**  | `{name}-secrets` in Infisical         |
 
 ### Platform Services
 
@@ -348,13 +346,13 @@ spec:
     path: /health
 ```
 
-2. In this infra repo, create `kubernetes/applications/my-app-prod.yaml`:
+2. In this infra repo, create `kubernetes/applications/my-app.yaml`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app-prod
+  name: my-app
   namespace: platform-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -367,14 +365,12 @@ spec:
       helm:
         valueFiles:
           - $app/.deploy/manifest.yaml
-        values: |
-          branch: main
     - repoURL: https://github.com/jterrazz/my-app.git
       targetRevision: main
       ref: app
   destination:
     server: https://kubernetes.default.svc
-    namespace: app-my-app-prod
+    namespace: app-my-app
   syncPolicy:
     automated:
       prune: true

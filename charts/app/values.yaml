@@ -39,6 +39,3 @@ spec:
     path: /health
     initialDelaySeconds: 10
     periodSeconds: 30
-
-# Branch configuration (set by ArgoCD)
-branch: main # main or develop

@@ -6,25 +6,17 @@ Application name
 {{- end -}}
 
 {{/*
-Namespace based on branch
+Namespace - simple app-{name} format
 */}}
 {{- define "app.namespace" -}}
-{{- if eq .Values.branch "main" -}}
-app-{{ include "app.name" . }}-prod
-{{- else -}}
-app-{{ include "app.name" . }}-{{ .Values.branch }}
-{{- end -}}
+app-{{ include "app.name" . }}
 {{- end -}}
 
 {{/*
-Image tag based on branch
+Image tag - always latest
 */}}
 {{- define "app.imageTag" -}}
-{{- if eq .Values.branch "main" -}}
 latest
-{{- else -}}
-{{- .Values.branch -}}
-{{- end -}}
 {{- end -}}
 
 {{/*
@@ -55,14 +47,10 @@ Memory limit (defaults to 2x memory request)
 {{- end -}}
 
 {{/*
-Infisical environment based on branch
+Infisical environment - always prod
 */}}
 {{- define "app.infisicalEnv" -}}
-{{- if eq .Values.branch "main" -}}
 prod
-{{- else -}}
-dev
-{{- end -}}
 {{- end -}}
 
 {{/*
