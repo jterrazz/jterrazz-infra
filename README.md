@@ -285,7 +285,7 @@ metadata:
   name: my-app
   annotations:
     external-dns.alpha.kubernetes.io/hostname: my-app.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "100.109.91.57" # Tailscale IP
+    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
 spec:
   entryPoints:
     - websecure
@@ -294,7 +294,7 @@ spec:
       kind: Rule
       middlewares:
         - name: private-access
-          namespace: platform-ingress
+          namespace: platform-networking
       services:
         - name: my-app
           port: 8080

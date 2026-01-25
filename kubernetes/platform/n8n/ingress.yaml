@@ -6,7 +6,7 @@ metadata:
   name: n8n
   annotations:
     external-dns.alpha.kubernetes.io/hostname: n8n.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "100.109.91.57"
+    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
 spec:
   entryPoints:
     - websecure
@@ -15,7 +15,7 @@ spec:
       kind: Rule
       middlewares:
         - name: private-access
-          namespace: platform-ingress
+          namespace: platform-networking
       services:
         - name: n8n
           port: 5678
