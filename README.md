@@ -153,12 +153,12 @@ spec:
 # Internal (Tailscale-only) - add private-access middleware
 middlewares:
   - name: private-access
-    namespace: platform-ingress
+    namespace: platform-networking
 
 # External (Public) - no private-access middleware
 middlewares:
   - name: rate-limit
-    namespace: platform-ingress
+    namespace: platform-networking
 ```
 
 ## Services & Access
