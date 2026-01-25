@@ -78,17 +78,14 @@ app-{{ include "app.name" . }}-{{ .Values.environment }}
 {{- end -}}
 
 {{/*
-Image tag - latest for now (could be extended for versioned deploys)
-*/}}
-{{- define "app.imageTag" -}}
-latest
-{{- end -}}
-
-{{/*
-Full image name
+Full image name - can be overridden by Image Updater via spec.image
 */}}
 {{- define "app.image" -}}
-registry.jterrazz.com/{{ include "app.name" . }}:{{ include "app.imageTag" . }}
+{{- if .Values.spec.image -}}
+{{- .Values.spec.image -}}
+{{- else -}}
+registry.jterrazz.com/{{ include "app.name" . }}:latest
+{{- end -}}
 {{- end -}}
 
 {{/*
