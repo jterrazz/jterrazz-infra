@@ -20,11 +20,11 @@ spec:
           - list:
               elements:
                 - repo: signews-api
-          # Environments to deploy
+          # Environments to deploy (add prod back when ready)
           - list:
               elements:
                 - environment: staging
-                - environment: prod
+                # - environment: prod
   template:
     metadata:
       name: "{{repo}}-{{environment}}"
