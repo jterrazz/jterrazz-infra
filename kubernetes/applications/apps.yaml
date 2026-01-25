@@ -39,6 +39,7 @@ spec:
         # Prod: uses semver tags (v*) for controlled releases
         argocd-image-updater.argoproj.io/image-list: "app=registry.jterrazz.com/{{repo}}:{{imageTag}}"
         argocd-image-updater.argoproj.io/app.update-strategy: "{{updateStrategy}}"
+        argocd-image-updater.argoproj.io/app.force-update: "true"
         argocd-image-updater.argoproj.io/app.helm.image-spec: spec.image
       finalizers:
         - resources-finalizer.argocd.argoproj.io

@@ -26,6 +26,7 @@ spec:
       containers:
         - name: {{ include "app.name" . }}
           image: {{ include "app.image" . }}
+          imagePullPolicy: Always
           ports:
             - containerPort: {{ .Values.spec.port }}
           env:
