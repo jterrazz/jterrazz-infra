@@ -13,6 +13,10 @@ metadata:
   name: apps
   namespace: platform-gitops
 spec:
+  # Preserve helm parameters set by Image Updater (prevents ApplicationSet from overwriting them)
+  ignoreApplicationDifferences:
+    - jqPathExpressions:
+        - .spec.sources[].helm.parameters
   generators:
     - matrix:
         generators:
