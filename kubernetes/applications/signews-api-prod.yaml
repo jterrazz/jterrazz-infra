@@ -1,5 +1,5 @@
 # ArgoCD Application for signews-api
-# News processing platform - production deployment
+# Uses the standard app chart from jterrazz-infra with values from app.yaml
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -11,10 +11,20 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://github.com/jterrazz/signews-api.git
-    targetRevision: develop
-    path: k8s
+  sources:
+    # Source 1: Helm chart from infra repo
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: charts/app
+      helm:
+        valueFiles:
+          - $app/app.yaml
+        values: |
+          branch: main
+    # Source 2: App values (referenced as $app)
+    - repoURL: https://github.com/jterrazz/signews-api.git
+      targetRevision: main
+      ref: app
   destination:
     server: https://kubernetes.default.svc
     namespace: app-signews-api-prod

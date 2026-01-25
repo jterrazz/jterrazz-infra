@@ -1,0 +1,26 @@
+{{- if .Values.spec.secrets }}
+{{- $appName := include "app.name" . -}}
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: {{ $appName }}-infisical
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  hostAPI: https://eu.infisical.com
+  resyncInterval: 60
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: jterrazz
+        envSlug: {{ include "app.infisicalEnv" . }}
+        secretsPath: {{ .Values.spec.secrets.path }}
+      credentialsRef:
+        secretName: infisical-credentials
+        secretNamespace: platform-secrets
+  managedSecretReference:
+    secretName: {{ include "app.secretsName" . }}
+    secretNamespace: {{ include "app.namespace" . }}
+    secretType: Opaque
+{{- end }}

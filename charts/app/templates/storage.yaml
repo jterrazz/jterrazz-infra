@@ -1,0 +1,34 @@
+{{- if .Values.spec.storage }}
+{{- $appName := include "app.name" . -}}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $appName }}-data
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.spec.storage.size }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/{{ $appName }}
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $appName }}-data
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.spec.storage.size }}
+  storageClassName: manual
+{{- end }}

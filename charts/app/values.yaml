@@ -1,0 +1,44 @@
+# Default values for app chart
+# These are overridden by the application's app.yaml
+
+metadata:
+  name: "" # Required: application name
+
+spec:
+  port: 3000
+  replicas: 1
+
+  resources:
+    cpu: 100m
+    memory: 256Mi
+    memoryLimit: "" # Defaults to 2x memory if not set
+
+  # Storage (optional)
+  storage: {}
+    # size: 1Gi
+    # mountPath: /data
+
+  # Secrets from Infisical (optional)
+  secrets: {}
+    # path: /myapp
+    # env:
+    #   - SECRET_KEY
+
+  # Ingress (optional)
+  ingress: {}
+    # host: myapp.jterrazz.com
+    # path: /
+    # private: false
+
+  # Environment variables (optional)
+  env: {}
+    # NODE_ENV: production
+
+  # Health check (optional)
+  health:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 30
+
+# Branch configuration (set by ArgoCD)
+branch: main # main or develop

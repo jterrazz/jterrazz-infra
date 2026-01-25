@@ -1,0 +1,45 @@
+{{- if .Values.spec.ingress }}
+{{- $appName := include "app.name" . -}}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $appName }}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.spec.ingress.host }}
+    {{- if .Values.spec.ingress.private }}
+    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
+    {{- end }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.spec.ingress.host }}`){{ if .Values.spec.ingress.path }} && PathPrefix(`{{ .Values.spec.ingress.path }}`){{ end }}
+      kind: Rule
+      {{- if .Values.spec.ingress.private }}
+      middlewares:
+        - name: private-access
+          namespace: platform-networking
+      {{- end }}
+      services:
+        - name: {{ $appName }}
+          port: 80
+  tls:
+    secretName: {{ $appName }}-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $appName }}-tls
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  secretName: {{ $appName }}-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.spec.ingress.host }}
+{{- end }}

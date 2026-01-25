@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.spec.replicas }}
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "app.selectorLabels" . | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+        - name: {{ include "app.name" . }}
+          image: {{ include "app.image" . }}
+          ports:
+            - containerPort: {{ .Values.spec.port }}
+          env:
+            # Auto-injected PORT
+            - name: PORT
+              value: {{ .Values.spec.port | quote }}
+            # Auto-injected OTEL endpoint
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://signoz-otel-collector.platform-observability:4318"
+            {{- /* User-defined environment variables */}}
+            {{- range $key, $value := .Values.spec.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- /* Secret environment variables from Infisical */}}
+            {{- if .Values.spec.secrets }}
+            {{- range .Values.spec.secrets.env }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "app.secretsName" $ }}
+                  key: {{ . }}
+            {{- end }}
+            {{- end }}
+          {{- if .Values.spec.storage }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.spec.storage.mountPath }}
+          {{- end }}
+          resources:
+            requests:
+              cpu: {{ .Values.spec.resources.cpu }}
+              memory: {{ .Values.spec.resources.memory }}
+            limits:
+              memory: {{ include "app.memoryLimit" . }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.spec.health.path }}
+              port: {{ .Values.spec.port }}
+            initialDelaySeconds: {{ .Values.spec.health.initialDelaySeconds }}
+            periodSeconds: {{ .Values.spec.health.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.spec.health.path }}
+              port: {{ .Values.spec.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      {{- if .Values.spec.storage }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "app.name" . }}-data
+      {{- end }}
