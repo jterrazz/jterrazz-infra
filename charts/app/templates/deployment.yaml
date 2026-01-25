@@ -9,6 +9,7 @@ metadata:
     {{- include "app.labels" . | nindent 4 }}
 spec:
   replicas: {{ include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1) }}
+  revisionHistoryLimit: 3
   selector:
     matchLabels:
       {{- include "app.selectorLabels" . | nindent 6 }}
