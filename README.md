@@ -45,17 +45,17 @@ Minimal Kubernetes infrastructure with local development and production deployme
 
 ## Stack
 
-| Component              | Purpose                               |
-| ---------------------- | ------------------------------------- |
-| **K3s**                | Lightweight Kubernetes                |
-| **Traefik**            | Ingress controller with automatic TLS |
-| **ArgoCD**             | GitOps continuous deployment          |
-| **SigNoz**             | Observability (traces, metrics, logs) |
-| **Cert-Manager**       | Automatic Let's Encrypt certificates  |
-| **External-DNS**       | Automatic Cloudflare DNS management   |
-| **Infisical Operator** | Automated secrets management          |
-| **Tailscale**          | Private VPN for secure access         |
-| **n8n**                | Workflow automation                   |
+| Component        | Purpose                               |
+| ---------------- | ------------------------------------- |
+| **K3s**          | Lightweight Kubernetes                |
+| **Traefik**      | Ingress controller with automatic TLS |
+| **ArgoCD**       | GitOps continuous deployment          |
+| **SigNoz**       | Observability (traces, metrics, logs) |
+| **Cert-Manager** | Automatic Let's Encrypt certificates  |
+| **External-DNS** | Automatic Cloudflare DNS management   |
+| **Infisical**    | Automated secrets management          |
+| **Tailscale**    | Private VPN for secure access         |
+| **n8n**          | Workflow automation                   |
 
 ## Quick Start
 
@@ -76,6 +76,9 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   ├── playbooks/              # Orchestration playbooks
 │   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
+├── charts/                     # Helm charts
+│   └── app/                    # Standard app chart (used by all apps)
+│
 ├── kubernetes/                 # GitOps manifests (ArgoCD syncs these)
 │   ├── infrastructure/         # Base capabilities (rarely changes)
 │   │   └── base/
@@ -85,80 +88,152 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │
 │   ├── platform/               # Platform services (one folder per app)
 │   │   ├── argocd/
-│   │   │   ├── app.yaml        # ArgoCD Application
-│   │   │   └── ingress.yaml    # IngressRoute + Certificate
 │   │   ├── signoz/
-│   │   │   ├── app.yaml
-│   │   │   ├── ingress.yaml
-│   │   │   └── storage.yaml    # Static PV/PVC
 │   │   ├── n8n/
-│   │   │   ├── app.yaml
-│   │   │   ├── ingress.yaml
-│   │   │   └── storage.yaml
 │   │   ├── cert-manager/
-│   │   │   ├── app.yaml
-│   │   │   └── issuers.yaml    # ClusterIssuers
 │   │   ├── external-dns/
-│   │   │   └── app.yaml
-│   │   ├── infisical/
-│   │   │   └── app.yaml
-│   │   └── signoz-k8s-infra/
-│   │       └── app.yaml
+│   │   └── infisical/
 │   │
-│   └── applications/           # Your app definitions
+│   └── applications/           # Your app definitions (use charts/app)
 │
 ├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
 └── scripts/                    # Automation scripts
 ```
 
-## App-Centric Folder Pattern
+## Deploying Applications
 
-Each platform service is **fully self-contained** in its own folder:
+### Standard App Chart
+
+The `charts/app/` Helm chart provides a standardized way to deploy applications. Apps only need to define a simple manifest file - the chart handles all Kubernetes complexity (Deployment, Service, Ingress, Storage, Secrets).
+
+**What the chart auto-generates:**
+
+- Deployment with health probes, resource limits, and OTEL integration
+- Service pointing to the app's port
+- Traefik IngressRoute with TLS certificate
+- PersistentVolume/PVC (if storage is defined)
+- InfisicalSecret for secrets management
+- Image registry pull secrets
+
+### App Manifest (`.deploy/manifest.yaml`)
+
+Each application defines a single manifest file in its own repository:
+
+```yaml
+# In your app repository: .deploy/manifest.yaml
+apiVersion: jterrazz.com/v1
+kind: Application
+
+metadata:
+  name: my-app # Used for namespace, image name, DNS
+
+spec:
+  port: 3000 # Container port
+  replicas: 1
+
+  resources:
+    cpu: 100m
+    memory: 256Mi
+    memoryLimit: 512Mi # Optional, defaults to 2x memory
+
+  storage: # Optional
+    size: 1Gi
+    mountPath: /data
+
+  secrets: # Optional - Infisical integration
+    path: /my-app # Path in Infisical
+    env: # Secrets to map to environment variables
+      - DATABASE_PASSWORD
+      - API_KEY
+
+  ingress: # Optional
+    host: my-app.jterrazz.com
+    path: / # Optional path prefix
+    private: false # true = Tailscale-only access
+
+  env: # Static environment variables
+    NODE_ENV: production
+    LOG_LEVEL: info
+
+  health:
+    path: /health # Health check endpoint
+```
+
+### ArgoCD Application (in this repo)
+
+Create an ArgoCD Application in `kubernetes/applications/` that combines the chart with your app's manifest:
+
+```yaml
+# kubernetes/applications/my-app-prod.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-prod
+  namespace: platform-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    # Source 1: The standard app chart
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: charts/app
+      helm:
+        valueFiles:
+          - $app/.deploy/manifest.yaml # Values from the app repo
+        values: |
+          branch: main                    # prod or feature branch
+
+    # Source 2: Reference to the app repository
+    - repoURL: https://github.com/jterrazz/my-app.git
+      targetRevision: main
+      ref: app # Referenced as $app above
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app-my-app-prod # Auto-created
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+### Conventions
+
+| Property         | Convention                                 |
+| ---------------- | ------------------------------------------ |
+| **Namespace**    | `app-{name}-prod` or `app-{name}-{branch}` |
+| **Image**        | `registry.jterrazz.com/{name}:{branch}`    |
+| **Storage path** | `/var/lib/k8s-data/{name}/` on host        |
+| **Secrets env**  | `{name}-secrets` in Infisical              |
+
+### Platform Services
+
+For platform services (ArgoCD, SigNoz, n8n, etc.), each is **self-contained** in its own folder:
 
 ```
-kubernetes/platform/my-app/
-├── app.yaml        # ArgoCD Application (helm chart + references this folder)
+kubernetes/platform/my-service/
+├── app.yaml        # ArgoCD Application (external helm chart + local resources)
 ├── ingress.yaml    # IngressRoute + Certificate
 └── storage.yaml    # PV/PVC (if needed)
 ```
-
-The ArgoCD Application uses multi-source to deploy both the Helm chart and local resources:
-
-```yaml
-# kubernetes/platform/my-app/app.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  sources:
-    # Source 1: Helm chart
-    - repoURL: https://charts.example.com
-      chart: my-app
-      helm:
-        values: |
-          ingress:
-            enabled: false  # We use Traefik IngressRoute
-
-    # Source 2: Resources from this folder (ingress, storage, etc.)
-    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-      path: kubernetes/platform/my-app
-      directory:
-        exclude: "app.yaml" # Don't apply the Application itself
-```
-
-**Adding a new app = one folder** with clear file responsibilities.
 
 ### Internal vs External Services
 
 ```yaml
 # Internal (Tailscale-only) - add private-access middleware
-middlewares:
-  - name: private-access
-    namespace: platform-networking
+spec:
+  ingress:
+    private: true
 
 # External (Public) - no private-access middleware
-middlewares:
-  - name: rate-limit
-    namespace: platform-networking
+spec:
+  ingress:
+    private: false
 ```
 
 ## Services & Access
@@ -236,38 +311,59 @@ Current static volumes:
 3. **External-DNS** automatically creates/updates DNS records in Cloudflare
 4. Each app defines its own Certificate in its `ingress.yaml`
 
-### Adding a new internal service
+### Adding a new application
 
-1. Create folder `kubernetes/platform/my-app/`
+1. In your app repository, create `.deploy/manifest.yaml`:
 
-2. Create `app.yaml`:
+```yaml
+apiVersion: jterrazz.com/v1
+kind: Application
+
+metadata:
+  name: my-app
+
+spec:
+  port: 3000
+  replicas: 1
+  resources:
+    cpu: 100m
+    memory: 256Mi
+  ingress:
+    host: my-app.jterrazz.com
+    private: false
+  env:
+    NODE_ENV: production
+  health:
+    path: /health
+```
+
+2. In this infra repo, create `kubernetes/applications/my-app-prod.yaml`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: my-app
+  name: my-app-prod
   namespace: platform-gitops
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   sources:
-    - repoURL: https://charts.example.com
-      chart: my-app
-      targetRevision: 1.0.0
-      helm:
-        values: |
-          ingress:
-            enabled: false
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
-      path: kubernetes/platform/my-app
-      directory:
-        exclude: "app.yaml"
+      path: charts/app
+      helm:
+        valueFiles:
+          - $app/.deploy/manifest.yaml
+        values: |
+          branch: main
+    - repoURL: https://github.com/jterrazz/my-app.git
+      targetRevision: main
+      ref: app
   destination:
     server: https://kubernetes.default.svc
-    namespace: my-namespace
+    namespace: app-my-app-prod
   syncPolicy:
     automated:
       prune: true
@@ -276,43 +372,42 @@ spec:
       - CreateNamespace=true
 ```
 
-3. Create `ingress.yaml`:
+3. Push both repos. ArgoCD will deploy automatically.
+
+### Adding a new platform service
+
+For third-party Helm charts (not your own apps), create a folder in `kubernetes/platform/`:
+
+1. Create folder `kubernetes/platform/my-service/`
+
+2. Create `app.yaml` with the external Helm chart:
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: my-app
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: my-app.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
+  name: my-service
+  namespace: platform-gitops
 spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`my-app.jterrazz.com`)
-      kind: Rule
-      middlewares:
-        - name: private-access
-          namespace: platform-networking
-      services:
-        - name: my-app
-          port: 8080
-  tls:
-    secretName: my-app-tls
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: my-app-tls
-spec:
-  secretName: my-app-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - my-app.jterrazz.com
+  sources:
+    - repoURL: https://charts.example.com
+      chart: my-service
+      targetRevision: 1.0.0
+      helm:
+        values: |
+          ingress:
+            enabled: false
+    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+      targetRevision: HEAD
+      path: kubernetes/platform/my-service
+      directory:
+        exclude: "app.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: platform-my-service
 ```
+
+3. Create `ingress.yaml` for Traefik IngressRoute + Certificate.
 
 4. (Optional) Create `storage.yaml` if you need persistent data.
 
