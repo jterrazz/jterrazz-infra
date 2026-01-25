@@ -117,7 +117,7 @@ The `charts/app/` Helm chart provides a standardized way to deploy applications.
 
 ### App Manifest (`.deploy/manifest.yaml`)
 
-Each application defines a single manifest file in its own repository:
+Each application defines a single manifest file in its own repository with **multi-environment support**:
 
 ```yaml
 # In your app repository: .deploy/manifest.yaml
@@ -128,9 +128,8 @@ metadata:
   name: my-app # Used for namespace, image name, DNS
 
 spec:
-  port: 3000 # Container port
-  replicas: 1
-
+  # Base configuration (shared across all environments)
+  port: 3000
   resources:
     cpu: 100m
     memory: 256Mi
@@ -142,72 +141,109 @@ spec:
 
   secrets: # Optional - Infisical integration
     path: /my-app # Path in Infisical
-    env: # Secrets to map to environment variables
+    env:
       - DATABASE_PASSWORD
       - API_KEY
 
-  ingress: # Optional
-    host: my-app.jterrazz.com
-    path: / # Optional path prefix
-    private: false # true = Tailscale-only access
-
-  env: # Static environment variables
-    NODE_ENV: production
+  env: # Base environment variables
     LOG_LEVEL: info
 
   health:
-    path: /health # Health check endpoint
+    path: /health
+
+# Environment-specific configuration (overrides base spec)
+environments:
+  staging:
+    branch: main # Informational - which branch deploys to staging
+    replicas: 1
+    ingress:
+      host: my-app-staging.jterrazz.com
+      path: /
+      private: false
+    env:
+      NODE_ENV: development # App-specific env value
+
+  prod:
+    tag: v1.0.0 # Informational - which tag deploys to prod
+    replicas: 2
+    ingress:
+      host: my-app.jterrazz.com
+      path: /
+      private: false
+    env:
+      NODE_ENV: production
 ```
 
-### ArgoCD Application (in this repo)
+**How it works:**
 
-Create an ArgoCD Application in `kubernetes/applications/` that combines the chart with your app's manifest:
+- `spec` contains base configuration shared by all environments
+- `environments.staging` and `environments.prod` contain overrides
+- Values are merged: environment-specific values override base `spec` values
+- If an environment section doesn't exist, that environment won't be deployed
+- Storage paths are environment-specific: `/var/lib/k8s-data/{name}-{environment}/`
+
+**Enabling/disabling environments:**
+
+- To deploy only staging: only define `environments.staging`
+- To deploy only prod: only define `environments.prod`
+- To deploy both: define both sections
+- Comment out an environment section to disable it
+
+### Single ApplicationSet (in this repo)
+
+All apps are deployed via a single ApplicationSet in `kubernetes/applications/apps.yaml`. To add a new app, just add its repo name to the list:
 
 ```yaml
-# kubernetes/applications/my-app.yaml
+# kubernetes/applications/apps.yaml
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
-  name: my-app
+  name: apps
   namespace: platform-gitops
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
-  sources:
-    # Source 1: The standard app chart
-    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-      targetRevision: HEAD
-      path: charts/app
-      helm:
-        valueFiles:
-          - $app/.deploy/manifest.yaml # Values from the app repo
-
-    # Source 2: Reference to the app repository
-    - repoURL: https://github.com/jterrazz/my-app.git
-      targetRevision: main
-      ref: app # Referenced as $app above
-
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: app-my-app # Auto-created
-
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  generators:
+    - matrix:
+        generators:
+          # Add your app repo here
+          - list:
+              elements:
+                - repo: signews-api
+                - repo: my-app # <-- Add new apps here
+          # Environments to deploy
+          - list:
+              elements:
+                - environment: staging
+                - environment: prod
+  template:
+    metadata:
+      name: "{{repo}}-{{environment}}"
+    spec:
+      sources:
+        - repoURL: https://github.com/jterrazz/jterrazz-infra.git
+          path: charts/app
+          helm:
+            valueFiles:
+              - $app/.deploy/manifest.yaml
+            values: |
+              environment: {{environment}}
+        - repoURL: "https://github.com/jterrazz/{{repo}}.git"
+          targetRevision: main
+          ref: app
+      destination:
+        namespace: "app-{{repo}}-{{environment}}"
 ```
+
+The chart automatically skips environments that aren't defined in the app's manifest.
 
 ### Conventions
 
-| Property         | Convention                                      |
-| ---------------- | ----------------------------------------------- |
-| **Namespace**    | `app-{name}-{environment}` (staging or prod)    |
-| **Image**        | `registry.jterrazz.com/{name}:latest`           |
-| **Storage path** | `/var/lib/k8s-data/{name}/` on host             |
-| **Secrets env**  | `{name}-secrets` in Infisical (dev for staging) |
+| Property         | Convention                                             |
+| ---------------- | ------------------------------------------------------ |
+| **Namespace**    | `app-{name}-{environment}` (e.g. `app-my-app-staging`) |
+| **Image**        | `registry.jterrazz.com/{name}:latest`                  |
+| **Storage path** | `/var/lib/k8s-data/{name}-{environment}/` on host      |
+| **Secrets**      | Infisical `dev` env for staging, `prod` for prod       |
+| **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com`  |
 
 ### Platform Services
 
@@ -333,53 +369,47 @@ metadata:
 
 spec:
   port: 3000
-  replicas: 1
   resources:
     cpu: 100m
     memory: 256Mi
-  ingress:
-    host: my-app.jterrazz.com
-    private: false
-  env:
-    NODE_ENV: production
   health:
     path: /health
+
+environments:
+  staging:
+    replicas: 1
+    ingress:
+      host: my-app-staging.jterrazz.com
+    env:
+      NODE_ENV: development
+
+  # Uncomment when ready for production
+  # prod:
+  #   replicas: 2
+  #   ingress:
+  #     host: my-app.jterrazz.com
+  #   env:
+  #     NODE_ENV: production
 ```
 
-2. In this infra repo, create `kubernetes/applications/my-app.yaml`:
+2. In this infra repo, add your app to `kubernetes/applications/apps.yaml`:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-app
-  namespace: platform-gitops
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
-spec:
-  project: default
-  sources:
-    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-      targetRevision: HEAD
-      path: charts/app
-      helm:
-        valueFiles:
-          - $app/.deploy/manifest.yaml
-    - repoURL: https://github.com/jterrazz/my-app.git
-      targetRevision: main
-      ref: app
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: app-my-app
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+generators:
+  - matrix:
+      generators:
+        - list:
+            elements:
+              - repo: signews-api
+              - repo: my-app # <-- Add your repo here
 ```
 
-3. Push both repos. ArgoCD will deploy automatically.
+3. Push both repos. ArgoCD will deploy staging automatically.
+
+4. When ready for production:
+   - Uncomment the `prod:` section in your app's manifest
+   - Create the storage directory on VPS: `mkdir -p /var/lib/k8s-data/my-app-prod && chown 1000:1000 /var/lib/k8s-data/my-app-prod`
+   - Push the changes
 
 ### Adding a new platform service
 
