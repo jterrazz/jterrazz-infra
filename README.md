@@ -261,46 +261,57 @@ kubectl -n platform-gitops get secret argocd-initial-admin-secret \
 
 ## Storage
 
-### Dynamic Storage (local-path)
+All persistent data lives in `/var/lib/k8s-data/` on the VPS. This single folder contains everything that matters.
 
-For ephemeral data, use the K3s built-in `local-path` provisioner:
+### What's stored
 
-- **Data location**: `/var/lib/rancher/k3s/storage/`
-- **Behavior**: PVCs get UUID-named folders, deleted when PVC is deleted
-- **Usage**: Set `storageClass: local-path` in Helm values
-
-### Static Storage (manual)
-
-For persistent data that survives app deletion (databases, user data):
-
-```yaml
-# storage.yaml - Static PV with Retain policy
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: my-app-data
-spec:
-  capacity:
-    storage: 1Gi
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /var/lib/k8s-data/my-app
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - jterrazz-vps
+```
+/var/lib/k8s-data/
+├── n8n/           # n8n workflows and credentials
+├── signews-api/   # App database (SQLite)
+└── signoz/        # Traces, metrics, logs, dashboards
 ```
 
-Current static volumes:
+### What survives
 
-- `/var/lib/k8s-data/n8n` - n8n workflows and credentials
-- `/var/lib/k8s-data/signoz/clickhouse` - SigNoz traces, metrics, logs
-- `/var/lib/k8s-data/signoz/db` - SigNoz user accounts, dashboards
+| Scenario             | Data preserved? |
+| -------------------- | --------------- |
+| Pod restart          | ✅ Yes          |
+| App redeployment     | ✅ Yes          |
+| K3s restart          | ✅ Yes          |
+| Full cluster rebuild | ✅ Yes          |
+| VPS reboot           | ✅ Yes          |
+
+### Backup
+
+To backup the entire VPS state, only this folder needs to be saved:
+
+```bash
+# Simple backup
+tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/
+
+# Or rsync to remote
+rsync -avz /var/lib/k8s-data/ backup-server:/backups/k8s-data/
+```
+
+### Future migration to block storage
+
+When ready to move to Hetzner Volumes (or any block storage):
+
+1. Attach volume to VPS
+2. Mount it at `/var/lib/k8s-data/`
+3. Copy existing data
+4. Apps continue working - no config changes needed
+
+The PVs use `hostPath` pointing to `/var/lib/k8s-data/{name}`, so as long as that path exists with the right data, everything works regardless of what's backing it.
+
+### File ownership
+
+All apps using `charts/app/` run as UID 1000. New storage folders should be owned by `1000:1000`:
+
+```bash
+chown -R 1000:1000 /var/lib/k8s-data/my-app
+```
 
 ## Certificates & DNS
 
