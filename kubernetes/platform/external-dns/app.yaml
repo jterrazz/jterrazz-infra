@@ -52,7 +52,7 @@ spec:
         logLevel: debug
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-dns
+    namespace: platform-networking
   syncPolicy:
     automated:
       prune: true
