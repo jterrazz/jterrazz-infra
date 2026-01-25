@@ -5,4 +5,4 @@ metadata:
   name: network-policies
 
 resources:
-  - platform-ingress.yaml
+  - platform-networking.yaml

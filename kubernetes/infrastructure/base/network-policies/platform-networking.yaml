@@ -1,5 +1,5 @@
 ---
-# Network Policies for platform-ingress namespace
+# Network Policies for platform-networking namespace
 # Note: Traefik runs in kube-system by default with k3s
 
 # Allow external traffic to any ingress resources
@@ -7,7 +7,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-external-ingress
-  namespace: platform-ingress
+  namespace: platform-networking
 spec:
   podSelector: {}
   policyTypes:
