@@ -1,5 +1,5 @@
 # ArgoCD Application for signews-api
-# Uses the standard app chart from jterrazz-infra with values from app.yaml
+# Uses the standard app chart from jterrazz-infra with values from .deploy/manifest.yaml
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -18,7 +18,7 @@ spec:
       path: charts/app
       helm:
         valueFiles:
-          - $app/app.yaml
+          - $app/.deploy/manifest.yaml
         values: |
           branch: main
     # Source 2: App values (referenced as $app)
