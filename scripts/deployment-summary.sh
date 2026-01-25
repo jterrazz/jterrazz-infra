@@ -45,6 +45,7 @@ TAILSCALE_CONNECTED="no"
 
 # Resources
 CPU_USAGE=$(remote "top -bn1 | grep 'Cpu(s)' | awk '{print 100 - \$8}' | cut -d. -f1")
+CPU_CORES=$(remote "nproc")
 MEM_INFO=$(remote "free -m | awk 'NR==2{printf \"%.1f|%.1f\", \$3/1024, \$2/1024}'")
 DISK_INFO=$(remote "df -h / | awk 'NR==2{print \$3\"|\"\$2}'")
 
@@ -215,7 +216,7 @@ cat << EOF
 ### 📊 Resources
 | Metric | Current | Limit |
 |--------|---------|-------|
-| CPU | ${CPU_USAGE:-0}% | 2 vCPU |
+| CPU | ${CPU_USAGE:-0}% | ${CPU_CORES:-?} vCPU |
 | Memory | ${MEM_USED:-0} GB | ${MEM_TOTAL:-0} GB |
 | Disk | ${DISK_USED:-0} | ${DISK_TOTAL:-0} |
 | Pods | $RUNNING_PODS running | $TOTAL_PODS total |
