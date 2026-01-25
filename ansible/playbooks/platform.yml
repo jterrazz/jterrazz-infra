@@ -323,6 +323,32 @@
       changed_when: "'created' in infisical_secret.stdout or 'configured' in infisical_secret.stdout"
       no_log: true
 
+    # Create n8n encryption key secret
+    # n8n uses this key to encrypt credentials stored in its database
+    - name: Create platform-automation namespace for n8n
+      ansible.builtin.command: kubectl create namespace platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: auto_ns
+      changed_when: "'created' in auto_ns.stdout"
+      failed_when: false
+
+    - name: Create n8n encryption key secret
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic n8n-encryption-key \
+            --from-literal=N8N_ENCRYPTION_KEY="{{ n8n_encryption_key }}" \
+            --namespace platform-automation \
+            --dry-run=client -o yaml | kubectl apply -f -
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: n8n_encryption_key is defined and n8n_encryption_key | length > 0
+      register: n8n_secret
+      changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
+      no_log: true
+
     # Apply platform services (ArgoCD Applications)
     # Each app has its own folder with *-app.yaml or app.yaml as Application manifests
     - name: Find platform service app manifests

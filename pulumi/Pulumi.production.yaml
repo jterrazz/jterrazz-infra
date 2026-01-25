@@ -2,3 +2,5 @@ config:
   jterrazz-infra:serverType: cax21
   jterrazz-infra:location: nbg1
   jterrazz-infra:image: ubuntu-24.04
+  jterrazz-infra:n8nEncryptionKey:
+    secure: AAABABiW5RbZWEjr87pCY71bF9JCqbRHH3JYU8DBDgh0Sg5MYNeIt53K2HJVnx2PAcFq8UmRATFnfznSsAxXIg==

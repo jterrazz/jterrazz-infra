@@ -27,6 +27,11 @@ const registryPassword = new random.RandomPassword("registry-password", {
   special: false,
 });
 
+// n8n encryption key (stored encrypted in Pulumi state)
+// This key is used by n8n to encrypt credentials stored in its database
+// Set via: pulumi config set --secret n8nEncryptionKey <value>
+const n8nEncryptionKeyValue = config.requireSecret("n8nEncryptionKey");
+
 // Cloud-init to setup SSH key and packages
 const cloudInit = pulumi.interpolate`#cloud-config
 package_update: true
@@ -62,3 +67,6 @@ export const sshPrivateKey = pulumi.secret(sshKeyPair.privateKeyOpenssh);
 
 // Docker Registry credentials (secret - for GitHub Actions and k8s)
 export const dockerRegistryPassword = pulumi.secret(registryPassword.result);
+
+// n8n encryption key (secret - for encrypting credentials in n8n database)
+export const n8nEncryptionKey = n8nEncryptionKeyValue;
