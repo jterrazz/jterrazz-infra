@@ -35,6 +35,8 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=3072"
           volumeMounts:
             - name: data
               mountPath: /root/.clawdbot
@@ -48,9 +50,9 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 1Gi
-            limits:
               memory: 2Gi
+            limits:
+              memory: 4Gi
           # Probes disabled during onboarding (sleep infinity doesn't serve /health)
           # Re-enable after onboarding by uncommenting below
           # livenessProbe:
