@@ -4,3 +4,7 @@ config:
   jterrazz-infra:image: ubuntu-24.04
   jterrazz-infra:n8nEncryptionKey:
     secure: AAABAJOeTU3O8ipScZBVb78w7sIYZFR3+5JePjZDOLPh8p6H6tWH5J6T3GeohQwyZkQfENyRcnorLg8mxc0igQ==
+  jterrazz-infra:clawdbotGatewayToken:
+    secure: AAABAEv+ZEL6tw6JDnuGBvC7QOuItPz6FABHHtwCbF4GS6T75yT2X9aQtBl4aenGo0U866Vla/G1zLAdHzqHQjU2Xpz3PZJDY02nG9hNSTeB+3LPJ9dH3RsLWuEOoX0b
+  jterrazz-infra:clawdbotClaudeToken:
+    secure: AAABAIOmM0SblgLaEVHjp/WBZ0zaXuSwwKdje0Zg+qQLCW3Mu3fLlNfd52jb11dYQmraSzaGhkv3ZsnTigoszaHac1l9CYL6MdPJfsajfxEHlDTnyfiZe3xfbihnj0qUk/SFUwJnCsxLqyGBEU240rzPz0nVs77Gii1EyLOYqcBzqhluPWMxw+/G7BY=

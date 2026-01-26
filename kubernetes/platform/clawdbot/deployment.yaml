@@ -19,7 +19,86 @@ spec:
       labels:
         app: clawdbot
     spec:
-      # Note: clawdbot-docker image requires root to start, then drops privileges
+      # Init container to setup config from K8s secrets if not exists
+      initContainers:
+        - name: init-config
+          image: ghcr.io/zot24/clawdbot-docker:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              CONFIG_DIR=/root/.clawdbot
+              CONFIG_FILE=$CONFIG_DIR/clawdbot.json
+              AUTH_DIR=$CONFIG_DIR/agents/main/agent
+              AUTH_FILE=$AUTH_DIR/auth-profiles.json
+
+              # Create directories
+              mkdir -p $CONFIG_DIR $AUTH_DIR
+
+              # Create clawdbot.json if it doesn't exist
+              if [ ! -f "$CONFIG_FILE" ]; then
+                echo "Creating initial clawdbot.json..."
+                cat > $CONFIG_FILE << EOF
+              {
+                "agents": {
+                  "defaults": {
+                    "workspace": "/root/clawd"
+                  }
+                },
+                "gateway": {
+                  "mode": "local",
+                  "port": 18789,
+                  "bind": "lan",
+                  "auth": {
+                    "token": "$GATEWAY_TOKEN"
+                  }
+                }
+              }
+              EOF
+                chmod 600 $CONFIG_FILE
+              else
+                echo "clawdbot.json already exists, skipping..."
+              fi
+
+              # Create auth-profiles.json if it doesn't exist
+              if [ ! -f "$AUTH_FILE" ]; then
+                echo "Creating initial auth-profiles.json..."
+                cat > $AUTH_FILE << EOF
+              {
+                "profiles": {
+                  "anthropic:claude-cli": {
+                    "type": "oauth",
+                    "provider": "anthropic",
+                    "accessToken": "$CLAUDE_TOKEN"
+                  }
+                }
+              }
+              EOF
+                chmod 600 $AUTH_FILE
+              else
+                echo "auth-profiles.json already exists, skipping..."
+              fi
+
+              # Create credentials directory
+              mkdir -p $CONFIG_DIR/credentials
+              chmod 700 $CONFIG_DIR
+
+              echo "Init complete."
+          env:
+            - name: GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawdbot-secrets
+                  key: GATEWAY_TOKEN
+            - name: CLAUDE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clawdbot-secrets
+                  key: CLAUDE_TOKEN
+          volumeMounts:
+            - name: data
+              mountPath: /root/.clawdbot
+              subPath: config
       containers:
         - name: clawdbot
           # Community image with signal-cli, playwright, etc

@@ -2,90 +2,70 @@
 
 Personal AI assistant using Claude Max with Signal integration.
 
-## Initial Setup (One-time)
+## Secrets Management
 
-After deploying, you need to complete the interactive setup from your terminal.
-
-### 1. Create storage directory on VPS
+Clawdbot secrets are managed via Pulumi and deployed by Ansible:
 
 ```bash
-ssh root@46.224.186.190
-mkdir -p /var/lib/k8s-data/clawdbot/{config,workspace,signal-cli}
+# Set secrets in Pulumi (one-time setup)
+cd pulumi
+pulumi config set --secret clawdbotGatewayToken "<your-gateway-token>"
+pulumi config set --secret clawdbotClaudeToken "<your-claude-oauth-token>"
 ```
 
-### 2. Authenticate with Claude Max
+The Ansible playbook creates the `clawdbot-secrets` K8s secret, and an init container
+writes the config files on first deploy.
 
-The pod is deployed with `sleep infinity` to allow manual onboarding.
+## Getting a Claude OAuth Token
+
+You need a Claude Max subscription. To get the OAuth token:
 
 ```bash
-# SSH into the server
-ssh root@46.224.186.190
+# On your local machine with Claude CLI installed
+claude login
 
-# Exec into the pod with interactive TTY
-kubectl exec -it -n platform-clawdbot deploy/clawdbot -- bash
-
-# Inside the pod, run auth setup (prints OAuth URL to copy/paste to browser)
-node /app/dist/entry.js models auth setup-token --provider anthropic --yes
+# The token is stored in ~/.claude or can be obtained via the OAuth flow
+# It looks like: sk-ant-oat01-...
 ```
 
-This will print an OAuth URL. Copy it to your browser to authenticate with your Claude Max subscription.
+## Initial Setup (Only needed for fresh deployment)
 
-### 3. Link Signal account
+After first deploy, the init container creates config from secrets. However, device
+pairing must be done manually:
+
+### 1. Access the Control UI
+
+```
+https://clawdbot.jterrazz.com/?token=<gateway-token>
+```
+
+The UI will show "pairing required". This creates a pairing request.
+
+### 2. Approve the pairing
+
+```bash
+ssh root@<server-ip>
+kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices list
+kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices approve <request-id>
+```
+
+### 3. (Optional) Link Signal account
 
 You need a **separate phone number** for the bot (not your personal Signal).
 
 ```bash
-# Still inside the pod
-node /app/dist/entry.js channels login --channel signal
+kubectl exec -it -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js channels login --channel signal
 ```
 
-Or use signal-cli directly:
+## Data Persistence
 
-```bash
-signal-cli link -n "Clawdbot"
-```
+All Clawdbot data is stored on a PersistentVolume at `/var/lib/k8s-data/clawdbot/`:
 
-This displays a QR code or link. Scan it with Signal app:
+- `config/` - Clawdbot configuration, auth profiles, device pairings
+- `workspace/` - Agent workspace
+- `signal-cli/` - Signal credentials and message history
 
-- Open Signal > Settings > Linked Devices > Link New Device
-
-### 4. Run the full setup wizard
-
-```bash
-# Inside the pod
-node /app/dist/entry.js onboard
-```
-
-This will configure:
-
-- Workspace directory
-- Gateway settings
-- Channel configuration
-
-### 5. Update deployment to run gateway
-
-After onboarding, update the deployment to run the gateway instead of sleep:
-
-Edit `deployment.yaml`:
-
-```yaml
-# Remove command/args to use default entrypoint
-# command: ["/bin/sh", "-c"]
-# args: ["sleep infinity"]
-```
-
-Then push and sync:
-
-```bash
-git add . && git commit -m "chore: enable clawdbot gateway" && git push
-```
-
-## Usage
-
-- Send a message to your bot's Signal number
-- First message triggers pairing mode (you'll receive a code)
-- Approve pairing: `kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js pairing approve signal <CODE>`
-- After approval, the bot responds using Claude
+This data persists across pod restarts and redeployments.
 
 ## Access
 
@@ -98,9 +78,33 @@ git add . && git commit -m "chore: enable clawdbot gateway" && git push
 # Check logs
 kubectl logs -n platform-clawdbot deploy/clawdbot -f
 
+# Check init container logs
+kubectl logs -n platform-clawdbot deploy/clawdbot -c init-config
+
 # Check health
 kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js doctor
 
-# Check signal-cli status
-kubectl exec -n platform-clawdbot deploy/clawdbot -- signal-cli -a +33XXXXXXXXX receive
+# List paired devices
+kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices list
+```
+
+## Upgrading Claude Token
+
+If your Claude token expires:
+
+```bash
+# Update in Pulumi
+cd pulumi
+pulumi config set --secret clawdbotClaudeToken "<new-token>"
+
+# Re-run Ansible to update the K8s secret
+cd ../ansible
+./run.sh platform
+
+# Delete the auth file so init container recreates it
+ssh root@<server-ip>
+kubectl exec -n platform-clawdbot deploy/clawdbot -- rm /root/.clawdbot/agents/main/agent/auth-profiles.json
+
+# Restart the pod
+kubectl rollout restart deployment/clawdbot -n platform-clawdbot
 ```

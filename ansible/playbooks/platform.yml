@@ -349,6 +349,33 @@
       changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
       no_log: true
 
+    # Create Clawdbot namespace and secrets
+    # Clawdbot needs gateway token (WebSocket auth) and Claude token (AI model auth)
+    - name: Create platform-clawdbot namespace
+      ansible.builtin.command: kubectl create namespace platform-clawdbot
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: clawdbot_ns
+      changed_when: "'created' in clawdbot_ns.stdout"
+      failed_when: false
+
+    - name: Create Clawdbot secrets
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic clawdbot-secrets \
+            --from-literal=GATEWAY_TOKEN="{{ clawdbot_gateway_token }}" \
+            --from-literal=CLAUDE_TOKEN="{{ clawdbot_claude_token }}" \
+            --namespace platform-clawdbot \
+            --dry-run=client -o yaml | kubectl apply -f -
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: clawdbot_gateway_token is defined and clawdbot_gateway_token | length > 0
+      register: clawdbot_secret
+      changed_when: "'created' in clawdbot_secret.stdout or 'configured' in clawdbot_secret.stdout"
+      no_log: true
+
     # Apply platform services (ArgoCD Applications)
     # Each app has its own folder with *-app.yaml or app.yaml as Application manifests
     - name: Find platform service app manifests

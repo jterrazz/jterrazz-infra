@@ -32,6 +32,14 @@ const registryPassword = new random.RandomPassword("registry-password", {
 // Set via: pulumi config set --secret n8nEncryptionKey <value>
 const n8nEncryptionKeyValue = config.requireSecret("n8nEncryptionKey");
 
+// Clawdbot secrets (stored encrypted in Pulumi state)
+// Gateway token for WebSocket authentication
+// Set via: pulumi config set --secret clawdbotGatewayToken <value>
+const clawdbotGatewayTokenValue = config.requireSecret("clawdbotGatewayToken");
+// Claude OAuth token for AI model access
+// Set via: pulumi config set --secret clawdbotClaudeToken <value>
+const clawdbotClaudeTokenValue = config.requireSecret("clawdbotClaudeToken");
+
 // Cloud-init to setup SSH key and packages
 const cloudInit = pulumi.interpolate`#cloud-config
 package_update: true
@@ -70,3 +78,7 @@ export const dockerRegistryPassword = pulumi.secret(registryPassword.result);
 
 // n8n encryption key (secret - for encrypting credentials in n8n database)
 export const n8nEncryptionKey = n8nEncryptionKeyValue;
+
+// Clawdbot secrets
+export const clawdbotGatewayToken = clawdbotGatewayTokenValue;
+export const clawdbotClaudeToken = clawdbotClaudeTokenValue;
