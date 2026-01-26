@@ -19,6 +19,9 @@ kind: IngressRoute
 metadata:
   name: clawdbot
   namespace: platform-clawdbot
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: clawdbot.jterrazz.com
+    external-dns.alpha.kubernetes.io/target: jterrazz-vps.tail77a797.ts.net
 spec:
   entryPoints:
     - websecure
