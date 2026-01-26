@@ -22,9 +22,15 @@ spec:
       # Note: clawdbot-docker image requires root to start, then drops privileges
       containers:
         - name: clawdbot
-          # All-in-one clawdbot image
-          image: ghcr.io/0x1f415/clawdbot-docker:latest
+          # Community image with signal-cli, playwright, etc
+          image: ghcr.io/zot24/clawdbot-docker:latest
           imagePullPolicy: Always
+          command: ["/bin/sh", "-c"]
+          # Remove bundled config on startup, then run gateway
+          args:
+            - |
+              rm -f /root/.clawdbot/clawdbot.json
+              exec node dist/index.js gateway
           ports:
             - name: gateway
               containerPort: 18789
