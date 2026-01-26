@@ -2,6 +2,13 @@
 
 Personal AI assistant using Claude Max with Signal integration.
 
+## Architecture
+
+- **Secrets**: Stored encrypted in Pulumi, deployed as K8s secrets via Ansible
+- **Authentication**: Uses `ANTHROPIC_API_KEY` environment variable (from Claude Max OAuth token)
+- **Config**: Init container creates gateway config on first deploy
+- **Storage**: PersistentVolume for memories, sessions, and Signal data
+
 ## Secrets Management
 
 Clawdbot secrets are managed via Pulumi and deployed by Ansible:
@@ -13,8 +20,10 @@ pulumi config set --secret clawdbotGatewayToken "<your-gateway-token>"
 pulumi config set --secret clawdbotClaudeToken "<your-claude-oauth-token>"
 ```
 
-The Ansible playbook creates the `clawdbot-secrets` K8s secret, and an init container
-writes the config files on first deploy.
+The Ansible playbook creates the `clawdbot-secrets` K8s secret with:
+
+- `GATEWAY_TOKEN` - For web UI authentication
+- `CLAUDE_TOKEN` - Claude Max OAuth token (used as ANTHROPIC_API_KEY)
 
 ## Getting a Claude OAuth Token
 
@@ -24,14 +33,14 @@ You need a Claude Max subscription. To get the OAuth token:
 # On your local machine with Claude CLI installed
 claude login
 
-# The token is stored in ~/.claude or can be obtained via the OAuth flow
-# It looks like: sk-ant-oat01-...
+# After OAuth flow completes, get the token from:
+cat ~/.claude/.credentials.json
+# Look for the "oauthToken" field - it looks like: sk-ant-oat01-...
 ```
 
-## Initial Setup (Only needed for fresh deployment)
+## Initial Setup (First deployment only)
 
-After first deploy, the init container creates config from secrets. However, device
-pairing must be done manually:
+After deploying, device pairing must be done manually:
 
 ### 1. Access the Control UI
 
@@ -44,8 +53,13 @@ The UI will show "pairing required". This creates a pairing request.
 ### 2. Approve the pairing
 
 ```bash
-ssh root@<server-ip>
+# SSH via Tailscale
+ssh root@jterrazz-vps.tail77a797.ts.net
+
+# List pending requests
 kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices list
+
+# Approve the request
 kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices approve <request-id>
 ```
 
@@ -61,16 +75,16 @@ kubectl exec -it -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js
 
 All Clawdbot data is stored on a PersistentVolume at `/var/lib/k8s-data/clawdbot/`:
 
-- `config/` - Clawdbot configuration, auth profiles, device pairings
-- `workspace/` - Agent workspace
+- `config/` - Gateway configuration, auth profiles, device pairings
+- `workspace/` - Agent workspace and memories
 - `signal-cli/` - Signal credentials and message history
 
 This data persists across pod restarts and redeployments.
 
 ## Access
 
-- **Web UI**: https://clawdbot.jterrazz.com (Tailscale only)
-- **Gateway**: ws://clawdbot.platform-clawdbot:18789
+- **Web UI**: https://clawdbot.jterrazz.com (requires gateway token)
+- **DNS**: Points to Tailscale hostname via external-dns
 
 ## Troubleshooting
 
@@ -88,23 +102,29 @@ kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js doc
 kubectl exec -n platform-clawdbot deploy/clawdbot -- node /app/dist/entry.js devices list
 ```
 
-## Upgrading Claude Token
+## Updating Claude Token
 
 If your Claude token expires:
 
 ```bash
-# Update in Pulumi
+# 1. Get new token via claude login on your machine
+claude login
+cat ~/.claude/.credentials.json
+
+# 2. Update in Pulumi
 cd pulumi
 pulumi config set --secret clawdbotClaudeToken "<new-token>"
 
-# Re-run Ansible to update the K8s secret
+# 3. Re-run Ansible to update the K8s secret
 cd ../ansible
 ./run.sh platform
 
-# Delete the auth file so init container recreates it
-ssh root@<server-ip>
-kubectl exec -n platform-clawdbot deploy/clawdbot -- rm /root/.clawdbot/agents/main/agent/auth-profiles.json
-
-# Restart the pod
+# 4. Restart the pod to pick up new secret
 kubectl rollout restart deployment/clawdbot -n platform-clawdbot
 ```
+
+## Resources
+
+- Memory: 2Gi request, 4Gi limit
+- Node heap: 3072MB (via NODE_OPTIONS)
+- Server: Hetzner CAX31 (16GB RAM total)
