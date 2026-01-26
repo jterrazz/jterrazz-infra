@@ -25,7 +25,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: clawdbot
-          image: ghcr.io/clawdbot/clawdbot:latest
+          # Community image with Playwright, FFmpeg, signal-cli pre-installed
+          image: ghcr.io/zot24/clawdbot-docker:latest
           imagePullPolicy: Always
           ports:
             - name: gateway
