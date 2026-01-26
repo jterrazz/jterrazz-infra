@@ -19,10 +19,7 @@ spec:
       labels:
         app: clawdbot
     spec:
-      securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+      # Note: clawdbot-docker image requires root to start, then drops privileges
       containers:
         - name: clawdbot
           # Community image with Playwright, FFmpeg, signal-cli pre-installed
