@@ -50,7 +50,7 @@ jobs:
         id: pulumi
         with:
           command: up
-          stack-name: production
+          stack-name: jterrazz/production
           work-dir: pulumi
 
       # --- Ansible: Configure Server ---
