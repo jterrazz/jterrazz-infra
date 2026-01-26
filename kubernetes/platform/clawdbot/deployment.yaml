@@ -51,19 +51,21 @@ spec:
               memory: 512Mi
             limits:
               memory: 1Gi
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: gateway
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: gateway
-            initialDelaySeconds: 10
-            periodSeconds: 10
+          # Probes disabled during onboarding (sleep infinity doesn't serve /health)
+          # Re-enable after onboarding by uncommenting below
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: gateway
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 30
+          #   timeoutSeconds: 10
+          # readinessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: gateway
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 10
       volumes:
         - name: data
           persistentVolumeClaim:
