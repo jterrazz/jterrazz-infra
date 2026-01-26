@@ -56,6 +56,7 @@ Minimal Kubernetes infrastructure with local development and production deployme
 | **Infisical**    | Automated secrets management          |
 | **Tailscale**    | Private VPN for secure access         |
 | **n8n**          | Workflow automation                   |
+| **Clawdbot**     | Personal AI assistant (Claude Max)    |
 
 ## Quick Start
 
@@ -395,11 +396,12 @@ kubectl get applications -n platform-gitops
 
 ### Private Services (via Tailscale)
 
-| Service | URL                           | Purpose             |
-| ------- | ----------------------------- | ------------------- |
-| ArgoCD  | `https://argocd.jterrazz.com` | GitOps dashboard    |
-| SigNoz  | `https://signoz.jterrazz.com` | Observability       |
-| n8n     | `https://n8n.jterrazz.com`    | Workflow automation |
+| Service  | URL                             | Purpose             |
+| -------- | ------------------------------- | ------------------- |
+| ArgoCD   | `https://argocd.jterrazz.com`   | GitOps dashboard    |
+| SigNoz   | `https://signoz.jterrazz.com`   | Observability       |
+| n8n      | `https://n8n.jterrazz.com`      | Workflow automation |
+| Clawdbot | `https://clawdbot.jterrazz.com` | AI assistant        |
 
 All private services:
 
@@ -422,6 +424,7 @@ All persistent data lives in `/var/lib/k8s-data/` on the VPS. This single folder
 
 ```
 /var/lib/k8s-data/
+├── clawdbot/      # AI assistant config, memories, Signal data
 ├── n8n/           # n8n workflows and credentials
 ├── signews-api/   # App database (SQLite)
 └── signoz/        # Traces, metrics, logs, dashboards
