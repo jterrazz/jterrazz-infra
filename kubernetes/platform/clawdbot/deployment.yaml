@@ -25,12 +25,9 @@ spec:
           # Community image with signal-cli, playwright, etc
           image: ghcr.io/zot24/clawdbot-docker:latest
           imagePullPolicy: Always
+          # Keep container running for manual onboarding
           command: ["/bin/sh", "-c"]
-          # Remove bundled config on startup, then run gateway
-          args:
-            - |
-              rm -f /root/.clawdbot/clawdbot.json
-              exec node dist/index.js gateway
+          args: ["sleep infinity"]
           ports:
             - name: gateway
               containerPort: 18789
