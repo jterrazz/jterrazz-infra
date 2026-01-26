@@ -116,6 +116,11 @@ spec:
               value: "production"
             - name: NODE_OPTIONS
               value: "--max-old-space-size=3072"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: clawdbot-secrets
+                  key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
               mountPath: /root/.clawdbot

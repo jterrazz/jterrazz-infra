@@ -7,4 +7,4 @@ config:
   jterrazz-infra:clawdbotGatewayToken:
     secure: AAABAEv+ZEL6tw6JDnuGBvC7QOuItPz6FABHHtwCbF4GS6T75yT2X9aQtBl4aenGo0U866Vla/G1zLAdHzqHQjU2Xpz3PZJDY02nG9hNSTeB+3LPJ9dH3RsLWuEOoX0b
   jterrazz-infra:clawdbotClaudeToken:
-    secure: AAABAIOmM0SblgLaEVHjp/WBZ0zaXuSwwKdje0Zg+qQLCW3Mu3fLlNfd52jb11dYQmraSzaGhkv3ZsnTigoszaHac1l9CYL6MdPJfsajfxEHlDTnyfiZe3xfbihnj0qUk/SFUwJnCsxLqyGBEU240rzPz0nVs77Gii1EyLOYqcBzqhluPWMxw+/G7BY=
+    secure: AAABAKQjsNG6UsE55IEYaJzZiT/++KPb+dtm+gRko2eBYaZ15TJhvhDbN4Wqf2kz3JbJzXxrnJGIgpItr0Fo6WdaHoxiFYJfAkYZYaBctyY8+HANgT/C0QDKy7okbr8tBrppEVFNLWZ4Qx4nbpyw+XAC3of2yHKCLKdKUEXKiISv4QVmCcUGui1sHFI=
