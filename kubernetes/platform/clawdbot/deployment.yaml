@@ -22,8 +22,8 @@ spec:
       # Note: clawdbot-docker image requires root to start, then drops privileges
       containers:
         - name: clawdbot
-          # Community image with Playwright, FFmpeg, signal-cli pre-installed
-          image: ghcr.io/zot24/clawdbot-docker:latest
+          # All-in-one clawdbot image
+          image: ghcr.io/0x1f415/clawdbot-docker:latest
           imagePullPolicy: Always
           ports:
             - name: gateway
@@ -32,17 +32,15 @@ spec:
           env:
             - name: NODE_ENV
               value: "production"
-            - name: CLAWDBOT_GATEWAY_BIND
-              value: "0.0.0.0"
           volumeMounts:
             - name: data
-              mountPath: /home/node/.clawdbot
+              mountPath: /root/.clawdbot
               subPath: config
             - name: data
-              mountPath: /home/node/clawd
+              mountPath: /root/clawd
               subPath: workspace
             - name: data
-              mountPath: /home/node/.local/share/signal-cli
+              mountPath: /root/.local/share/signal-cli
               subPath: signal-cli
           resources:
             requests:
