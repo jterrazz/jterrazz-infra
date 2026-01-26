@@ -1,5 +1,5 @@
 config:
-  jterrazz-infra:serverType: cax21
+  jterrazz-infra:serverType: cax31
   jterrazz-infra:location: nbg1
   jterrazz-infra:image: ubuntu-24.04
   jterrazz-infra:n8nEncryptionKey:

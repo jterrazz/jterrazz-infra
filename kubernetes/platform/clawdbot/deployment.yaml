@@ -25,9 +25,9 @@ spec:
           # Community image with signal-cli, playwright, etc
           image: ghcr.io/zot24/clawdbot-docker:latest
           imagePullPolicy: Always
-          # Keep container running for manual onboarding
-          command: ["/bin/sh", "-c"]
-          args: ["sleep infinity"]
+          # Run the gateway
+          command: ["node"]
+          args: ["/app/dist/entry.js", "gateway", "run"]
           ports:
             - name: gateway
               containerPort: 18789
@@ -53,21 +53,19 @@ spec:
               memory: 2Gi
             limits:
               memory: 4Gi
-          # Probes disabled during onboarding (sleep infinity doesn't serve /health)
-          # Re-enable after onboarding by uncommenting below
-          # livenessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: gateway
-          #   initialDelaySeconds: 30
-          #   periodSeconds: 30
-          #   timeoutSeconds: 10
-          # readinessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: gateway
-          #   initialDelaySeconds: 10
-          #   periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 30
+            periodSeconds: 10
       volumes:
         - name: data
           persistentVolumeClaim:
