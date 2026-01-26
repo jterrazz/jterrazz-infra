@@ -53,7 +53,7 @@ spec:
         # Source 1: Helm chart from infra repo
         - repoURL: https://github.com/jterrazz/jterrazz-infra.git
           targetRevision: HEAD
-          path: charts/app
+          path: kubernetes/charts/app
           helm:
             valueFiles:
               - $app/.deploy/manifest.yaml

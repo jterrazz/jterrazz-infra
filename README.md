@@ -77,10 +77,10 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   ├── playbooks/              # Orchestration playbooks
 │   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
-├── charts/                     # Helm charts
-│   └── app/                    # Standard app chart (used by all apps)
-│
 ├── kubernetes/                 # GitOps manifests (ArgoCD syncs these)
+│   ├── charts/                 # Helm charts
+│   │   └── app/                # Standard app chart (used by all apps)
+│   │
 │   ├── infrastructure/         # Base capabilities (rarely changes)
 │   │   └── base/
 │   │       ├── storage/        # StorageClass definitions
@@ -91,11 +91,12 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │   ├── argocd/
 │   │   ├── signoz/
 │   │   ├── n8n/
+│   │   ├── clawdbot/
 │   │   ├── cert-manager/
 │   │   ├── external-dns/
 │   │   └── infisical/
 │   │
-│   └── applications/           # Your app definitions (use charts/app)
+│   └── applications/           # Your app definitions
 │
 ├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
 └── scripts/                    # Automation scripts
@@ -105,7 +106,7 @@ make deploy   # Deploy to Hetzner (or push to main)
 
 ### Standard App Chart
 
-The `charts/app/` Helm chart provides a standardized way to deploy applications. Apps only need to define a simple manifest file - the chart handles all Kubernetes complexity (Deployment, Service, Ingress, Storage, Secrets).
+The `kubernetes/charts/app/` Helm chart provides a standardized way to deploy applications. Apps only need to define a simple manifest file - the chart handles all Kubernetes complexity (Deployment, Service, Ingress, Storage, Secrets).
 
 **What the chart auto-generates:**
 
@@ -465,7 +466,7 @@ The PVs use `hostPath` pointing to `/var/lib/k8s-data/{name}`, so as long as tha
 
 ### File ownership
 
-All apps using `charts/app/` run as UID 1000. New storage folders should be owned by `1000:1000`:
+All apps using `kubernetes/charts/app/` run as UID 1000. New storage folders should be owned by `1000:1000`:
 
 ```bash
 chown -R 1000:1000 /var/lib/k8s-data/my-app
