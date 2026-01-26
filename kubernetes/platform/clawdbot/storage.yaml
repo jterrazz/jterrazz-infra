@@ -1,0 +1,35 @@
+---
+# Persistent storage for Clawdbot data
+# Stores: config, conversation history, signal-cli data, workspace files
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: clawdbot-data
+  labels:
+    app: clawdbot
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-path
+  hostPath:
+    path: /var/lib/k8s-data/clawdbot
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clawdbot-data
+  namespace: platform-clawdbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+  selector:
+    matchLabels:
+      app: clawdbot

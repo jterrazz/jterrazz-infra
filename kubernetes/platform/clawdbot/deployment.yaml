@@ -1,0 +1,87 @@
+---
+# Clawdbot Deployment
+# Runs the gateway with signal-cli for Signal messaging
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clawdbot
+  namespace: platform-clawdbot
+  labels:
+    app: clawdbot
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: clawdbot
+  template:
+    metadata:
+      labels:
+        app: clawdbot
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: clawdbot
+          image: ghcr.io/clawdbot/clawdbot:latest
+          imagePullPolicy: Always
+          ports:
+            - name: gateway
+              containerPort: 18789
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: CLAWDBOT_GATEWAY_BIND
+              value: "0.0.0.0"
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.clawdbot
+              subPath: config
+            - name: data
+              mountPath: /home/node/clawd
+              subPath: workspace
+            - name: data
+              mountPath: /home/node/.local/share/signal-cli
+              subPath: signal-cli
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: gateway
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: clawdbot-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clawdbot
+  namespace: platform-clawdbot
+  labels:
+    app: clawdbot
+spec:
+  type: ClusterIP
+  ports:
+    - name: gateway
+      port: 18789
+      targetPort: gateway
+  selector:
+    app: clawdbot
