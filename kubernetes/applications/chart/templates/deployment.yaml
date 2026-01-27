@@ -18,10 +18,12 @@ spec:
       labels:
         {{- include "app.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if not .Values.spec.runAsRoot }}
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
+      {{- end }}
       imagePullSecrets:
         - name: registry-credentials
       containers:
