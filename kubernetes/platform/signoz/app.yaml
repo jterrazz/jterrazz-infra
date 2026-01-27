@@ -50,9 +50,10 @@ spec:
                 size: 1Gi
               resources:
                 requests:
-                  cpu: 25m
+                  cpu: 500m
                   memory: 384Mi
                 limits:
+                  cpu: "1"
                   memory: 512Mi
 
           queryService:
