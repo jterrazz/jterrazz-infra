@@ -349,16 +349,8 @@
       changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
       no_log: true
 
-    # Create Clawdbot namespace and secrets
+    # Create Clawdbot secrets (in platform-automation namespace alongside n8n)
     # Clawdbot needs gateway token (WebSocket auth) and Claude token (AI model auth)
-    - name: Create platform-clawdbot namespace
-      ansible.builtin.command: kubectl create namespace platform-clawdbot
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: clawdbot_ns
-      changed_when: "'created' in clawdbot_ns.stdout"
-      failed_when: false
-
     - name: Create Clawdbot secrets
       ansible.builtin.shell:
         cmd: |
@@ -366,7 +358,7 @@
           kubectl create secret generic clawdbot-secrets \
             --from-literal=GATEWAY_TOKEN="{{ clawdbot_gateway_token }}" \
             --from-literal=CLAUDE_TOKEN="{{ clawdbot_claude_token }}" \
-            --namespace platform-clawdbot \
+            --namespace platform-automation \
             --dry-run=client -o yaml | kubectl apply -f -
         executable: /bin/bash
       environment:
