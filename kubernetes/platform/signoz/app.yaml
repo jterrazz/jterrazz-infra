@@ -27,7 +27,7 @@ spec:
               storageClass: manual
             resources:
               requests:
-                cpu: 500m
+                cpu: 1000m
                 memory: 2Gi
               limits:
                 cpu: "2"
@@ -51,7 +51,7 @@ spec:
               resources:
                 requests:
                   cpu: 25m
-                  memory: 256Mi
+                  memory: 384Mi
                 limits:
                   memory: 512Mi
 
@@ -59,7 +59,7 @@ spec:
             resources:
               requests:
                 cpu: 50m
-                memory: 128Mi
+                memory: 150Mi
               limits:
                 memory: 512Mi
 
