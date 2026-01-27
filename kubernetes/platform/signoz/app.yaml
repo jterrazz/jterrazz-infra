@@ -27,11 +27,11 @@ spec:
               storageClass: manual
             resources:
               requests:
-                cpu: 800m
-                memory: 3Gi
+                cpu: 500m
+                memory: 2Gi
               limits:
-                cpu: "1"
-                memory: 5Gi
+                cpu: "2"
+                memory: 6Gi
             files:
               config.d/disable_expensive_logs.xml: |
                   <clickhouse>
@@ -53,12 +53,12 @@ spec:
                   cpu: 25m
                   memory: 256Mi
                 limits:
-                  memory: 384Mi
+                  memory: 512Mi
 
           queryService:
             resources:
               requests:
-                cpu: 100m
+                cpu: 50m
                 memory: 128Mi
               limits:
                 memory: 512Mi
@@ -69,7 +69,7 @@ spec:
                 cpu: 10m
                 memory: 64Mi
               limits:
-                memory: 128Mi
+                memory: 256Mi
 
           alertmanager:
             resources:
@@ -82,10 +82,10 @@ spec:
           otelCollector:
             resources:
               requests:
-                cpu: 100m
-                memory: 128Mi
+                cpu: 50m
+                memory: 200Mi
               limits:
-                memory: 512Mi
+                memory: 768Mi
 
     # Source 2: K8s infrastructure monitoring (DaemonSet for host/pod metrics)
     - repoURL: https://charts.signoz.io
@@ -113,18 +113,18 @@ spec:
           otelAgent:
             resources:
               requests:
-                cpu: 50m
-                memory: 128Mi
+                cpu: 25m
+                memory: 100Mi
               limits:
-                memory: 256Mi
+                memory: 384Mi
 
           otelDeployment:
             resources:
               requests:
-                cpu: 50m
-                memory: 64Mi
+                cpu: 25m
+                memory: 128Mi
               limits:
-                memory: 256Mi
+                memory: 384Mi
 
     # Source 3: Local resources (ingress, storage)
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git

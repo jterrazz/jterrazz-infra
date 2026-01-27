@@ -30,22 +30,22 @@ spec:
           redis:
             resources:
               requests:
-                cpu: 10m
-                memory: 32Mi
+                cpu: 5m
+                memory: 16Mi
               limits:
                 memory: 64Mi
           controller:
             resources:
               requests:
-                cpu: 100m
-                memory: 256Mi
+                cpu: 50m
+                memory: 128Mi
               limits:
                 memory: 512Mi
           repoServer:
             resources:
               requests:
                 cpu: 25m
-                memory: 128Mi
+                memory: 100Mi
               limits:
                 memory: 384Mi
           applicationSet:
@@ -54,21 +54,28 @@ spec:
                 cpu: 10m
                 memory: 64Mi
               limits:
-                memory: 128Mi
+                memory: 192Mi
           notifications:
             resources:
               requests:
-                cpu: 10m
+                cpu: 5m
                 memory: 32Mi
               limits:
-                memory: 64Mi
+                memory: 96Mi
           dex:
             resources:
               requests:
-                cpu: 10m
+                cpu: 5m
                 memory: 32Mi
               limits:
+                memory: 96Mi
+          server:
+            resources:
+              requests:
+                cpu: 25m
                 memory: 64Mi
+              limits:
+                memory: 192Mi
     # Source 2: Additional resources from this folder
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD

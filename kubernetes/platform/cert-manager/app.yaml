@@ -28,23 +28,23 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 48Mi
             limits:
-              memory: 128Mi
+              memory: 192Mi
           webhook:
             resources:
               requests:
-                cpu: 10m
-                memory: 32Mi
+                cpu: 5m
+                memory: 48Mi
               limits:
-                memory: 64Mi
+                memory: 128Mi
           cainjector:
             resources:
               requests:
                 cpu: 10m
                 memory: 32Mi
               limits:
-                memory: 128Mi
+                memory: 192Mi
     # Source 2: ClusterIssuers from this folder
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD

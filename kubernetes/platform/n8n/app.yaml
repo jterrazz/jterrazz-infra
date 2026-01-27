@@ -25,10 +25,10 @@ spec:
               existingClaim: n8n-data
             resources:
               requests:
-                cpu: 50m
-                memory: 256Mi
+                cpu: 25m
+                memory: 300Mi
               limits:
-                memory: 512Mi
+                memory: 768Mi
 
           # Encryption key for credentials (managed via Pulumi/Ansible)
           # Secret created by Ansible with key N8N_ENCRYPTION_KEY

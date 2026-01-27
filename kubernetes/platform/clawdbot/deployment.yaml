@@ -133,10 +133,10 @@ spec:
               subPath: signal-cli
           resources:
             requests:
-              cpu: 100m
-              memory: 2Gi
+              cpu: 50m
+              memory: 768Mi
             limits:
-              memory: 4Gi
+              memory: 2Gi
           livenessProbe:
             httpGet:
               path: /health
