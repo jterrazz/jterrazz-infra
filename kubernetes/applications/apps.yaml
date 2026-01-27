@@ -24,6 +24,7 @@ spec:
           - list:
               elements:
                 - repo: signews-api
+                - repo: gateway-intelligence
           # Environments to deploy (with image update config)
           - list:
               elements:
