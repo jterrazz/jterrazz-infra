@@ -4,7 +4,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: clawdbot-tls
-  namespace: platform-clawdbot
+  namespace: platform-automation
 spec:
   secretName: clawdbot-tls
   issuerRef:
@@ -18,7 +18,7 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: clawdbot
-  namespace: platform-clawdbot
+  namespace: platform-automation
   annotations:
     external-dns.alpha.kubernetes.io/hostname: clawdbot.jterrazz.com
     external-dns.alpha.kubernetes.io/target: jterrazz-vps.tail77a797.ts.net

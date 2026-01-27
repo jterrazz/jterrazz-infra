@@ -19,7 +19,7 @@ spec:
         exclude: "app.yaml"
   destination:
     server: https://kubernetes.default.svc
-    namespace: platform-clawdbot
+    namespace: platform-automation
   syncPolicy:
     automated:
       prune: true
