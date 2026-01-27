@@ -27,11 +27,11 @@ spec:
               storageClass: manual
             resources:
               requests:
-                cpu: 1000m
-                memory: 2Gi
+                cpu: 500m
+                memory: 1536Mi
               limits:
                 cpu: "2"
-                memory: 6Gi
+                memory: 4Gi
             files:
               config.d/disable_expensive_logs.xml: |
                   <clickhouse>
@@ -50,10 +50,10 @@ spec:
                 size: 1Gi
               resources:
                 requests:
-                  cpu: 500m
-                  memory: 384Mi
+                  cpu: 100m
+                  memory: 300Mi
                 limits:
-                  cpu: "1"
+                  cpu: 500m
                   memory: 512Mi
 
           queryService:

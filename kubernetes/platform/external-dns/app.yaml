@@ -44,9 +44,10 @@ spec:
         resources:
           requests:
             cpu: 5m
-            memory: 48Mi
+            memory: 24Mi
           limits:
-            memory: 96Mi
+            cpu: 100m
+            memory: 64Mi
 
         # Log what it's doing
         logLevel: debug

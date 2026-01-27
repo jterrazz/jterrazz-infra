@@ -26,9 +26,10 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 80Mi
+              memory: 64Mi
             limits:
-              memory: 160Mi
+              cpu: 200m
+              memory: 192Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: platform-gitops
