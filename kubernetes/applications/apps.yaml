@@ -18,22 +18,21 @@ spec:
     - jqPathExpressions:
         - .spec.sources[].helm.parameters
   generators:
-    - matrix:
-        generators:
-          # List of app repositories
-          - list:
-              elements:
-                - repo: signews-api
-                - repo: gateway-intelligence
-          # Environments to deploy (with image update config)
-          - list:
-              elements:
-                - environment: staging
-                  imageTag: latest
-                  updateStrategy: digest
-                - environment: prod
-                  imageTag: "v*"
-                  updateStrategy: semver
+    # Each app defines its repo and environments
+    # staging: auto-deploy on every push (latest tag, digest strategy)
+    # prod: deploy on version tags (v*, semver strategy)
+    - list:
+        elements:
+          # signews-api: staging only for now
+          - repo: signews-api
+            environment: staging
+            imageTag: latest
+            updateStrategy: digest
+          # gateway-intelligence: prod only
+          - repo: gateway-intelligence
+            environment: prod
+            imageTag: latest
+            updateStrategy: digest
   template:
     metadata:
       name: "{{repo}}-{{environment}}"
