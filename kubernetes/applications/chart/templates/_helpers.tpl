@@ -71,10 +71,10 @@ Get nested merged value for resources
 {{- end -}}
 
 {{/*
-Namespace - app-{name}-{environment} format
+Namespace - {environment}-{name} format
 */}}
 {{- define "app.namespace" -}}
-app-{{ include "app.name" . }}-{{ .Values.environment }}
+{{ .Values.environment }}-{{ include "app.name" . }}
 {{- end -}}
 
 {{/*

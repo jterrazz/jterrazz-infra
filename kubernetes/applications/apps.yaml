@@ -35,7 +35,7 @@ spec:
             updateStrategy: digest
   template:
     metadata:
-      name: "{{repo}}-{{environment}}"
+      name: "{{environment}}-{{repo}}"
       namespace: platform-gitops
       annotations:
         # ArgoCD Image Updater - watches registry for new images
@@ -65,7 +65,7 @@ spec:
           ref: app
       destination:
         server: https://kubernetes.default.svc
-        namespace: "app-{{repo}}-{{environment}}"
+        namespace: "{{environment}}-{{repo}}"
       syncPolicy:
         automated:
           prune: true
