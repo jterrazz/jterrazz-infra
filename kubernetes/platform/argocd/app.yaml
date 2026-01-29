@@ -38,8 +38,8 @@ spec:
           controller:
             resources:
               requests:
-                cpu: 100m
-                memory: 128Mi
+                cpu: 50m
+                memory: 256Mi
               limits:
                 cpu: "1"
                 memory: 512Mi
@@ -71,9 +71,9 @@ spec:
             resources:
               requests:
                 cpu: 5m
-                memory: 48Mi
+                memory: 64Mi
               limits:
-                cpu: 250m
+                cpu: 100m
                 memory: 128Mi
           server:
             resources:

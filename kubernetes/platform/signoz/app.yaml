@@ -27,8 +27,8 @@ spec:
               storageClass: manual
             resources:
               requests:
-                cpu: 500m
-                memory: 1536Mi
+                cpu: 1000m
+                memory: 2Gi
               limits:
                 cpu: "2"
                 memory: 4Gi
@@ -50,18 +50,19 @@ spec:
                 size: 1Gi
               resources:
                 requests:
-                  cpu: 100m
-                  memory: 300Mi
+                  cpu: 25m
+                  memory: 384Mi
                 limits:
-                  cpu: 500m
+                  cpu: 200m
                   memory: 512Mi
 
           queryService:
             resources:
               requests:
-                cpu: 50m
+                cpu: 25m
                 memory: 150Mi
               limits:
+                cpu: 500m
                 memory: 512Mi
 
           frontend:
@@ -70,23 +71,26 @@ spec:
                 cpu: 10m
                 memory: 64Mi
               limits:
+                cpu: 200m
                 memory: 256Mi
 
           alertmanager:
             resources:
               requests:
-                cpu: 10m
+                cpu: 5m
                 memory: 32Mi
               limits:
+                cpu: 100m
                 memory: 128Mi
 
           otelCollector:
             resources:
               requests:
-                cpu: 50m
-                memory: 200Mi
+                cpu: 25m
+                memory: 100Mi
               limits:
-                memory: 768Mi
+                cpu: 500m
+                memory: 512Mi
 
     # Source 2: K8s infrastructure monitoring (DaemonSet for host/pod metrics)
     - repoURL: https://charts.signoz.io
@@ -114,18 +118,20 @@ spec:
           otelAgent:
             resources:
               requests:
-                cpu: 25m
-                memory: 100Mi
+                cpu: 10m
+                memory: 64Mi
               limits:
-                memory: 384Mi
+                cpu: 100m
+                memory: 256Mi
 
           otelDeployment:
             resources:
               requests:
-                cpu: 25m
-                memory: 128Mi
+                cpu: 10m
+                memory: 64Mi
               limits:
-                memory: 384Mi
+                cpu: 100m
+                memory: 256Mi
 
     # Source 3: Local resources (ingress, storage)
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
