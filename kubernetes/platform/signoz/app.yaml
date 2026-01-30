@@ -1,6 +1,6 @@
 ---
 # SigNoz - Observability Platform
-# APM, Metrics, Logs, Traces + Kubernetes Infrastructure Monitoring
+# APM, Metrics, Logs, Traces
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -102,48 +102,7 @@ spec:
                 cpu: 500m
                 memory: 512Mi
 
-    # Source 2: K8s infrastructure monitoring (DaemonSet for host/pod metrics)
-    - repoURL: https://charts.signoz.io
-      chart: k8s-infra
-      targetRevision: 0.15.0
-      helm:
-        values: |
-          otelCollectorEndpoint: signoz-otel-collector.platform-observability:4317
-
-          presets:
-            otlpExporter:
-              enabled: true
-            hostMetrics:
-              enabled: true
-              collectionInterval: 60s
-            kubeletMetrics:
-              enabled: true
-              collectionInterval: 60s
-              insecureSkipVerify: true
-            clusterMetrics:
-              enabled: true
-            logsCollection:
-              enabled: false
-
-          otelAgent:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 64Mi
-              limits:
-                cpu: 100m
-                memory: 256Mi
-
-          otelDeployment:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 64Mi
-              limits:
-                cpu: 100m
-                memory: 256Mi
-
-    # Source 3: Local resources (ingress, storage)
+    # Source 2: Local resources (ingress, storage)
     - repoURL: https://github.com/jterrazz/jterrazz-infra.git
       targetRevision: HEAD
       path: kubernetes/platform/signoz
