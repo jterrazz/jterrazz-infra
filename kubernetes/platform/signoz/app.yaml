@@ -52,10 +52,9 @@ spec:
                       <flush_interval_milliseconds>30000</flush_interval_milliseconds>
                     </query_log>
                     <!-- Reduce background merge threads to lower CPU -->
-                    <background_pool_size>4</background_pool_size>
-                    <background_schedule_pool_size>4</background_schedule_pool_size>
-                    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
-                    <number_of_free_entries_in_pool_to_execute_mutation>2</number_of_free_entries_in_pool_to_execute_mutation>
+                    <merge_tree>
+                      <number_of_free_entries_in_pool_to_execute_mutation>0</number_of_free_entries_in_pool_to_execute_mutation>
+                    </merge_tree>
                   </clickhouse>
             zookeeper:
               image:
