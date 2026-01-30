@@ -23,6 +23,8 @@ spec:
       initContainers:
         - name: init-config
           image: ghcr.io/zot24/clawdbot-docker:latest
+          securityContext:
+            runAsUser: 0
           command: ["/bin/sh", "-c"]
           args:
             - |
@@ -104,6 +106,8 @@ spec:
           # Community image with signal-cli, playwright, etc
           image: ghcr.io/zot24/clawdbot-docker:latest
           imagePullPolicy: Always
+          securityContext:
+            runAsUser: 0
           # Run the gateway
           command: ["node"]
           args: ["/app/dist/entry.js", "gateway", "run"]
