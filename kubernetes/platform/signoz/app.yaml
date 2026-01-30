@@ -49,6 +49,10 @@ spec:
                     <opentelemetry_span_log remove="1"/>
                     <zookeeper_log remove="1"/>
                     <processors_profile_log remove="1"/>
+                    <!-- Fix mutation pool settings for low-resource environment -->
+                    <merge_tree>
+                      <number_of_free_entries_in_pool_to_execute_mutation>0</number_of_free_entries_in_pool_to_execute_mutation>
+                    </merge_tree>
                   </clickhouse>
             zookeeper:
               image:
