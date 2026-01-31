@@ -26,9 +26,10 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
 
-        # Domain filter - jterrazz.com zone
+        # Domain filters - managed zones
         domainFilters:
           - jterrazz.com
+          - clawrr.com
 
         # Only create records, don't delete unmanaged ones
         policy: upsert-only

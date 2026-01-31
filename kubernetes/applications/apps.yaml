@@ -33,6 +33,11 @@ spec:
             environment: prod
             imageTag: latest
             updateStrategy: digest
+          # clawrr-web-landing: public landing page at clawrr.com
+          - repo: clawrr-web-landing
+            environment: prod
+            imageTag: latest
+            updateStrategy: digest
   template:
     metadata:
       name: "{{environment}}-{{repo}}"
