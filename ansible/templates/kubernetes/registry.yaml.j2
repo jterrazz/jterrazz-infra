@@ -102,7 +102,7 @@ metadata:
   namespace: platform-registry
   annotations:
     external-dns.alpha.kubernetes.io/hostname: registry.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
+    external-dns.alpha.kubernetes.io/target: "{{ tailscale_ip }}"
 spec:
   entryPoints:
     - websecure
