@@ -44,6 +44,13 @@ spec:
             environment: prod
             imageTag: latest
             updateStrategy: digest
+          # clawrr: main experiment platform at clawrr.com
+          - repo: clawrr
+            repoUrl: https://github.com/clawrr/clawrr.git
+            imageName: clawrr
+            environment: prod
+            imageTag: latest
+            updateStrategy: digest
   template:
     metadata:
       name: "{{environment}}-{{repo}}"
