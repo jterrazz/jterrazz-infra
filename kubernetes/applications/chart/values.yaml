@@ -56,3 +56,8 @@ environments: {}
 
 # Set by ArgoCD ApplicationSet
 environment: ""
+
+# Infrastructure settings
+infrastructure:
+  publicIp: "46.224.186.190"
+  tailscaleHostname: "jterrazz-vps.tail77a797.ts.net"

@@ -22,8 +22,16 @@ kind: IngressRoute
 metadata:
   name: {{ $appName }}
   annotations:
+    {{- if $ingress.private }}
+    # Private: use Tailscale hostname (not proxied)
     external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
-    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
+    external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.tailscaleHostname | quote }}
+    {{- else }}
+    # Public: use server public IP with Cloudflare proxy
+    external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.publicIp | quote }}
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    {{- end }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
