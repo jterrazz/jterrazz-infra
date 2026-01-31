@@ -97,6 +97,7 @@ jobs:
             -e "cloudflare_api_token=${{ secrets.CLOUDFLARE_API_TOKEN }}" \
             -e "registry_password=${{ steps.pulumi.outputs.dockerRegistryPassword }}" \
             -e "github_pat=${{ secrets.ARGOCD_GITHUB_PAT }}" \
+            -e "github_pat_clawrr=${{ secrets.ARGOCD_GITHUB_PAT_CLAWRR }}" \
             -e "infisical_client_id=${{ secrets.INFISICAL_CLIENT_ID }}" \
             -e "infisical_client_secret=${{ secrets.INFISICAL_CLIENT_SECRET }}"
 

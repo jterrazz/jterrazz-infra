@@ -284,7 +284,7 @@
       changed_when: "'created' in net_secret.stdout or 'configured' in net_secret.stdout"
       no_log: true
 
-    - name: Create GitHub PAT secret for ArgoCD private repos
+    - name: Create GitHub PAT secret for ArgoCD private repos (jterrazz)
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
@@ -302,6 +302,26 @@
       when: github_pat is defined and github_pat | length > 0
       register: github_secret
       changed_when: "'created' in github_secret.stdout or 'configured' in github_secret.stdout"
+      no_log: true
+
+    - name: Create GitHub PAT secret for ArgoCD private repos (clawrr org)
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          kubectl create secret generic github-clawrr-repos \
+            --from-literal=type=git \
+            --from-literal=url=https://github.com/clawrr \
+            --from-literal=username=jterrazz \
+            --from-literal=password="{{ github_pat_clawrr }}" \
+            --namespace {{ argocd_namespace }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl label secret github-clawrr-repos -n {{ argocd_namespace }} argocd.argoproj.io/secret-type=repo-creds --overwrite
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: github_pat_clawrr is defined and github_pat_clawrr | length > 0
+      register: github_clawrr_secret
+      changed_when: "'created' in github_clawrr_secret.stdout or 'configured' in github_clawrr_secret.stdout"
       no_log: true
 
     # Create Infisical credentials for the secrets operator
