@@ -25,16 +25,22 @@ spec:
         elements:
           # signews-api: staging only for now
           - repo: signews-api
+            repoUrl: https://github.com/jterrazz/signews-api.git
+            imageName: signews-api
             environment: staging
             imageTag: latest
             updateStrategy: digest
           # gateway-intelligence: prod only
           - repo: gateway-intelligence
+            repoUrl: https://github.com/jterrazz/gateway-intelligence.git
+            imageName: gateway-intelligence
             environment: prod
             imageTag: latest
             updateStrategy: digest
           # clawrr-web-landing: public landing page at clawrr.com
           - repo: clawrr-web-landing
+            repoUrl: https://github.com/clawrr/web-landing.git
+            imageName: clawrr-web-landing
             environment: prod
             imageTag: latest
             updateStrategy: digest
@@ -46,7 +52,7 @@ spec:
         # ArgoCD Image Updater - watches registry for new images
         # Staging: uses :latest tag with digest strategy (auto-deploy on every push)
         # Prod: uses semver tags (v*) for controlled releases
-        argocd-image-updater.argoproj.io/image-list: "app=registry.jterrazz.com/{{repo}}:{{imageTag}}"
+        argocd-image-updater.argoproj.io/image-list: "app=registry.jterrazz.com/{{imageName}}:{{imageTag}}"
         argocd-image-updater.argoproj.io/app.update-strategy: "{{updateStrategy}}"
         argocd-image-updater.argoproj.io/app.force-update: "true"
         argocd-image-updater.argoproj.io/app.helm.image-spec: spec.image
@@ -65,7 +71,7 @@ spec:
             values: |
               environment: {{environment}}
         # Source 2: App repo (referenced as $app for valueFiles)
-        - repoURL: "https://github.com/jterrazz/{{repo}}.git"
+        - repoURL: "{{repoUrl}}"
           targetRevision: main
           ref: app
       destination:
