@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform
+description: Shared chart for platform service ingress, certificates, and storage
+type: application
+version: 1.0.0

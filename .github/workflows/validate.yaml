@@ -82,5 +82,7 @@ jobs:
         with:
           version: v3.14.0
 
-      - name: Lint app Helm chart
-        run: helm lint kubernetes/applications/chart
+      - name: Lint Helm charts
+        run: |
+          helm lint kubernetes/charts/app
+          helm lint kubernetes/charts/platform

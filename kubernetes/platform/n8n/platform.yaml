@@ -1,0 +1,6 @@
+name: n8n
+host: n8n.jterrazz.com
+port: 5678
+private: true
+storage:
+  size: 1Gi

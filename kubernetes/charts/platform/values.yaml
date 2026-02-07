@@ -1,0 +1,16 @@
+# Platform chart defaults
+# Each platform service overrides these in its platform.yaml
+
+name: ""
+host: ""
+port: 80
+private: true
+
+storage: {}
+# storage:
+#   size: 1Gi
+
+infrastructure:
+  tailscaleHostname: "jterrazz-vps.tail77a797.ts.net"
+  publicIp: "46.224.186.190"
+  nodeName: "jterrazz-vps"

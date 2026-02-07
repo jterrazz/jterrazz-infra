@@ -1,0 +1,13 @@
+{{- if .Values.host }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "platform.name" . }}-tls
+spec:
+  secretName: {{ include "platform.name" . }}-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ include "platform.host" . }}
+{{- end }}

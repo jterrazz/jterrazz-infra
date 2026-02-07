@@ -1,0 +1,25 @@
+{{- if .Values.host }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "platform.name" . }}
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: {{ include "platform.host" . }}
+    external-dns.alpha.kubernetes.io/target: "{{ include "platform.dnsTarget" . }}"
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ include "platform.host" . }}`)
+      kind: Rule
+      {{- if .Values.private }}
+      middlewares:
+        - name: private-access
+          namespace: platform-networking
+      {{- end }}
+      services:
+        - name: {{ include "platform.name" . }}
+          port: {{ .Values.port }}
+  tls:
+    secretName: {{ include "platform.name" . }}-tls
+{{- end }}

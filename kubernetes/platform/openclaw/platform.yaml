@@ -1,0 +1,6 @@
+name: openclaw
+host: openclaw.jterrazz.com
+port: 18789
+private: true
+storage:
+  size: 10Gi

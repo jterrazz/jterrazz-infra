@@ -72,7 +72,9 @@ make deploy    # Or push to main for automatic deployment
 │   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
 ├── kubernetes/                 # Cluster manifests
-│   ├── applications/chart/     # Standard app Helm chart (published to OCI registry)
+│   ├── charts/
+│   │   ├── app/                # App Helm chart (published to OCI registry)
+│   │   └── platform/           # Shared chart for platform ingress + certs + storage
 │   ├── infrastructure/         # Base: namespaces, storage, traefik, network policies
 │   └── platform/               # Platform services (one folder per service)
 │
@@ -88,7 +90,7 @@ make deploy    # Or push to main for automatic deployment
 
 ### Standard App Chart
 
-The `kubernetes/applications/chart/` Helm chart provides a standardized deployment for all applications. Published to `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml`.
+The `kubernetes/charts/app/` Helm chart provides a standardized deployment for all applications. Published to `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml`.
 
 **What the chart generates:** Deployment with health probes + resource limits + OTEL, Service, Traefik IngressRoute with TLS, PV/PVC (if storage defined), InfisicalSecret, registry pull secrets.
 
@@ -172,8 +174,21 @@ Each app's CI:
 
 ### Adding a New Platform Service
 
-1. Create `kubernetes/platform/my-service/` with `values.yaml`, `ingress.yaml`, optionally `storage.yaml`
-2. Add `helm upgrade --install` to `ansible/playbooks/platform.yml`
+1. Create `kubernetes/platform/my-service/` with:
+   - `helm.yaml` — upstream Helm chart values
+   - `platform.yaml` — ingress + storage config (uses shared `kubernetes/charts/platform/` chart)
+2. Add `helm upgrade --install` commands to `ansible/playbooks/platform.yml`
+
+Platform service `platform.yaml` example:
+
+```yaml
+name: my-service
+host: my-service.jterrazz.com
+port: 8080
+private: true
+storage:
+  size: 1Gi
+```
 
 ### Bootstrap After Cluster Rebuild
 

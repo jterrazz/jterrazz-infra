@@ -1,18 +1,20 @@
----
-# Static PV for Portainer data (users, settings, stacks)
+{{- if .Values.storage }}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: portainer-data
+  name: {{ include "platform.name" . }}-data
+  labels:
+    app: {{ include "platform.name" . }}
 spec:
   capacity:
-    storage: 1Gi
+    storage: {{ .Values.storage.size }}
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/portainer
+    path: /var/lib/k8s-data/{{ include "platform.name" . }}
+    type: DirectoryOrCreate
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -20,19 +22,20 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - jterrazz-vps
+                - {{ .Values.infrastructure.nodeName }}
 ---
-# PVC for Portainer
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: portainer-data
-  namespace: platform-management
+  name: {{ include "platform.name" . }}-data
 spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: manual
   resources:
     requests:
-      storage: 1Gi
-  volumeName: portainer-data
+      storage: {{ .Values.storage.size }}
+  selector:
+    matchLabels:
+      app: {{ include "platform.name" . }}
+{{- end }}

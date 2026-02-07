@@ -12,6 +12,7 @@
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
     manifest_dest: /tmp/k8s-manifests
     templates_dir: "{{ playbook_dir }}/../templates"
+    platform_chart: "{{ manifest_dest }}/kubernetes/charts/platform"
     portainer_admin_password: "{{ portainer_password | default('changeme-on-first-login') }}"
 
   tasks:
@@ -259,7 +260,9 @@
 
     # ========================================
     # Platform services — Helm installs
-    # Order matters: cert-manager first (TLS), then networking, then apps
+    # Order matters: cert-manager first (TLS), then networking, then apps.
+    # Each service uses helm.yaml for its upstream chart config and
+    # platform.yaml for ingress/cert/storage via the shared platform chart.
     # ========================================
 
     # 1. cert-manager
@@ -268,7 +271,7 @@
         helm upgrade --install cert-manager jetstack/cert-manager
         --namespace platform-networking
         --version v1.19.2
-        --values {{ manifest_dest }}/kubernetes/platform/cert-manager/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/cert-manager/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -296,7 +299,7 @@
         helm upgrade --install external-dns external-dns/external-dns
         --namespace platform-networking
         --version 1.20.0
-        --values {{ manifest_dest }}/kubernetes/platform/external-dns/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/external-dns/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -310,7 +313,7 @@
         helm upgrade --install infisical infisical/secrets-operator
         --namespace platform-secrets
         --version 0.10.21
-        --values {{ manifest_dest }}/kubernetes/platform/infisical/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/infisical/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -331,7 +334,7 @@
         helm upgrade --install signoz signoz/signoz
         --namespace platform-observability
         --version 0.108.0
-        --values {{ manifest_dest }}/kubernetes/platform/signoz/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/signoz/helm.yaml
         --wait
         --timeout 10m
       environment:
@@ -339,12 +342,17 @@
       register: signoz_result
       changed_when: "'has been upgraded' in signoz_result.stdout or 'has been installed' in signoz_result.stdout"
 
-    - name: Apply SigNoz ingress
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/signoz/ingress.yaml -n platform-observability
+    - name: Deploy SigNoz platform resources
+      ansible.builtin.command: >
+        helm upgrade --install signoz-platform {{ platform_chart }}
+        --namespace platform-observability
+        --values {{ manifest_dest }}/kubernetes/platform/signoz/platform.yaml
+        --wait
+        --timeout 2m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: signoz_ingress_result
-      changed_when: "'created' in signoz_ingress_result.stdout or 'configured' in signoz_ingress_result.stdout"
+      register: signoz_platform_result
+      changed_when: "'has been upgraded' in signoz_platform_result.stdout or 'has been installed' in signoz_platform_result.stdout"
 
     # 5. SigNoz K8s infrastructure monitoring
     - name: Install SigNoz K8s infra monitoring via Helm
@@ -352,7 +360,7 @@
         helm upgrade --install signoz-k8s-infra signoz/k8s-infra
         --namespace platform-observability
         --version 0.15.0
-        --values {{ manifest_dest }}/kubernetes/platform/signoz-k8s-infra/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/signoz-k8s-infra/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -361,19 +369,12 @@
       changed_when: "'has been upgraded' in signoz_k8s_result.stdout or 'has been installed' in signoz_k8s_result.stdout"
 
     # 6. n8n workflow automation
-    - name: Apply n8n storage manifests
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/n8n/storage.yaml -n platform-automation
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: n8n_storage_result
-      changed_when: "'created' in n8n_storage_result.stdout or 'configured' in n8n_storage_result.stdout"
-
     - name: Install n8n via Helm
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
         --namespace platform-automation
         --version 1.16.25
-        --values {{ manifest_dest }}/kubernetes/platform/n8n/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -381,20 +382,30 @@
       register: n8n_result
       changed_when: "'has been upgraded' in n8n_result.stdout or 'has been installed' in n8n_result.stdout"
 
-    - name: Apply n8n ingress
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/n8n/ingress.yaml -n platform-automation
+    - name: Deploy n8n platform resources
+      ansible.builtin.command: >
+        helm upgrade --install n8n-platform {{ platform_chart }}
+        --namespace platform-automation
+        --values {{ manifest_dest }}/kubernetes/platform/n8n/platform.yaml
+        --wait
+        --timeout 2m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: n8n_ingress_result
-      changed_when: "'created' in n8n_ingress_result.stdout or 'configured' in n8n_ingress_result.stdout"
+      register: n8n_platform_result
+      changed_when: "'has been upgraded' in n8n_platform_result.stdout or 'has been installed' in n8n_platform_result.stdout"
 
     # 7. OpenClaw gateway
-    - name: Apply OpenClaw storage manifests
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/storage.yaml -n platform-automation
+    - name: Deploy OpenClaw platform resources
+      ansible.builtin.command: >
+        helm upgrade --install openclaw-platform {{ platform_chart }}
+        --namespace platform-automation
+        --values {{ manifest_dest }}/kubernetes/platform/openclaw/platform.yaml
+        --wait
+        --timeout 2m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: openclaw_storage_result
-      changed_when: "'created' in openclaw_storage_result.stdout or 'configured' in openclaw_storage_result.stdout"
+      register: openclaw_platform_result
+      changed_when: "'has been upgraded' in openclaw_platform_result.stdout or 'has been installed' in openclaw_platform_result.stdout"
 
     - name: Apply OpenClaw deployment
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/deployment.yaml -n platform-automation
@@ -403,26 +414,12 @@
       register: openclaw_deploy_result
       changed_when: "'created' in openclaw_deploy_result.stdout or 'configured' in openclaw_deploy_result.stdout"
 
-    - name: Apply OpenClaw ingress
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/ingress.yaml -n platform-automation
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: openclaw_ingress_result
-      changed_when: "'created' in openclaw_ingress_result.stdout or 'configured' in openclaw_ingress_result.stdout"
-
     # 8. Portainer cluster dashboard
-    - name: Apply Portainer storage manifests
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/portainer/storage.yaml -n platform-management
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: portainer_storage_result
-      changed_when: "'created' in portainer_storage_result.stdout or 'configured' in portainer_storage_result.stdout"
-
     - name: Install Portainer via Helm
       ansible.builtin.command: >
         helm upgrade --install portainer portainer/portainer
         --namespace platform-management
-        --values {{ manifest_dest }}/kubernetes/platform/portainer/values.yaml
+        --values {{ manifest_dest }}/kubernetes/platform/portainer/helm.yaml
         --wait
         --timeout 5m
       environment:
@@ -430,12 +427,17 @@
       register: portainer_result
       changed_when: "'has been upgraded' in portainer_result.stdout or 'has been installed' in portainer_result.stdout"
 
-    - name: Apply Portainer ingress
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/portainer/ingress.yaml -n platform-management
+    - name: Deploy Portainer platform resources
+      ansible.builtin.command: >
+        helm upgrade --install portainer-platform {{ platform_chart }}
+        --namespace platform-management
+        --values {{ manifest_dest }}/kubernetes/platform/portainer/platform.yaml
+        --wait
+        --timeout 2m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: portainer_ingress_result
-      changed_when: "'created' in portainer_ingress_result.stdout or 'configured' in portainer_ingress_result.stdout"
+      register: portainer_platform_result
+      changed_when: "'has been upgraded' in portainer_platform_result.stdout or 'has been installed' in portainer_platform_result.stdout"
 
     - name: Wait for Portainer to be ready
       ansible.builtin.command: kubectl rollout status deployment/portainer -n platform-management --timeout=60s
@@ -476,7 +478,7 @@
     # ========================================
 
     - name: Package app Helm chart
-      ansible.builtin.command: helm package {{ manifest_dest }}/kubernetes/applications/chart --destination /tmp/
+      ansible.builtin.command: helm package {{ manifest_dest }}/kubernetes/charts/app --destination /tmp/
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: helm_package_result

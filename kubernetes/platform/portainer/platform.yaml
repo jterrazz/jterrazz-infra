@@ -1,0 +1,6 @@
+name: portainer
+host: portainer.jterrazz.com
+port: 9000
+private: true
+storage:
+  size: 1Gi

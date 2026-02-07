@@ -1,0 +1,4 @@
+name: signoz
+host: signoz.jterrazz.com
+port: 8080
+private: true
