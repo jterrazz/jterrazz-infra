@@ -94,12 +94,18 @@
       ansible.builtin.command: tailscale ip -4
       register: platform_tailscale_ip_result
       changed_when: false
-      when: not (skip_tailscale | default(false))
+      when: is_production
 
     - name: Set Tailscale IP fact
       ansible.builtin.set_fact:
         tailscale_ip: "{{ platform_tailscale_ip_result.stdout | trim }}"
-      when: not (skip_tailscale | default(false))
+      when: is_production
+
+    # Local dev: set tailscale_ip to VM IP so templates that reference it don't fail
+    - name: Set fallback IP for local dev
+      ansible.builtin.set_fact:
+        tailscale_ip: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+      when: not is_production
 
     # ========================================
     # Registry setup (all environments)

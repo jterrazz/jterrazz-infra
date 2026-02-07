@@ -113,32 +113,20 @@ setup_vm_ssh() {
         return 1
     fi
 
-    info "Waiting for VM shell access..."
-    local retries=30
-    while [[ $retries -gt 0 ]]; do
-        if multipass exec "$VM_NAME" -- echo "ready" &>/dev/null; then
-            break
-        fi
-        sleep 2
-        retries=$((retries - 1))
-    done
-
-    if [[ $retries -eq 0 ]]; then
-        error "VM shell not ready after 60 seconds"
-        return 1
-    fi
-
     ssh-keygen -R "$vm_ip" 2>/dev/null || true
     rm -f "$ssh_dir/known_hosts" 2>/dev/null || true
 
-    local pub_key=$(cat "$key_path.pub")
+    # Inject SSH key into VM
+    # Note: use "bash -c" wrapper — bare "multipass exec -- echo" hangs in non-interactive shells
+    info "Injecting SSH key into VM..."
+    local pub_key
+    pub_key=$(cat "$key_path.pub")
     multipass exec "$VM_NAME" -- bash -c "
         mkdir -p ~/.ssh && chmod 700 ~/.ssh
         echo '$pub_key' >> ~/.ssh/authorized_keys
+        sort -u -o ~/.ssh/authorized_keys ~/.ssh/authorized_keys
         chmod 600 ~/.ssh/authorized_keys
     "
-
-    sleep 3
 
     info "Testing SSH connection..."
     local ssh_retries=15
