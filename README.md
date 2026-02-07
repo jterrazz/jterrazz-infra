@@ -156,10 +156,10 @@ environments:
 Apps deploy themselves via their own GitHub Actions CI. No GitOps controller needed.
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Push Code     │ ──► │   GitHub CI     │ ──► │   Build & Push  │ ──► │  helm upgrade   │
-│   (main/v*)     │     │   Workflow      │     │   Docker Image  │     │  --install      │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Push Code     │ ──► │  Fetch secrets   │ ──► │   Build & Push  │ ──► │  helm upgrade   │
+│   (main/v*)     │     │  from Infisical  │     │   Docker Image  │     │  --install      │
+└─────────────────┘     └──────────────────┘     └─────────────────┘     └─────────────────┘
                                                                                 │
                                                                                 ▼
                                                                         ┌─────────────────┐
@@ -168,11 +168,12 @@ Apps deploy themselves via their own GitHub Actions CI. No GitOps controller nee
                                                                         └─────────────────┘
 ```
 
-Each app's CI workflow should:
+Each app's CI workflow:
 
-1. Build and push Docker image to `registry.jterrazz.com`
-2. Run `helm upgrade --install` using the shared OCI chart
-3. Use `--atomic` for production (auto-rollback on failure)
+1. Fetches infrastructure secrets from Infisical (`/infrastructure-ci` folder)
+2. Connects to Tailscale VPN
+3. Builds and pushes Docker image to `registry.jterrazz.com`
+4. Runs `helm upgrade --install` using the shared OCI chart with `--atomic` (auto-rollback on failure)
 
 ```yaml
 # Example app CI deploy step
@@ -182,7 +183,7 @@ Each app's CI workflow should:
       oci://registry.jterrazz.com/charts/app \
       -f .deploy/manifest.yaml \
       --set environment=$ENV \
-      --set spec.image=registry.jterrazz.com/$APP@$DIGEST \
+      --set spec.image=registry.jterrazz.com/$APP:$TAG \
       -n $ENV-$APP --create-namespace \
       --wait --timeout 3m --atomic
 ```
@@ -337,7 +338,7 @@ environments:
 
 2. Add the CI deploy workflow to your app repo (see "CI-Driven Deployment" above)
 
-3. Add registry + kubeconfig secrets to your GitHub repo
+3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets (all other infrastructure secrets are fetched from Infisical at runtime)
 
 4. Push your code — CI builds, pushes, and deploys automatically
 
@@ -366,7 +367,9 @@ For third-party Helm charts (not your own apps), create a folder in `kubernetes/
 brew install multipass ansible pulumi node
 ```
 
-### Required Secrets (GitHub Actions)
+### Required Secrets
+
+#### Infra repo (`jterrazz-infra`) — GitHub Actions secrets
 
 | Secret                          | Description                                  |
 | ------------------------------- | -------------------------------------------- |
@@ -379,6 +382,25 @@ brew install multipass ansible pulumi node
 | `DEPLOY_PAT_CLAWRR`             | GitHub PAT for clawrr org app CI deployments |
 | `INFISICAL_CLIENT_ID`           | For secrets management                       |
 | `INFISICAL_CLIENT_SECRET`       | For secrets management                       |
+
+#### App repos — GitHub Actions secrets (only 2 per repo)
+
+| Secret                    | Description                       |
+| ------------------------- | --------------------------------- |
+| `INFISICAL_CLIENT_ID`     | Infisical machine identity ID     |
+| `INFISICAL_CLIENT_SECRET` | Infisical machine identity secret |
+
+All other infrastructure secrets (Tailscale, registry, kubeconfig) are fetched at runtime from Infisical.
+
+#### Infisical — `jterrazz` project, `/infrastructure-ci` folder (prod env)
+
+| Secret                          | Description                                 |
+| ------------------------------- | ------------------------------------------- |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for CI VPN access    |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for CI VPN access    |
+| `REGISTRY_USERNAME`             | Docker registry username (`deploy`)         |
+| `REGISTRY_PASSWORD`             | Docker registry password                    |
+| `KUBECONFIG_BASE64`             | Base64-encoded kubeconfig with Tailscale IP |
 
 ### Deploy
 
@@ -448,30 +470,24 @@ make ssh            # SSH into VM
 make destroy        # Destroy VM
 ```
 
-## Migration TODOs
+## Deployment Architecture
 
-### Rename GitHub secrets
+### How it works
 
-**DONE** — Secrets renamed in code from `ARGOCD_GITHUB_PAT` to `DEPLOY_PAT`:
-
-- `DEPLOY_PAT` — used to trigger app CI deployments during bootstrap
-- `DEPLOY_PAT_CLAWRR` — same for clawrr org repos
-
-You need to create these secrets in GitHub repo settings (jterrazz/jterrazz-infra) with the same values as the old `ARGOCD_GITHUB_PAT` / `ARGOCD_GITHUB_PAT_CLAWRR` secrets, then delete the old ones.
-
-### Clean up ArgoCD from live cluster
-
-**DONE** — ArgoCD has been removed from the production cluster:
-
-- Helm release uninstalled, CRDs deleted, `platform-gitops` namespace removed
-- All platform services re-installed as Helm releases
-- Portainer deployed and running at `portainer.jterrazz.com`
-- App chart published to `oci://registry.jterrazz.com/charts/app`
-
-### Redeploy user apps
-
-User app deployments were removed during the ArgoCD cleanup. Redeploy them by triggering their CI workflows (once the CI deploy workflows are added to each app repo), or manually:
-
-```bash
-scripts/bootstrap-apps.sh
 ```
+INFRA REPO (push to main):
+  Pulumi → Ansible → helm install platform services + publish app chart to OCI registry
+
+APP REPO (push to main / tag v*):
+  CI → fetch secrets from Infisical → connect Tailscale → build + push image → helm upgrade --install
+
+CLUSTER:
+  Portainer (dashboard) | cert-manager | external-dns | signoz | n8n | infisical | clawdbot | registry
+  No GitOps controller. No image polling. CI deploys directly over Tailscale.
+```
+
+### Pulumi-managed resources
+
+- Hetzner VPS (server, firewall, SSH key)
+- Docker registry password (random, stable across deploys)
+- Portainer admin password (random, stable across deploys)
