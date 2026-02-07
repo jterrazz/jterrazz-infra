@@ -160,7 +160,10 @@
         - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
         - { name: signoz, url: "https://charts.signoz.io" }
         - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
-        - { name: infisical, url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/" }
+        - {
+            name: infisical,
+            url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/",
+          }
         - { name: portainer, url: "https://portainer.github.io/k8s/" }
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
@@ -292,7 +295,7 @@
     # 3. Infisical secrets operator
     - name: Install Infisical secrets operator via Helm
       ansible.builtin.command: >
-        helm upgrade --install infisical infisical/secrets-operator
+        helm upgrade --install infisical-secrets-operator infisical/secrets-operator
         --namespace platform-secrets
         --version 0.10.21
         --values {{ manifest_dest }}/kubernetes/platform/infisical/values.yaml
