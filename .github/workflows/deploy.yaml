@@ -75,6 +75,7 @@ jobs:
           method: universal
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: https://eu.infisical.com
           project-slug: jterrazz
           env-slug: prod
           secret-path: /infrastructure-ci
