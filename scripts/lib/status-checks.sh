@@ -168,12 +168,12 @@ show_grouped_services() {
     echo ""
 
     # Platform Services (platform-*)
-    info "🏗️ Platform Services (GitOps & Management)"
+    info "🏗️ Platform Services (Management)"
     printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
     printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
 
     # Platform services
-    echo "$services_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
+    echo "$services_raw" | grep -E "^platform-management" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
         local name=$(echo "$line" | awk '{print $2}')
         local type=$(echo "$line" | awk '{print $3}')
@@ -192,7 +192,7 @@ show_grouped_services() {
     done
 
     # Platform pods
-    echo "$pods_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
+    echo "$pods_raw" | grep -E "^platform-management" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
         local name=$(echo "$line" | awk '{print $2}')
         local status=$(echo "$line" | awk '{print $4}')

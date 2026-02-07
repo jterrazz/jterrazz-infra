@@ -401,8 +401,8 @@ All other secrets are fetched at runtime from Infisical.
 | ------------------------------- | ------------------------------------------- |
 | `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for CI VPN access    |
 | `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for CI VPN access    |
-| `REGISTRY_USERNAME`             | Docker registry username (`deploy`)         |
-| `REGISTRY_PASSWORD`             | Docker registry password                    |
+| `DOCKER_REGISTRY_USERNAME`      | Docker registry username (`deploy`)         |
+| `DOCKER_REGISTRY_PASSWORD`      | Docker registry password                    |
 | `KUBECONFIG_BASE64`             | Base64-encoded kubeconfig with Tailscale IP |
 
 ### Deploy
@@ -431,7 +431,7 @@ git push origin main
 - **Private services**: IP whitelist via `private-access` middleware (Tailscale IPs only)
 - **TLS**: All services use Let's Encrypt certificates
 - **DNS**: Managed by external-dns with `upsert-only` policy (won't delete unmanaged records)
-- **Secrets**: Stored in Pulumi state (encrypted), injected via Ansible
+- **Secrets**: Stored in Infisical, fetched at CI runtime and injected via Ansible
 
 ## Observability with SigNoz
 
@@ -492,5 +492,3 @@ CLUSTER:
 ### Pulumi-managed resources
 
 - Hetzner VPS (server, firewall, SSH key)
-- Docker registry password (random, stable across deploys)
-- Portainer admin password (random, stable across deploys)
