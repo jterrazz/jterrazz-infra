@@ -80,12 +80,8 @@ jobs:
 
           echo "All manifests are valid!"
 
-      - name: Validate ArgoCD Applications
-        run: |
-          echo "Checking ArgoCD application manifests..."
-          for file in kubernetes/platform/*.yaml kubernetes/applications/*.yaml; do
-            if [ -f "$file" ]; then
-              echo "Validating $file..."
-              kubectl apply --dry-run=client -f "$file" 2>/dev/null || echo "Note: $file requires CRDs"
-            fi
-          done
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+
+      - name: Lint app Helm chart
+        run: helm lint kubernetes/applications/chart

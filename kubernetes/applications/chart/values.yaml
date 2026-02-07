@@ -54,7 +54,7 @@ spec:
 
 environments: {}
 
-# Set by ArgoCD ApplicationSet
+# Set by app CI during helm upgrade --install
 environment: ""
 
 # Infrastructure settings

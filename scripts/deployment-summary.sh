@@ -96,7 +96,7 @@ get_service_status() {
 }
 
 # Get service statuses
-ARGOCD_STATUS=$(get_service_status "platform-gitops")
+PORTAINER_STATUS=$(get_service_status "platform-management" "portainer")
 TRAEFIK_STATUS=$(get_service_status "kube-system" "traefik")
 CERTMGR_STATUS=$(get_service_status "platform-networking" "cert-manager")
 EXTDNS_STATUS=$(get_service_status "platform-networking" "external-dns")
@@ -124,9 +124,6 @@ format_service_row() {
 
     echo "| $name | $icon | $pods |"
 }
-
-# Get ArgoCD applications dynamically
-APPS_JSON=$(kubectl_json "get applications -n platform-gitops")
 
 # Get certificates dynamically
 CERTS_JSON=$(kubectl_json "get certificates -A")
@@ -167,28 +164,33 @@ cat << EOF
 ### 📦 Platform Services
 | Service | Status | Pods |
 |---------|--------|------|
-$(format_service_row "ArgoCD" "$ARGOCD_STATUS")
+$(format_service_row "Portainer" "$PORTAINER_STATUS")
 $(format_service_row "Traefik" "$TRAEFIK_STATUS")
 $(format_service_row "Cert-Manager" "$CERTMGR_STATUS")
 $(format_service_row "External-DNS" "$EXTDNS_STATUS")
 $(format_service_row "SigNoz" "$SIGNOZ_STATUS")
 $(format_service_row "Registry" "$REGISTRY_STATUS")
 
-### 📱 Applications
-| App | Sync Status | Health |
-|-----|-------------|--------|
+### 📱 Applications (Helm Releases)
+| App | Namespace | Status |
+|-----|-----------|--------|
 EOF
 
-# Parse applications from JSON
-app_count=$(echo "$APPS_JSON" | jq '.items | length')
-if [[ "$app_count" -gt 0 && "$app_count" != "null" ]]; then
-    echo "$APPS_JSON" | jq -r '.items[] | "\(.metadata.name)|\(.status.sync.status // "Unknown")|\(.status.health.status // "Unknown")"' | while IFS='|' read -r name sync health; do
-        sync_icon="✅"
-        [[ "$sync" != "Synced" ]] && sync_icon="⚠️"
-        echo "| $name | $sync_icon $sync | $health |"
+# Get Helm releases across all namespaces
+HELM_RELEASES=$(remote "helm list -A --output json 2>/dev/null" || echo "[]")
+release_count=$(echo "$HELM_RELEASES" | jq 'length')
+if [[ "$release_count" -gt 0 && "$release_count" != "null" ]]; then
+    echo "$HELM_RELEASES" | jq -r '.[] | select(.namespace | startswith("staging-") or startswith("prod-")) | "\(.name)|\(.namespace)|\(.status)"' | while IFS='|' read -r name ns status; do
+        status_icon="✅"
+        [[ "$status" != "deployed" ]] && status_icon="⚠️"
+        echo "| $name | $ns | $status_icon $status |"
     done
+    # If no app releases found
+    if ! echo "$HELM_RELEASES" | jq -e '.[] | select(.namespace | startswith("staging-") or startswith("prod-"))' > /dev/null 2>&1; then
+        echo "| No app releases | - | - |"
+    fi
 else
-    echo "| No applications | - | - |"
+    echo "| No app releases | - | - |"
 fi
 
 cat << EOF
@@ -222,7 +224,7 @@ cat << EOF
 | Pods | $RUNNING_PODS running | $TOTAL_PODS total |
 
 ### 🔗 Quick Links
-- [ArgoCD Dashboard](https://argocd.jterrazz.com) (Tailscale)
+- [Portainer Dashboard](https://portainer.jterrazz.com) (Tailscale)
 - [SigNoz Observability](https://signoz.jterrazz.com) (Tailscale)
 - [GitHub Commit](https://github.com/jterrazz/jterrazz-infra/commit/$COMMIT_SHA)
 EOF

@@ -1,0 +1,26 @@
+# Portainer CE - Cluster dashboard
+# Exposed via Traefik IngressRoute (private via Tailscale)
+service:
+  type: ClusterIP
+
+# Disable built-in ingress (we use Traefik IngressRoute)
+ingress:
+  enabled: false
+
+# Storage for Portainer data (users, settings, etc.)
+persistence:
+  enabled: true
+  existingClaim: portainer-data
+
+# Resource constraints for single-node
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Disable TLS (Traefik handles TLS termination)
+tls:
+  force: false

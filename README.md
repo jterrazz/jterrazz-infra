@@ -29,8 +29,8 @@ Minimal Kubernetes infrastructure with local development and production deployme
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    K3s Cluster                           │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │   │
-│  │  │   Traefik   │  │   ArgoCD    │  │     SigNoz      │  │   │
-│  │  │  (Ingress)  │  │   (GitOps)  │  │ (Observability) │  │   │
+│  │  │   Traefik   │  │  Portainer  │  │     SigNoz      │  │   │
+│  │  │  (Ingress)  │  │ (Dashboard) │  │ (Observability) │  │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │   │
 │  │  │     n8n     │  │ Cert-Manager│  │  External-DNS   │  │   │
@@ -49,7 +49,7 @@ Minimal Kubernetes infrastructure with local development and production deployme
 | ---------------- | ------------------------------------- |
 | **K3s**          | Lightweight Kubernetes                |
 | **Traefik**      | Ingress controller with automatic TLS |
-| **ArgoCD**       | GitOps continuous deployment          |
+| **Portainer**    | Cluster dashboard                     |
 | **SigNoz**       | Observability (traces, metrics, logs) |
 | **Cert-Manager** | Automatic Let's Encrypt certificates  |
 | **External-DNS** | Automatic Cloudflare DNS management   |
@@ -77,10 +77,9 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   ├── playbooks/              # Orchestration playbooks
 │   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
-├── kubernetes/                 # GitOps manifests (ArgoCD syncs these)
+├── kubernetes/                 # Cluster manifests (applied via Ansible/Helm)
 │   ├── applications/           # App deployments
-│   │   ├── chart/              # Standard Helm chart (used by all apps)
-│   │   └── apps.yaml           # ApplicationSet definition
+│   │   └── chart/              # Standard Helm chart (published to OCI registry)
 │   │
 │   ├── infrastructure/         # Base capabilities (rarely changes)
 │   │   └── base/
@@ -89,7 +88,7 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │       └── network-policies/
 │   │
 │   ├── platform/               # Platform services (one folder per app)
-│   │   ├── argocd/
+│   │   ├── portainer/          # Cluster dashboard
 │   │   ├── signoz/
 │   │   ├── n8n/
 │   │   ├── clawdbot/
@@ -105,7 +104,7 @@ make deploy   # Deploy to Hetzner (or push to main)
 
 ### Standard App Chart
 
-The `kubernetes/applications/chart/` Helm chart provides a standardized way to deploy applications. Apps only need to define a simple manifest file - the chart handles all Kubernetes complexity (Deployment, Service, Ingress, Storage, Secrets).
+The `kubernetes/applications/chart/` Helm chart provides a standardized way to deploy applications. It is published to the private OCI registry at `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml` - the chart handles all Kubernetes complexity.
 
 **What the chart auto-generates:**
 
@@ -118,7 +117,7 @@ The `kubernetes/applications/chart/` Helm chart provides a standardized way to d
 
 ### App Manifest (`.deploy/manifest.yaml`)
 
-Each application defines a single manifest file in its own repository with **multi-environment support**:
+Each application defines a single manifest file in its own repository:
 
 ```yaml
 # In your app repository: .deploy/manifest.yaml
@@ -126,295 +125,115 @@ apiVersion: jterrazz.com/v1
 kind: Application
 
 metadata:
-  name: my-app # Used for namespace, image name, DNS
+  name: my-app
 
 spec:
-  # Base configuration (shared across all environments)
   port: 3000
   resources:
     cpu: 100m
     memory: 256Mi
-    memoryLimit: 512Mi # Optional, defaults to 2x memory
-
-  storage: # Optional
-    size: 1Gi
-    mountPath: /data
-
-  secrets: # Optional - Infisical integration
-    path: /my-app # Path in Infisical
-    env:
-      - DATABASE_PASSWORD
-      - API_KEY
-
-  env: # Base environment variables
-    LOG_LEVEL: info
-
   health:
     path: /health
 
-# Environment-specific configuration (overrides base spec)
 environments:
   staging:
-    branch: main # Informational - which branch deploys to staging
     replicas: 1
     ingress:
       host: my-app-staging.jterrazz.com
-      path: /
-      private: false
     env:
-      NODE_ENV: development # App-specific env value
+      NODE_ENV: development
 
   prod:
-    tag: v1.0.0 # Informational - which tag deploys to prod
     replicas: 2
     ingress:
       host: my-app.jterrazz.com
-      path: /
-      private: false
     env:
       NODE_ENV: production
 ```
 
-**How it works:**
+### CI-Driven Deployment
 
-- `spec` contains base configuration shared by all environments
-- `environments.staging` and `environments.prod` contain overrides
-- Values are merged: environment-specific values override base `spec` values
-- If an environment section doesn't exist, that environment won't be deployed
-- Storage paths are environment-specific: `/var/lib/k8s-data/{name}-{environment}/`
+Apps deploy themselves via their own GitHub Actions CI. No GitOps controller needed.
 
-**Enabling/disabling environments:**
-
-- To deploy only staging: only define `environments.staging`
-- To deploy only prod: only define `environments.prod`
-- To deploy both: define both sections
-- Comment out an environment section to disable it
-
-### Single ApplicationSet (in this repo)
-
-All apps are deployed via a single ApplicationSet in `kubernetes/applications/apps.yaml`. To add a new app, just add its repo name to the list:
-
-```yaml
-# kubernetes/applications/apps.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: ApplicationSet
-metadata:
-  name: apps
-  namespace: platform-gitops
-spec:
-  generators:
-    - matrix:
-        generators:
-          # Add your app repo here
-          - list:
-              elements:
-                - repo: signews-api
-                - repo: my-app # <-- Add new apps here
-          # Environments to deploy
-          - list:
-              elements:
-                - environment: staging
-                - environment: prod
-  template:
-    metadata:
-      name: "{{repo}}-{{environment}}"
-    spec:
-      sources:
-        - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-          path: charts/app
-          helm:
-            valueFiles:
-              - $app/.deploy/manifest.yaml
-            values: |
-              environment: {{environment}}
-        - repoURL: "https://github.com/jterrazz/{{repo}}.git"
-          targetRevision: main
-          ref: app
-      destination:
-        namespace: "app-{{repo}}-{{environment}}"
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Push Code     │ ──► │   GitHub CI     │ ──► │   Build & Push  │ ──► │  helm upgrade   │
+│   (main/v*)     │     │   Workflow      │     │   Docker Image  │     │  --install      │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                                                │
+                                                                                ▼
+                                                                        ┌─────────────────┐
+                                                                        │   App is Live   │
+                                                                        │   (~1 minute)   │
+                                                                        └─────────────────┘
 ```
 
-The chart automatically skips environments that aren't defined in the app's manifest.
+Each app's CI workflow should:
+
+1. Build and push Docker image to `registry.jterrazz.com`
+2. Run `helm upgrade --install` using the shared OCI chart
+3. Use `--atomic` for production (auto-rollback on failure)
+
+```yaml
+# Example app CI deploy step
+- name: Deploy
+  run: |
+    helm upgrade --install $ENV-$APP \
+      oci://registry.jterrazz.com/charts/app \
+      -f .deploy/manifest.yaml \
+      --set environment=$ENV \
+      --set spec.image=registry.jterrazz.com/$APP@$DIGEST \
+      -n $ENV-$APP --create-namespace \
+      --wait --timeout 3m --atomic
+```
 
 ### Conventions
 
-| Property         | Convention                                             |
-| ---------------- | ------------------------------------------------------ |
-| **Namespace**    | `app-{name}-{environment}` (e.g. `app-my-app-staging`) |
-| **Image**        | `registry.jterrazz.com/{name}:latest`                  |
-| **Storage path** | `/var/lib/k8s-data/{name}-{environment}/` on host      |
-| **Secrets**      | Infisical `dev` env for staging, `prod` for prod       |
-| **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com`  |
+| Property         | Convention                                            |
+| ---------------- | ----------------------------------------------------- |
+| **Namespace**    | `{environment}-{name}` (e.g. `staging-my-app`)        |
+| **Image**        | `registry.jterrazz.com/{name}:latest`                 |
+| **Storage path** | `/var/lib/k8s-data/{name}-{environment}/` on host     |
+| **Secrets**      | Infisical `dev` env for staging, `prod` for prod      |
+| **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com` |
 
 ### Platform Services
 
-For platform services (ArgoCD, SigNoz, n8n, etc.), each is **self-contained** in its own folder:
+Platform services (SigNoz, n8n, Portainer, etc.) are installed via Helm in the Ansible playbook. Each is **self-contained** in its own folder:
 
 ```
 kubernetes/platform/my-service/
-├── app.yaml        # ArgoCD Application (external helm chart + local resources)
+├── values.yaml     # Helm chart values
 ├── ingress.yaml    # IngressRoute + Certificate
 └── storage.yaml    # PV/PVC (if needed)
 ```
 
-### Internal vs External Services
+### Bootstrap After Cluster Rebuild
 
-```yaml
-# Internal (Tailscale-only) - add private-access middleware
-spec:
-  ingress:
-    private: true
-
-# External (Public) - no private-access middleware
-spec:
-  ingress:
-    private: false
-```
-
-## Automatic Deployment Pipeline
-
-The infrastructure uses **ArgoCD Image Updater** to automatically deploy new container images without manual intervention.
-
-### How It Works
-
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Push Code     │ ──► │   GitHub CI     │ ──► │ Container Image │ ──► │ Image Updater   │
-│   (main/v*)     │     │   Builds Image  │     │   Registry      │     │   Detects New   │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-                                                                                │
-                                                                                ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Pod Restarts  │ ◄── │   ArgoCD Syncs  │ ◄── │ Helm Parameters │ ◄── │   Updates App   │
-│   With New Image│     │   Application   │     │   Updated       │     │   Spec          │
-└─────────────────┘     └─────────────────┘     └─────────────────┘     └─────────────────┘
-```
-
-### Environment Strategies
-
-| Environment | Image Tag | Strategy | Trigger                             |
-| ----------- | --------- | -------- | ----------------------------------- |
-| **Staging** | `:latest` | `digest` | Push to `main` branch               |
-| **Prod**    | `v*`      | `semver` | Create version tag (e.g., `v1.0.0`) |
-
-### Staging Deployment (Automatic)
-
-Every push to `main` triggers automatic deployment:
-
-1. CI builds and pushes image with `:latest` tag
-2. Image Updater detects new digest (same tag, different content)
-3. ArgoCD Application is updated with new image digest
-4. Pod restarts with the new image
+On a fresh cluster, apps don't exist yet. Run the bootstrap script to trigger all app CIs:
 
 ```bash
-# Just push to main - staging deploys automatically
-git push origin main
+./scripts/bootstrap-apps.sh
 ```
 
-### Production Deployment (Version Tags)
-
-Production deployments use semantic versioning:
-
-1. Create a version tag (e.g., `v1.2.0`)
-2. CI builds and pushes image with that version tag
-3. Image Updater detects new semver tag matching `v*` pattern
-4. ArgoCD Application is updated with new version
-5. Pod restarts with the new image
-
-```bash
-# Create and push a version tag for production release
-git tag v1.2.0
-git push origin v1.2.0
-```
-
-### Configuration
-
-The ApplicationSet in `kubernetes/applications/apps.yaml` configures both environments:
-
-```yaml
-generators:
-  - matrix:
-      generators:
-        - list:
-            elements:
-              - repo: signews-api
-        - list:
-            elements:
-              - environment: staging
-                imageTag: latest
-                updateStrategy: digest # Tracks :latest by digest
-              - environment: prod
-                imageTag: "v*"
-                updateStrategy: semver # Tracks semver tags
-```
-
-Image Updater annotations on each Application:
-
-- `argocd-image-updater.argoproj.io/image-list`: Defines which image to watch
-- `argocd-image-updater.argoproj.io/app.update-strategy`: `digest` or `semver`
-- `argocd-image-updater.argoproj.io/app.helm.image-spec`: Helm value to update
-
-### CI Workflow Requirements
-
-Your app's CI workflow (`.github/workflows/deploy.yaml`) should:
-
-1. Trigger on `main` branch AND `v*` tags
-2. Tag images with `:latest` for main branch, `:{version}` for tags
-3. Clean up old images but keep `latest` and `v*` tags
-
-```yaml
-on:
-  push:
-    branches: [main]
-    tags: ['v*']
-
-# Determine image tag based on trigger
-- name: Determine image tag
-  id: tag
-  run: |
-    if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-      echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-    else
-      echo "tag=latest" >> $GITHUB_OUTPUT
-    fi
-```
-
-### Monitoring Deployments
-
-```bash
-# Check Image Updater logs
-kubectl logs -n platform-gitops -l app.kubernetes.io/name=argocd-image-updater
-
-# See which images are being tracked
-kubectl get applications -n platform-gitops -o yaml | grep -A5 "image-updater"
-
-# Check ArgoCD sync status
-kubectl get applications -n platform-gitops
-```
+Or pass `bootstrap_apps=true` to Ansible to trigger automatically.
 
 ## Services & Access
 
 ### Private Services (via Tailscale)
 
-| Service  | URL                             | Purpose             |
-| -------- | ------------------------------- | ------------------- |
-| ArgoCD   | `https://argocd.jterrazz.com`   | GitOps dashboard    |
-| SigNoz   | `https://signoz.jterrazz.com`   | Observability       |
-| n8n      | `https://n8n.jterrazz.com`      | Workflow automation |
-| Clawdbot | `https://clawdbot.jterrazz.com` | AI assistant        |
+| Service   | URL                              | Purpose             |
+| --------- | -------------------------------- | ------------------- |
+| Portainer | `https://portainer.jterrazz.com` | Cluster dashboard   |
+| SigNoz    | `https://signoz.jterrazz.com`    | Observability       |
+| n8n       | `https://n8n.jterrazz.com`       | Workflow automation |
+| Clawdbot  | `https://clawdbot.jterrazz.com`  | AI assistant        |
 
 All private services:
 
 - Use valid Let's Encrypt TLS certificates
 - DNS points to Tailscale IP
 - Only accessible when connected to Tailscale VPN
-
-### ArgoCD Admin Password
-
-```bash
-kubectl -n platform-gitops get secret argocd-initial-admin-secret \
-  -o jsonpath="{.data.password}" | base64 -d
-```
 
 ## Storage
 
@@ -516,24 +335,13 @@ environments:
   #     NODE_ENV: production
 ```
 
-2. In this infra repo, add your app to `kubernetes/applications/apps.yaml`:
+2. Add the CI deploy workflow to your app repo (see "CI-Driven Deployment" above)
 
-```yaml
-generators:
-  - matrix:
-      generators:
-        - list:
-            elements:
-              - repo: signews-api
-              - repo: my-app # <-- Add your repo here
-```
+3. Add registry + kubeconfig secrets to your GitHub repo
 
-3. Push both repos. ArgoCD will deploy staging automatically.
+4. Push your code — CI builds, pushes, and deploys automatically
 
-4. When ready for production:
-   - Uncomment the `prod:` section in your app's manifest
-   - Create the storage directory on VPS: `mkdir -p /var/lib/k8s-data/my-app-prod && chown 1000:1000 /var/lib/k8s-data/my-app-prod`
-   - Push the changes
+5. Add your repo to `scripts/bootstrap-apps.sh` so it's included in cluster rebuilds
 
 ### Adding a new platform service
 
@@ -541,36 +349,13 @@ For third-party Helm charts (not your own apps), create a folder in `kubernetes/
 
 1. Create folder `kubernetes/platform/my-service/`
 
-2. Create `app.yaml` with the external Helm chart:
+2. Create `values.yaml` with the Helm chart values
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-service
-  namespace: platform-gitops
-spec:
-  sources:
-    - repoURL: https://charts.example.com
-      chart: my-service
-      targetRevision: 1.0.0
-      helm:
-        values: |
-          ingress:
-            enabled: false
-    - repoURL: https://github.com/jterrazz/jterrazz-infra.git
-      targetRevision: HEAD
-      path: kubernetes/platform/my-service
-      directory:
-        exclude: "app.yaml"
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: platform-my-service
-```
+3. Create `ingress.yaml` for Traefik IngressRoute + Certificate
 
-3. Create `ingress.yaml` for Traefik IngressRoute + Certificate.
+4. (Optional) Create `storage.yaml` if you need persistent data
 
-4. (Optional) Create `storage.yaml` if you need persistent data.
+5. Add the `helm upgrade --install` command to `ansible/playbooks/platform.yml`
 
 ## Production Setup
 
@@ -583,16 +368,17 @@ brew install multipass ansible pulumi node
 
 ### Required Secrets (GitHub Actions)
 
-| Secret                          | Description              |
-| ------------------------------- | ------------------------ |
-| `PULUMI_ACCESS_TOKEN`           | Pulumi API token         |
-| `HCLOUD_TOKEN`                  | Hetzner Cloud API token  |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | For server provisioning  |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | For server provisioning  |
-| `CLOUDFLARE_API_TOKEN`          | For DNS and certificates |
-| `ARGOCD_GITHUB_PAT`             | For private repo access  |
-| `INFISICAL_CLIENT_ID`           | For secrets management   |
-| `INFISICAL_CLIENT_SECRET`       | For secrets management   |
+| Secret                          | Description                                  |
+| ------------------------------- | -------------------------------------------- |
+| `PULUMI_ACCESS_TOKEN`           | Pulumi API token                             |
+| `HCLOUD_TOKEN`                  | Hetzner Cloud API token                      |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | For server provisioning                      |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | For server provisioning                      |
+| `CLOUDFLARE_API_TOKEN`          | For DNS and certificates                     |
+| `DEPLOY_PAT`                    | GitHub PAT for triggering app CI deployments |
+| `DEPLOY_PAT_CLAWRR`             | GitHub PAT for clawrr org app CI deployments |
+| `INFISICAL_CLIENT_ID`           | For secrets management                       |
+| `INFISICAL_CLIENT_SECRET`       | For secrets management                       |
 
 ### Deploy
 
@@ -634,10 +420,10 @@ env:
 
 ## Troubleshooting
 
-### Check ArgoCD sync status
+### Check Helm releases
 
 ```bash
-kubectl get applications -n platform-gitops
+helm list -A
 ```
 
 ### Certificate issues
@@ -660,4 +446,32 @@ make start          # Create Multipass VM + full deploy
 make status         # Cluster status
 make ssh            # SSH into VM
 make destroy        # Destroy VM
+```
+
+## Migration TODOs
+
+### Rename GitHub secrets
+
+**DONE** — Secrets renamed in code from `ARGOCD_GITHUB_PAT` to `DEPLOY_PAT`:
+
+- `DEPLOY_PAT` — used to trigger app CI deployments during bootstrap
+- `DEPLOY_PAT_CLAWRR` — same for clawrr org repos
+
+You need to create these secrets in GitHub repo settings (jterrazz/jterrazz-infra) with the same values as the old `ARGOCD_GITHUB_PAT` / `ARGOCD_GITHUB_PAT_CLAWRR` secrets, then delete the old ones.
+
+### Clean up ArgoCD from live cluster
+
+**DONE** — ArgoCD has been removed from the production cluster:
+
+- Helm release uninstalled, CRDs deleted, `platform-gitops` namespace removed
+- All platform services re-installed as Helm releases
+- Portainer deployed and running at `portainer.jterrazz.com`
+- App chart published to `oci://registry.jterrazz.com/charts/app`
+
+### Redeploy user apps
+
+User app deployments were removed during the ArgoCD cleanup. Redeploy them by triggering their CI workflows (once the CI deploy workflows are added to each app repo), or manually:
+
+```bash
+scripts/bootstrap-apps.sh
 ```

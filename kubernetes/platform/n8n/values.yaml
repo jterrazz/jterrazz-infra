@@ -1,0 +1,24 @@
+# Main node configuration
+main:
+  editorBaseUrl: "https://n8n.jterrazz.com"
+  persistence:
+    enabled: true
+    existingClaim: n8n-data
+  resources:
+    requests:
+      cpu: 25m
+      memory: 300Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Encryption key for credentials (managed via Pulumi/Ansible)
+# Secret created by Ansible with key N8N_ENCRYPTION_KEY
+existingEncryptionKeySecret: "n8n-encryption-key"
+
+# Timezone configuration
+timezone: "Europe/Paris"
+
+# Disable built-in ingress (we use Traefik IngressRoute)
+ingress:
+  enabled: false

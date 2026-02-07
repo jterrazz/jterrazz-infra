@@ -1,0 +1,84 @@
+global:
+  storageClass: local-path
+
+clickhouse:
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: manual
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  files:
+    config.d/z_log_disable.xml: |
+      <?xml version="1.0"?>
+      <clickhouse>
+        <!-- Disable expensive system logs that cause high CPU from merges -->
+        <asynchronous_metric_log remove="1"/>
+        <metric_log remove="1"/>
+        <query_thread_log remove="1"/>
+        <query_views_log remove="1"/>
+        <part_log remove="1"/>
+        <session_log remove="1"/>
+        <text_log remove="1"/>
+        <trace_log remove="1"/>
+        <crash_log remove="1"/>
+        <opentelemetry_span_log remove="1"/>
+        <zookeeper_log remove="1"/>
+        <processors_profile_log remove="1"/>
+      </clickhouse>
+  zookeeper:
+    image:
+      registry: docker.io
+      repository: signoz/zookeeper
+      tag: "3.9.3"
+    persistence:
+      enabled: true
+      size: 1Gi
+    resources:
+      requests:
+        cpu: 25m
+        memory: 384Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
+
+queryService:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 150Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+alertmanager:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+otelCollector:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 100Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

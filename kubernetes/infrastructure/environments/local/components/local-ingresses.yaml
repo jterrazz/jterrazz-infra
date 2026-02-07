@@ -1,29 +1,29 @@
 ---
-# ArgoCD Ingress (local)
+# Portainer Ingress (local)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: argocd-local-ingress
-  namespace: platform-gitops
+  name: portainer-local-ingress
+  namespace: platform-management
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   tls:
     - hosts:
-        - argocd.local
+        - portainer.local
       secretName: local-tls-secret
   rules:
-    - host: argocd.local
+    - host: portainer.local
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: argocd-server
+                name: portainer
                 port:
-                  number: 80
+                  number: 9000
 
 ---
 # SigNoz Ingress (local)

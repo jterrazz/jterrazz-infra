@@ -53,9 +53,8 @@ spec:
 
               [alt_names]
               DNS.1 = infra.local
-              DNS.2 = argocd.local
-              DNS.3 = portainer.local
-              DNS.4 = *.local
+              DNS.2 = portainer.local
+              DNS.3 = *.local
               EOF
 
               # Generate certificate
@@ -65,8 +64,7 @@ spec:
 
               # Create secrets in all namespaces (ignore errors if they already exist)
               kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n infrastructure || echo "Secret already exists in infrastructure"
-              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n argocd || echo "Secret already exists in argocd"
-              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n portainer || echo "Secret already exists in portainer"
+              kubectl create secret tls local-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key -n platform-management || echo "Secret already exists in platform-management"
 
               echo "TLS certificates created successfully"
 ---

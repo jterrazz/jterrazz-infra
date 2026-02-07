@@ -43,7 +43,7 @@ spec:
 
               # Start services quickly (Alpine style)
               mkdir -p /run/dbus /var/run/avahi-daemon
-              dbus-daemon --system --fork > /dev/null 2>&1 
+              dbus-daemon --system --fork > /dev/null 2>&1
               sleep 1
               avahi-daemon --daemonize --no-drop-root > /dev/null 2>&1
 
@@ -52,11 +52,10 @@ spec:
 
               # Publish our domains
               avahi-publish -a -R infra.local $EXTERNAL_IP > /dev/null 2>&1 &
-              avahi-publish -a -R argocd.local $EXTERNAL_IP > /dev/null 2>&1 &
               avahi-publish -a -R portainer.local $EXTERNAL_IP > /dev/null 2>&1 &
 
               echo "mDNS publisher started for $EXTERNAL_IP"
-              echo "Published domains: infra.local, argocd.local, portainer.local -> $EXTERNAL_IP"
+              echo "Published domains: infra.local, portainer.local -> $EXTERNAL_IP"
               echo "Alpine startup complete in ~5-10 seconds vs Ubuntu ~20-30 seconds"
 
               # Keep the container running

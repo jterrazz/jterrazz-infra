@@ -27,6 +27,12 @@ const registryPassword = new random.RandomPassword("registry-password", {
   special: false,
 });
 
+// Generate Portainer admin password (stored encrypted in Pulumi state)
+const portainerPassword = new random.RandomPassword("portainer-password", {
+  length: 32,
+  special: false,
+});
+
 // n8n encryption key (stored encrypted in Pulumi state)
 // This key is used by n8n to encrypt credentials stored in its database
 // Set via: pulumi config set --secret n8nEncryptionKey <value>
@@ -75,6 +81,9 @@ export const sshPrivateKey = pulumi.secret(sshKeyPair.privateKeyOpenssh);
 
 // Docker Registry credentials (secret - for GitHub Actions and k8s)
 export const dockerRegistryPassword = pulumi.secret(registryPassword.result);
+
+// Portainer admin password (secret - for initial admin user setup)
+export const portainerAdminPassword = pulumi.secret(portainerPassword.result);
 
 // n8n encryption key (secret - for encrypting credentials in n8n database)
 export const n8nEncryptionKey = n8nEncryptionKeyValue;

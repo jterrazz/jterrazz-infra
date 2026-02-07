@@ -1,0 +1,38 @@
+---
+# Static PV for Portainer data (users, settings, stacks)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: portainer-data
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/portainer
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - jterrazz-vps
+---
+# PVC for Portainer
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: portainer-data
+  namespace: platform-management
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: portainer-data

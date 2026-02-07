@@ -1,6 +1,6 @@
 ---
 # Platform Services Playbook
-# Bootstraps ArgoCD via Helm, then lets ArgoCD manage everything
+# Installs platform services via Helm and kubectl directly
 # All kubectl/helm commands run ON the VPS (no external k8s API access needed)
 
 - name: Platform Services Deployment
@@ -10,11 +10,10 @@
 
   vars:
     deploy_environment: "{{ environment_type | default('local') }}"
-    argocd_namespace: platform-gitops
-    argocd_version: "9.3.5"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
     manifest_dest: /tmp/k8s-manifests
     templates_dir: "{{ playbook_dir }}/../templates"
+    portainer_admin_password: "{{ portainer_password | default('changeme-on-first-login') }}"
 
   tasks:
     - name: Wait for Traefik to be ready
@@ -153,9 +152,16 @@
             path: /tmp/get_helm.sh
             state: absent
 
-    # Bootstrap ArgoCD via Helm
-    - name: Add ArgoCD Helm repository
-      ansible.builtin.command: helm repo add argo https://argoproj.github.io/argo-helm
+    # Add all Helm repositories
+    - name: Add Helm repositories
+      ansible.builtin.command: "helm repo add {{ item.name }} {{ item.url }}"
+      loop:
+        - { name: jetstack, url: "https://charts.jetstack.io" }
+        - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
+        - { name: signoz, url: "https://charts.signoz.io" }
+        - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
+        - { name: infisical, url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/" }
+        - { name: portainer, url: "https://portainer.github.io/k8s/" }
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
       failed_when: false
@@ -164,108 +170,7 @@
       ansible.builtin.command: helm repo update
       changed_when: false
 
-    - name: Check if ArgoCD is already installed
-      ansible.builtin.command: helm status argocd -n {{ argocd_namespace }}
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: argocd_status
-      changed_when: false
-      failed_when: false
-
-    - name: Create ArgoCD namespace
-      ansible.builtin.command: kubectl create namespace {{ argocd_namespace }}
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: ns_create
-      changed_when: "'created' in ns_create.stdout"
-      failed_when: false
-
-    - name: Create ArgoCD Helm values file
-      ansible.builtin.copy:
-        dest: /tmp/argocd-values.yaml
-        mode: "0644"
-        content: |
-          configs:
-            params:
-              server.insecure: true
-          server:
-            resources:
-              requests:
-                cpu: 50m
-                memory: 128Mi
-              limits:
-                memory: 256Mi
-          redis:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 64Mi
-              limits:
-                memory: 128Mi
-          controller:
-            resources:
-              requests:
-                cpu: 100m
-                memory: 256Mi
-              limits:
-                memory: 512Mi
-          repoServer:
-            resources:
-              requests:
-                cpu: 50m
-                memory: 128Mi
-              limits:
-                memory: 256Mi
-          applicationSet:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 64Mi
-              limits:
-                memory: 128Mi
-          notifications:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
-              limits:
-                memory: 64Mi
-          dex:
-            resources:
-              requests:
-                cpu: 10m
-                memory: 32Mi
-              limits:
-                memory: 64Mi
-
-    - name: Install/Upgrade ArgoCD via Helm
-      ansible.builtin.command: >
-        helm upgrade --install argocd argo/argo-cd
-        --namespace {{ argocd_namespace }}
-        --version {{ argocd_version }}
-        --values /tmp/argocd-values.yaml
-        --wait
-        --timeout 5m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: helm_result
-      changed_when: "'has been upgraded' in helm_result.stdout or 'has been installed' in helm_result.stdout"
-
-    - name: Wait for ArgoCD to be ready
-      ansible.builtin.command:
-        cmd: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=120s
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      changed_when: false
-
-    # Create namespace for networking components (cert-manager, external-dns)
-    - name: Create platform-networking namespace
-      ansible.builtin.command: kubectl create namespace platform-networking
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: net_ns
-      changed_when: "'created' in net_ns.stdout"
-      failed_when: false
+    # Create secrets before installing services that need them
 
     # Deploy Cloudflare API token for cert-manager and external-dns
     - name: Create Cloudflare API token secret for networking
@@ -284,48 +189,7 @@
       changed_when: "'created' in net_secret.stdout or 'configured' in net_secret.stdout"
       no_log: true
 
-    - name: Create GitHub PAT secret for ArgoCD private repos (jterrazz)
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          kubectl create secret generic github-private-repos \
-            --from-literal=type=git \
-            --from-literal=url=https://github.com/jterrazz \
-            --from-literal=username=jterrazz \
-            --from-literal=password="{{ github_pat }}" \
-            --namespace {{ argocd_namespace }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl label secret github-private-repos -n {{ argocd_namespace }} argocd.argoproj.io/secret-type=repo-creds --overwrite
-        executable: /bin/bash
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: github_pat is defined and github_pat | length > 0
-      register: github_secret
-      changed_when: "'created' in github_secret.stdout or 'configured' in github_secret.stdout"
-      no_log: true
-
-    - name: Create GitHub PAT secret for ArgoCD private repos (clawrr org)
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          kubectl create secret generic github-clawrr-repos \
-            --from-literal=type=git \
-            --from-literal=url=https://github.com/clawrr \
-            --from-literal=username=jterrazz \
-            --from-literal=password="{{ github_pat_clawrr }}" \
-            --namespace {{ argocd_namespace }} \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl label secret github-clawrr-repos -n {{ argocd_namespace }} argocd.argoproj.io/secret-type=repo-creds --overwrite
-        executable: /bin/bash
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: github_pat_clawrr is defined and github_pat_clawrr | length > 0
-      register: github_clawrr_secret
-      changed_when: "'created' in github_clawrr_secret.stdout or 'configured' in github_clawrr_secret.stdout"
-      no_log: true
-
     # Create Infisical credentials for the secrets operator
-    # Note: platform-secrets namespace is created by base infrastructure kustomization
     - name: Create Infisical credentials secret
       ansible.builtin.shell:
         cmd: |
@@ -344,15 +208,6 @@
       no_log: true
 
     # Create n8n encryption key secret
-    # n8n uses this key to encrypt credentials stored in its database
-    - name: Create platform-automation namespace for n8n
-      ansible.builtin.command: kubectl create namespace platform-automation
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: auto_ns
-      changed_when: "'created' in auto_ns.stdout"
-      failed_when: false
-
     - name: Create n8n encryption key secret
       ansible.builtin.shell:
         cmd: |
@@ -369,8 +224,7 @@
       changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
       no_log: true
 
-    # Create Clawdbot secrets (in platform-automation namespace alongside n8n)
-    # Clawdbot needs gateway token (WebSocket auth) and Claude token (AI model auth)
+    # Create Clawdbot secrets
     - name: Create Clawdbot secrets
       ansible.builtin.shell:
         cmd: |
@@ -388,39 +242,291 @@
       changed_when: "'created' in clawdbot_secret.stdout or 'configured' in clawdbot_secret.stdout"
       no_log: true
 
-    # Apply platform services (ArgoCD Applications)
-    # Each app has its own folder with *-app.yaml or app.yaml as Application manifests
-    - name: Find platform service app manifests
-      ansible.builtin.find:
-        paths: "{{ manifest_dest }}/kubernetes/platform"
-        patterns: "*app.yaml"
-        recurse: true
-      register: platform_apps
+    # ========================================
+    # Install platform services via Helm
+    # Order matters: cert-manager first (TLS), then networking, then apps
+    # ========================================
 
-    - name: Apply platform services
-      ansible.builtin.command: kubectl apply -f {{ item.path }}
+    # 1. cert-manager (needed for TLS certificates)
+    - name: Install cert-manager via Helm
+      ansible.builtin.command: >
+        helm upgrade --install cert-manager jetstack/cert-manager
+        --namespace platform-networking
+        --version v1.19.2
+        --values {{ manifest_dest }}/kubernetes/platform/cert-manager/values.yaml
+        --wait
+        --timeout 5m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      loop: "{{ platform_apps.files }}"
-      when: platform_apps.files | length > 0
-      register: platform_result
-      changed_when: "'created' in platform_result.stdout or 'configured' in platform_result.stdout"
+      register: certmanager_result
+      changed_when: "'has been upgraded' in certmanager_result.stdout or 'has been installed' in certmanager_result.stdout"
 
-    # Apply user applications
-    - name: Find application manifests
-      ansible.builtin.find:
-        paths: "{{ manifest_dest }}/kubernetes/applications"
-        patterns: "*.yml,*.yaml"
-      register: argocd_apps
-
-    - name: Apply ArgoCD applications
-      ansible.builtin.command: kubectl apply -f {{ item.path }}
+    - name: Wait for cert-manager webhook to be ready
+      ansible.builtin.command:
+        cmd: kubectl rollout status deployment/cert-manager-webhook -n platform-networking --timeout=120s
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      loop: "{{ argocd_apps.files }}"
-      when: argocd_apps.files | length > 0
-      register: apps_result
-      changed_when: "'created' in apps_result.stdout or 'configured' in apps_result.stdout"
+      changed_when: false
+
+    - name: Apply cert-manager ClusterIssuers
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/cert-manager/issuers.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: issuers_result
+      changed_when: "'created' in issuers_result.stdout or 'configured' in issuers_result.stdout"
+
+    # 2. external-dns (automatic DNS record management)
+    - name: Install external-dns via Helm
+      ansible.builtin.command: >
+        helm upgrade --install external-dns external-dns/external-dns
+        --namespace platform-networking
+        --version 1.20.0
+        --values {{ manifest_dest }}/kubernetes/platform/external-dns/values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: externaldns_result
+      changed_when: "'has been upgraded' in externaldns_result.stdout or 'has been installed' in externaldns_result.stdout"
+
+    # 3. Infisical secrets operator
+    - name: Install Infisical secrets operator via Helm
+      ansible.builtin.command: >
+        helm upgrade --install infisical infisical/secrets-operator
+        --namespace platform-secrets
+        --version 0.10.21
+        --values {{ manifest_dest }}/kubernetes/platform/infisical/values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: infisical_helm_result
+      changed_when: "'has been upgraded' in infisical_helm_result.stdout or 'has been installed' in infisical_helm_result.stdout"
+
+    # 4. SigNoz observability platform
+    # Apply storage manifests first (PVs must exist before Helm creates PVCs)
+    - name: Apply SigNoz storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/signoz/storage.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: signoz_storage_result
+      changed_when: "'created' in signoz_storage_result.stdout or 'configured' in signoz_storage_result.stdout"
+
+    - name: Install SigNoz via Helm
+      ansible.builtin.command: >
+        helm upgrade --install signoz signoz/signoz
+        --namespace platform-observability
+        --version 0.108.0
+        --values {{ manifest_dest }}/kubernetes/platform/signoz/values.yaml
+        --wait
+        --timeout 10m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: signoz_result
+      changed_when: "'has been upgraded' in signoz_result.stdout or 'has been installed' in signoz_result.stdout"
+
+    - name: Apply SigNoz ingress
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/signoz/ingress.yaml -n platform-observability
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: signoz_ingress_result
+      changed_when: "'created' in signoz_ingress_result.stdout or 'configured' in signoz_ingress_result.stdout"
+
+    # 5. SigNoz K8s infrastructure monitoring (DaemonSet)
+    - name: Install SigNoz K8s infra monitoring via Helm
+      ansible.builtin.command: >
+        helm upgrade --install signoz-k8s-infra signoz/k8s-infra
+        --namespace platform-observability
+        --version 0.15.0
+        --values {{ manifest_dest }}/kubernetes/platform/signoz-k8s-infra/values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: signoz_k8s_result
+      changed_when: "'has been upgraded' in signoz_k8s_result.stdout or 'has been installed' in signoz_k8s_result.stdout"
+
+    # 6. n8n workflow automation
+    # Apply storage manifests first
+    - name: Apply n8n storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/n8n/storage.yaml -n platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: n8n_storage_result
+      changed_when: "'created' in n8n_storage_result.stdout or 'configured' in n8n_storage_result.stdout"
+
+    - name: Install n8n via Helm
+      ansible.builtin.command: >
+        helm upgrade --install n8n community-charts/n8n
+        --namespace platform-automation
+        --version 1.16.25
+        --values {{ manifest_dest }}/kubernetes/platform/n8n/values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: n8n_result
+      changed_when: "'has been upgraded' in n8n_result.stdout or 'has been installed' in n8n_result.stdout"
+
+    - name: Apply n8n ingress
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/n8n/ingress.yaml -n platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: n8n_ingress_result
+      changed_when: "'created' in n8n_ingress_result.stdout or 'configured' in n8n_ingress_result.stdout"
+
+    # 7. Clawdbot (local manifests only, no Helm chart)
+    - name: Apply Clawdbot storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/storage.yaml -n platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: clawdbot_storage_result
+      changed_when: "'created' in clawdbot_storage_result.stdout or 'configured' in clawdbot_storage_result.stdout"
+
+    - name: Apply Clawdbot deployment
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/deployment.yaml -n platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: clawdbot_deploy_result
+      changed_when: "'created' in clawdbot_deploy_result.stdout or 'configured' in clawdbot_deploy_result.stdout"
+
+    - name: Apply Clawdbot ingress
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/ingress.yaml -n platform-automation
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: clawdbot_ingress_result
+      changed_when: "'created' in clawdbot_ingress_result.stdout or 'configured' in clawdbot_ingress_result.stdout"
+
+    # 8. Portainer cluster dashboard
+    - name: Apply Portainer storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/portainer/storage.yaml -n platform-management
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: portainer_storage_result
+      changed_when: "'created' in portainer_storage_result.stdout or 'configured' in portainer_storage_result.stdout"
+
+    - name: Install Portainer via Helm
+      ansible.builtin.command: >
+        helm upgrade --install portainer portainer/portainer
+        --namespace platform-management
+        --values {{ manifest_dest }}/kubernetes/platform/portainer/values.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: portainer_result
+      changed_when: "'has been upgraded' in portainer_result.stdout or 'has been installed' in portainer_result.stdout"
+
+    - name: Apply Portainer ingress
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/portainer/ingress.yaml -n platform-management
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: portainer_ingress_result
+      changed_when: "'created' in portainer_ingress_result.stdout or 'configured' in portainer_ingress_result.stdout"
+
+    - name: Wait for Portainer to be ready
+      ansible.builtin.command: kubectl rollout status deployment/portainer -n platform-management --timeout=60s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+
+    - name: Get Portainer service ClusterIP
+      ansible.builtin.command: kubectl get svc portainer -n platform-management -o jsonpath='{.spec.clusterIP}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: portainer_ip
+      changed_when: false
+
+    - name: Initialize Portainer admin user
+      ansible.builtin.uri:
+        url: "http://{{ portainer_ip.stdout }}:9000/api/users/admin/init"
+        method: POST
+        body_format: json
+        body:
+          Username: admin
+          Password: "{{ portainer_admin_password }}"
+        status_code: [200, 409]
+      register: portainer_init
+      changed_when: portainer_init.status == 200
+      failed_when: false
+
+    # 9. Apply registry manifests
+    - name: Apply registry manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/registry.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      when: registry_password is defined and registry_password | length > 0
+      register: registry_result
+      changed_when: "'created' in registry_result.stdout or 'configured' in registry_result.stdout"
+
+    # ========================================
+    # Publish app Helm chart to OCI registry
+    # App CIs pull this chart to deploy themselves
+    # ========================================
+
+    - name: Package app Helm chart
+      ansible.builtin.command: helm package {{ manifest_dest }}/kubernetes/applications/chart --destination /tmp/
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: helm_package_result
+      changed_when: true
+      when: registry_password is defined and registry_password | length > 0
+
+    - name: Login to OCI registry for Helm
+      ansible.builtin.command: >
+        helm registry login registry.jterrazz.com
+        --username deploy
+        --password "{{ registry_password }}"
+      no_log: true
+      changed_when: false
+      when: registry_password is defined and registry_password | length > 0
+
+    - name: Push app chart to OCI registry
+      ansible.builtin.shell:
+        cmd: helm push /tmp/app-*.tgz oci://registry.jterrazz.com/charts
+        executable: /bin/bash
+      register: chart_push_result
+      changed_when: true
+      when: registry_password is defined and registry_password | length > 0
+
+    # ========================================
+    # Bootstrap app deployments (optional)
+    # Triggers each app's CI to deploy via GitHub API
+    # Only needed on fresh cluster rebuild
+    # ========================================
+
+    - name: Trigger app CI deployments (jterrazz repos)
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/{{ item }}/actions/workflows/deploy.yaml/dispatches"
+        method: POST
+        headers:
+          Authorization: "token {{ github_pat }}"
+          Accept: "application/vnd.github.v3+json"
+        body_format: json
+        body:
+          ref: main
+        status_code: [204]
+      loop:
+        - jterrazz/signews-api
+        - jterrazz/gateway-intelligence
+      when: github_pat is defined and github_pat | length > 0 and bootstrap_apps | default(false) | bool
+      failed_when: false
+
+    - name: Trigger app CI deployments (clawrr repos)
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/{{ item }}/actions/workflows/deploy.yaml/dispatches"
+        method: POST
+        headers:
+          Authorization: "token {{ github_pat_clawrr }}"
+          Accept: "application/vnd.github.v3+json"
+        body_format: json
+        body:
+          ref: main
+        status_code: [204]
+      loop:
+        - clawrr/web-landing
+      when: github_pat_clawrr is defined and github_pat_clawrr | length > 0 and bootstrap_apps | default(false) | bool
+      failed_when: false
 
     # Cleanup
     - name: Cleanup temporary manifests
@@ -433,6 +539,14 @@
         msg: |
           Platform deployment complete!
 
-          ArgoCD: Bootstrapped via Helm v{{ argocd_version }}
-          Platform services: {{ platform_apps.files | length }} registered
-          Applications: {{ argocd_apps.files | length }} registered
+          Platform services installed via Helm:
+            - cert-manager v1.19.2
+            - external-dns v1.20.0
+            - infisical v0.10.21
+            - signoz v0.108.0 + k8s-infra v0.15.0
+            - n8n v1.16.25
+            - portainer
+          Local manifests applied:
+            - clawdbot
+            - registry
+          App chart published to: oci://registry.jterrazz.com/charts/app

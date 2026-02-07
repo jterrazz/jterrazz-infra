@@ -9,18 +9,16 @@ is_local_dev() {
 # Show access information
 show_access_info() {
     section "🎉 Application Access"
-    
+
     if is_local_dev; then
         # Local environment with mDNS - automatic .local domain resolution
         subsection "🌐 Your Applications"
         echo "  • Infrastructure:    https://infra.local/"
-        echo "  • ArgoCD:           https://argocd.local/"
         echo "  • Portainer:        https://portainer.local/"
     else
         # Production environment
         subsection "🌐 Configure DNS and Access"
         echo "  • Infrastructure:    https://yourdomain.com"
-        echo "  • ArgoCD:           https://argocd.yourdomain.com"
         echo "  • Portainer:        https://portainer.yourdomain.com"
     fi
 }
@@ -30,28 +28,28 @@ show_access_info() {
 # Show VM exposed ports table
 show_vm_ports_table() {
     local vm_ip="$1"
-    
+
     subsection "🌐 VM Network & Exposed Ports"
-    
+
     # Display VM network info cleanly
     local vm_state=$(multipass info "$VM_NAME" 2>/dev/null | grep "State:" | awk '{print $2}')
     local vm_ip=$(get_vm_ip)
-    
+
     printf "  %-12s %s\n" "State:" "$vm_state"
     printf "  %-12s %s\n" "IPv4:" "$vm_ip"
     echo ""
-    
+
     # Port security analysis
     info "Port Security Analysis"
     printf "  %-8s %-12s %-20s %s\n" "PORT" "ACCESS" "SERVICE" "DETAILS"
     printf "  %-8s %-12s %-20s %s\n" "----" "------" "-------" "-------"
-    
+
     # Function to check UFW rules for a port
     check_port_access() {
         local port="$1"
         local service_name="$2"
         local description="$3"
-        
+
         # Check if service is running first
         local service_running=false
         case "$port" in
@@ -65,15 +63,15 @@ show_vm_ports_table() {
                 ssh_vm "sudo k3s kubectl cluster-info 2>/dev/null" | grep -q "Kubernetes" &>/dev/null && service_running=true
                 ;;
         esac
-        
+
         if [ "$service_running" = false ]; then
             printf "  %-8s %-12s %-20s %s\n" "$port" "CLOSED" "$service_name" "$description (not running)"
             return
         fi
-        
+
         # Check UFW rules for this port (UFW is always active now)
         local ufw_rules=$(ssh_vm "sudo ufw status verbose 2>/dev/null | grep -E '${port}/(tcp|udp)'" 2>/dev/null || echo "")
-        
+
         if [[ -z "$ufw_rules" ]]; then
             # No UFW rules found = blocked by firewall
             printf "  %-8s %-12s %-20s %s\n" "$port" "BLOCKED" "$service_name" "$description (no firewall rule)"
@@ -90,13 +88,13 @@ show_vm_ports_table() {
             fi
         fi
     }
-    
+
     # Check each port
     check_port_access "22" "SSH" "VM remote access"
-    check_port_access "80" "HTTP (Traefik)" "Web traffic → HTTPS redirect"  
+    check_port_access "80" "HTTP (Traefik)" "Web traffic → HTTPS redirect"
     check_port_access "443" "HTTPS (Traefik)" "Secure web applications"
     check_port_access "6443" "Kubernetes API" "Cluster management"
-    
+
     echo ""
     echo "  Access levels: OPEN=public, PRIVATE=internal only, RESTRICTED=specific IPs, CLOSED=not running, BLOCKED=no rule"
 }
@@ -104,42 +102,38 @@ show_vm_ports_table() {
 # Show services grouped by category
 show_grouped_services() {
     local vm_ip="$1"
-    
+
     # Helper function to format service/pod entries
     format_service_entry() {
         local namespace="$1" name="$2" type="$3" status="$4" info="$5"
-        
+
         # Smart truncation for names
         if [[ ${#name} -gt 27 ]]; then
-            if [[ "$name" == argocd-* ]]; then
-                local suffix="${name#argocd-}"
-                local service_part="${suffix%-*}"
-                name="argocd-${service_part:0:15}..."
-            elif [[ "$name" == *-* ]]; then
+            if [[ "$name" == *-* ]]; then
                 local prefix="${name%%-*}"
                 name="${prefix}-${name:$((${#prefix}+1)):15}..."
             else
                 name="${name:0:24}..."
             fi
         fi
-        
+
         # Truncate namespace if too long
         [[ ${#namespace} -gt 19 ]] && namespace="${namespace:0:16}..."
-        
+
         printf "    %-20s %-28s %-12s %-12s %s\n" "$namespace" "$name" "$type" "$status" "$info"
     }
-    
+
     subsection "🚀 Kubernetes Infrastructure Overview"
-    
+
     # Get services and pods data
     local services_raw=$(ssh_vm "sudo k3s kubectl get svc --all-namespaces -o wide --no-headers 2>/dev/null" || echo "")
     local pods_raw=$(ssh_vm "sudo k3s kubectl get pods --all-namespaces --no-headers 2>/dev/null" || echo "")
-    
+
     # System Services (kube-system)
     info "🔧 System Services (Kubernetes Core)"
     printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
     printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
-    
+
     # System services (default and kube-system)
     echo "$services_raw" | grep -E "^(default|kube-system)" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
@@ -147,7 +141,7 @@ show_grouped_services() {
         local type=$(echo "$line" | awk '{print $3}')
         local ports=$(echo "$line" | awk '{print $6}')
         [[ ${#ports} -gt 25 ]] && ports="${ports:0:22}..."
-        
+
         # Add context for core services
         local context=""
         case "$name" in
@@ -157,10 +151,10 @@ show_grouped_services() {
             metrics-server) context="$ports (Metrics)" ;;
             *) context="$ports" ;;
         esac
-        
+
         format_service_entry "$namespace" "$name" "$type" "Running" "$context"
     done
-    
+
     # System pods (default and kube-system)
     echo "$pods_raw" | grep -E "^(default|kube-system)" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
@@ -170,14 +164,14 @@ show_grouped_services() {
         local restarts=$(echo "$line" | awk '{print $5}')
         format_service_entry "$namespace" "$name" "Pod" "$status" "restarts: $restarts, age: $age"
     done
-    
+
     echo ""
-    
+
     # Platform Services (platform-*)
     info "🏗️ Platform Services (GitOps & Management)"
     printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
     printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
-    
+
     # Platform services
     echo "$services_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
@@ -185,19 +179,18 @@ show_grouped_services() {
         local type=$(echo "$line" | awk '{print $3}')
         local ports=$(echo "$line" | awk '{print $6}')
         [[ ${#ports} -gt 25 ]] && ports="${ports:0:22}..."
-        
+
         # Add context for platform services
         local context=""
         case "$name" in
-            argocd-server) context="$ports (GitOps UI)" ;;
             portainer) context="$ports (Container Mgmt)" ;;
             dashboard-service) context="$ports (K8s Dashboard)" ;;
             *) context="$ports" ;;
         esac
-        
+
         format_service_entry "$namespace" "$name" "$type" "Running" "$context"
     done
-    
+
     # Platform pods
     echo "$pods_raw" | grep -E "^platform-(gitops|management)" | while IFS= read -r line; do
         local namespace=$(echo "$line" | awk '{print $1}')
@@ -207,18 +200,18 @@ show_grouped_services() {
         local restarts=$(echo "$line" | awk '{print $5}')
         format_service_entry "$namespace" "$name" "Pod" "$status" "restarts: $restarts, age: $age"
     done
-    
+
     echo ""
-    
+
     # Application Services (everything else, excluding default system services)
     info "📱 Application Services"
     local app_services=$(echo "$services_raw" | grep -v -E "^(default|kube-system|platform-)")
     local app_pods=$(echo "$pods_raw" | grep -v -E "^(default|kube-system|platform-)")
-    
+
     if [[ -n "$app_services" || -n "$app_pods" ]]; then
         printf "    %-20s %-28s %-12s %-12s %s\n" "NAMESPACE" "NAME" "TYPE" "STATUS" "INFO"
         printf "    %-20s %-28s %-12s %-12s %s\n" "---------" "----" "----" "------" "----"
-        
+
         # App services
         if [[ -n "$app_services" ]]; then
             echo "$app_services" | while IFS= read -r line; do
@@ -230,7 +223,7 @@ show_grouped_services() {
                 format_service_entry "$namespace" "$name" "$type" "Running" "$ports"
             done
         fi
-        
+
         # App pods
         if [[ -n "$app_pods" ]]; then
             echo "$app_pods" | while IFS= read -r line; do
@@ -244,74 +237,71 @@ show_grouped_services() {
         fi
     else
         echo "    No application services deployed yet"
-        echo "    Deploy your apps via ArgoCD or kubectl apply"
+        echo "    Deploy your apps via their CI workflows or helm upgrade"
     fi
 }
 
-# Check ArgoCD applications specifically
-show_argocd_applications() {
+# Check Helm-deployed applications
+show_app_releases() {
     local vm_ip="$1"
-    
-    subsection "🎯 ArgoCD Applications"
-    
-    local apps=$(ssh_vm "sudo k3s kubectl get applications -n platform-gitops --no-headers 2>/dev/null" || echo "")
-    if [[ -n "$apps" ]]; then
-        printf "  %-20s %-12s %-12s %-15s %s\n" "APPLICATION" "SYNC STATUS" "HEALTH" "SERVER" "PATH"
-        printf "  %-20s %-12s %-12s %-15s %s\n" "-----------" "-----------" "------" "------" "----"
-        
-        echo "$apps" | while IFS= read -r line; do
+
+    subsection "🎯 Application Releases"
+
+    local releases=$(ssh_vm "sudo helm list -A --no-headers 2>/dev/null | grep -E '^(staging-|prod-)'" || echo "")
+    if [[ -n "$releases" ]]; then
+        printf "  %-25s %-20s %-12s %s\n" "RELEASE" "NAMESPACE" "STATUS" "CHART"
+        printf "  %-25s %-20s %-12s %s\n" "-------" "---------" "------" "-----"
+
+        echo "$releases" | while IFS= read -r line; do
             local name=$(echo "$line" | awk '{print $1}')
-            local sync=$(echo "$line" | awk '{print $2}')
-            local health=$(echo "$line" | awk '{print $3}')
-            local server="kubernetes"
-            local path="$(echo "$line" | awk '{print $1}' | cut -d'-' -f1-2)"
-            
-            # Truncate for formatting
-            [[ ${#name} -gt 19 ]] && name="${name:0:16}..."
-            [[ ${#server} -gt 14 ]] && server="${server:0:11}..."
-            [[ ${#path} -gt 19 ]] && path="${path:0:16}..."
-            
-            printf "  %-20s %-12s %-12s %-15s %s\n" "$name" "$sync" "$health" "$server" "$path"
+            local namespace=$(echo "$line" | awk '{print $2}')
+            local status=$(echo "$line" | awk '{print $8}')
+            local chart=$(echo "$line" | awk '{print $9}')
+
+            [[ ${#name} -gt 24 ]] && name="${name:0:21}..."
+            [[ ${#namespace} -gt 19 ]] && namespace="${namespace:0:16}..."
+
+            printf "  %-25s %-20s %-12s %s\n" "$name" "$namespace" "$status" "$chart"
         done
     else
-        echo "  No ArgoCD applications deployed yet"
-        echo "  Use ArgoCD to deploy your apps from separate git repositories"
+        echo "  No application releases deployed yet"
+        echo "  Apps deploy themselves via their CI workflows"
     fi
 }
 
 # User-friendly VM status display
 show_vm_status() {
     section "🖥️ Infrastructure Overview"
-    
+
     if ! vm_exists; then
         error "VM '$VM_NAME' not found"
         echo "    • Run 'make start' to create VM"
         return 1
     fi
-    
+
     local vm_ip=$(get_vm_ip)
     if [[ -z "$vm_ip" ]]; then
         error "Cannot determine VM IP"
         return 1
     fi
-    
+
     # VM basic info
     subsection "📋 VM Details"
     local vm_state=$(multipass info "$VM_NAME" | grep "State:" | awk '{print $2}')
     local vm_cpu=$(multipass info "$VM_NAME" | grep "CPU(s):" | awk '{print $2}')
     local vm_mem=$(multipass info "$VM_NAME" | grep "Memory usage:" | awk '{print $3, $4, $5, $6, $7}')
     local vm_disk=$(multipass info "$VM_NAME" | grep "Disk usage:" | awk '{print $3, $4, $5, $6, $7}')
-    
+
     printf "  %-12s %-15s %-25s %s\n" "PROPERTY" "VALUE" "USAGE" "STATUS"
     printf "  %-12s %-15s %-25s %s\n" "--------" "-----" "-----" "------"
     printf "  %-12s %-15s %-25s %s\n" "State" "$vm_state" "-" "$([ "$vm_state" = "Running" ] && echo "✅ OK" || echo "❌ ISSUE")"
     printf "  %-12s %-15s %-25s %s\n" "CPU" "${vm_cpu} cores" "-" "✅ OK"
     printf "  %-12s %-15s %-25s %s\n" "Memory" "-" "$vm_mem" "✅ OK"
     printf "  %-12s %-15s %-25s %s\n" "Disk" "-" "$vm_disk" "✅ OK"
-    
+
     # VM network & ports
     show_vm_ports_table "$vm_ip"
-    
+
     # System health check
     echo ""
     section "🔍 System Health"
@@ -321,7 +311,7 @@ show_vm_status() {
         echo "  ❌ SSH connectivity failed"
         return 1
     fi
-    
+
     if ssh_vm "sudo k3s kubectl get nodes --no-headers 2>/dev/null" | grep -q "Ready"; then
         echo "  ✅ Kubernetes cluster healthy"
         local node_info=$(ssh_vm "sudo k3s kubectl get nodes --no-headers 2>/dev/null | head -1")
@@ -330,14 +320,14 @@ show_vm_status() {
         echo "  ❌ Kubernetes cluster not responding"
         return 1
     fi
-    
+
     # Enhanced security overview
     section "🛡️ Security Overview"
-    
+
     subsection "🔐 Security Services"
     printf "  %-20s %-12s %s\n" "SERVICE" "STATUS" "DETAILS"
     printf "  %-20s %-12s %s\n" "-------" "------" "-------"
-    
+
     # fail2ban with jail info
     if ssh_vm "sudo systemctl is-active fail2ban 2>/dev/null" | grep -q "active"; then
         local jail_count=$(ssh_vm "sudo fail2ban-client status 2>/dev/null | grep -c 'Jail list:' || echo '0'" 2>/dev/null)
@@ -346,7 +336,7 @@ show_vm_status() {
     else
         printf "  %-20s %-12s %s\n" "fail2ban" "⚠️  Inactive" "Intrusion prevention disabled"
     fi
-    
+
     # UFW with rules count and security context
     if ssh_vm "sudo systemctl is-active ufw 2>/dev/null" | grep -q "active"; then
         local ufw_status=$(ssh_vm "sudo ufw status 2>/dev/null | head -1 | awk '{print \$2}'" 2>/dev/null || echo "unknown")
@@ -363,26 +353,26 @@ show_vm_status() {
             printf "  %-20s %-12s %s\n" "ufw" "❌ Critical" "Production firewall disabled!"
         fi
     fi
-    
+
     # auditd
     if ssh_vm "sudo systemctl is-active auditd 2>/dev/null" | grep -q "active"; then
         printf "  %-20s %-12s %s\n" "auditd" "✅ Active" "System call auditing enabled"
     else
         printf "  %-20s %-12s %s\n" "auditd" "⚠️  Inactive" "System auditing disabled"
     fi
-    
+
     # unattended-upgrades
     if ssh_vm "sudo systemctl is-active unattended-upgrades 2>/dev/null" | grep -q "active"; then
         printf "  %-20s %-12s %s\n" "auto-updates" "✅ Active" "Automatic security updates enabled"
     else
         printf "  %-20s %-12s %s\n" "auto-updates" "⚠️  Inactive" "Manual updates required"
     fi
-    
-    
+
+
     subsection "🔒 SSH Security"
     printf "  %-25s %s\n" "SETTING" "STATUS"
     printf "  %-25s %s\n" "-------" "------"
-    
+
     # SSH root login
     local root_login=$(ssh_vm "sudo grep '^PermitRootLogin' /etc/ssh/sshd_config 2>/dev/null | awk '{print \$2}' || echo 'unknown'" 2>/dev/null)
     if [[ "$root_login" == "no" ]]; then
@@ -390,7 +380,7 @@ show_vm_status() {
     else
         printf "  %-25s %s\n" "Root login" "⚠️  Enabled or unknown"
     fi
-    
+
     # SSH password authentication
     local pwd_auth=$(ssh_vm "sudo grep '^PasswordAuthentication' /etc/ssh/sshd_config 2>/dev/null | awk '{print \$2}' || echo 'unknown'" 2>/dev/null)
     if [[ "$pwd_auth" == "no" ]]; then
@@ -398,24 +388,24 @@ show_vm_status() {
     else
         printf "  %-25s %s\n" "Password authentication" "⚠️  Enabled"
     fi
-    
+
     # SSH port
     local ssh_port=$(ssh_vm "sudo grep '^Port' /etc/ssh/sshd_config 2>/dev/null | awk '{print \$2}' || echo '22'" 2>/dev/null)
     printf "  %-25s %s\n" "SSH Port" "Port ${ssh_port:-22}"
-    
-    
+
+
     subsection "📊 System Security Stats"
     printf "  %-25s %s\n" "METRIC" "VALUE"
     printf "  %-25s %s\n" "------" "-----"
-    
+
     # System uptime
     local uptime_info=$(ssh_vm "uptime -p 2>/dev/null || uptime" 2>/dev/null)
     printf "  %-25s %s\n" "System uptime" "${uptime_info:-unknown}"
-    
+
     # Load average
     local load_avg=$(ssh_vm "uptime 2>/dev/null | awk -F'load average:' '{print \$2}' | sed 's/^[[:space:]]*//' || echo 'unknown'" 2>/dev/null)
     printf "  %-25s %s\n" "Load average" "${load_avg:-unknown}"
-    
+
     # Failed login attempts (last 24h)
     local failed_logins=$(ssh_vm "sudo grep 'Failed password' /var/log/auth.log 2>/dev/null | grep \"\$(date +'%b %d')\" | wc -l || echo '0'" 2>/dev/null)
     if [[ "${failed_logins:-0}" -gt 0 ]]; then
@@ -423,7 +413,7 @@ show_vm_status() {
     else
         printf "  %-25s %s\n" "Failed logins (today)" "✅ 0 attempts"
     fi
-    
+
     # Available updates
     local updates=$(ssh_vm "sudo apt list --upgradable 2>/dev/null | wc -l || echo '1'" 2>/dev/null)
     local update_count=$((${updates:-1} - 1))  # Subtract header line
@@ -432,18 +422,18 @@ show_vm_status() {
     else
         printf "  %-25s %s\n" "Available updates" "✅ System up to date"
     fi
-    
+
     # Kubernetes services and pods
     echo ""
     show_grouped_services "$vm_ip"
-    
-    # ArgoCD applications
+
+    # Application releases
     echo ""
-    show_argocd_applications "$vm_ip"
-    
+    show_app_releases "$vm_ip"
+
     # Access information
     echo ""
     show_access_info
-    
+
     return 0
 }

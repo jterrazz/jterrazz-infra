@@ -1,0 +1,34 @@
+otelCollectorEndpoint: signoz-otel-collector.platform-observability:4317
+
+presets:
+  otlpExporter:
+    enabled: true
+  hostMetrics:
+    enabled: true
+    collectionInterval: 60s
+  kubeletMetrics:
+    enabled: true
+    collectionInterval: 60s
+    insecureSkipVerify: true
+  clusterMetrics:
+    enabled: true
+  logsCollection:
+    enabled: false
+
+otelAgent:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+otelDeployment:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi

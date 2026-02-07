@@ -1,0 +1,31 @@
+installCRDs: true
+# Shorter leader election lease for faster recovery after reboot
+# Single-node cluster, so we can use aggressive timeouts
+global:
+  leaderElection:
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+webhook:
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

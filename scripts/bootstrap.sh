@@ -66,7 +66,7 @@ show_summary() {
     echo "Next steps:"
     echo "  1. export KUBECONFIG=./kubeconfig.yaml"
     echo "  2. kubectl get nodes"
-    echo "  3. Access ArgoCD"
+    echo "  3. Access Portainer: https://portainer.jterrazz.com"
 }
 
 main() {

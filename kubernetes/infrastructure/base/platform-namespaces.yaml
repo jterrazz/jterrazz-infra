@@ -4,9 +4,9 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: platform-gitops
+  name: platform-management
   labels:
-    app.kubernetes.io/component: gitops
+    app.kubernetes.io/component: management
 
 ---
 apiVersion: v1
