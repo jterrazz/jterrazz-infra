@@ -16,6 +16,18 @@
     portainer_admin_password: "{{ portainer_password | default('changeme-on-first-login') }}"
 
   tasks:
+    # Pre-flight: validate required secrets are provided
+    - name: Validate required secrets
+      ansible.builtin.assert:
+        that:
+          - cloudflare_api_token is defined and cloudflare_api_token | length > 0
+          - infisical_client_id is defined and infisical_client_id | length > 0
+          - infisical_client_secret is defined and infisical_client_secret | length > 0
+          - registry_password is defined and registry_password | length > 0
+        fail_msg: >
+          Missing required secrets. Ensure cloudflare_api_token, infisical_client_id,
+          infisical_client_secret, and registry_password are passed as extra vars.
+
     - name: Wait for Traefik to be ready
       ansible.builtin.shell:
         cmd: |
@@ -160,11 +172,12 @@
         - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
         - { name: signoz, url: "https://charts.signoz.io" }
         - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
-        - { name: infisical, url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/" }
+        - name: infisical
+          url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
         - { name: portainer, url: "https://portainer.github.io/k8s/" }
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
-      failed_when: false
+      failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
 
     - name: Update Helm repositories
       ansible.builtin.command: helm repo update

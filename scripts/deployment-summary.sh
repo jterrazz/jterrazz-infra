@@ -102,6 +102,8 @@ CERTMGR_STATUS=$(get_service_status "platform-networking" "cert-manager")
 EXTDNS_STATUS=$(get_service_status "platform-networking" "external-dns")
 SIGNOZ_STATUS=$(get_service_status "platform-observability")
 REGISTRY_STATUS=$(get_service_status "platform-registry")
+N8N_STATUS=$(get_service_status "platform-automation" "n8n")
+OPENCLAW_STATUS=$(get_service_status "platform-automation" "openclaw")
 
 # Helper to format service row
 format_service_row() {
@@ -169,6 +171,8 @@ $(format_service_row "Traefik" "$TRAEFIK_STATUS")
 $(format_service_row "Cert-Manager" "$CERTMGR_STATUS")
 $(format_service_row "External-DNS" "$EXTDNS_STATUS")
 $(format_service_row "SigNoz" "$SIGNOZ_STATUS")
+$(format_service_row "N8N" "$N8N_STATUS")
+$(format_service_row "OpenClaw" "$OPENCLAW_STATUS")
 $(format_service_row "Registry" "$REGISTRY_STATUS")
 
 ### 📱 Applications (Helm Releases)
@@ -226,5 +230,7 @@ cat << EOF
 ### 🔗 Quick Links
 - [Portainer Dashboard](https://portainer.jterrazz.com) (Tailscale)
 - [SigNoz Observability](https://signoz.jterrazz.com) (Tailscale)
+- [N8N Workflows](https://n8n.jterrazz.com) (Tailscale)
+- [OpenClaw Gateway](https://openclaw.jterrazz.com) (Public)
 - [GitHub Commit](https://github.com/jterrazz/jterrazz-infra/commit/$COMMIT_SHA)
 EOF

@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mdns-publisher
-  namespace: platform-dns
+  namespace: platform-networking
   labels:
     app: mdns-publisher
     environment: local
@@ -22,7 +22,7 @@ spec:
       hostNetwork: true
       containers:
         - name: mdns-publisher
-          image: alpine:latest
+          image: alpine:3.21
           command: ["/bin/sh"]
           args:
             - -c

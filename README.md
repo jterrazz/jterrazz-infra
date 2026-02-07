@@ -193,7 +193,7 @@ Each app's CI workflow:
 | Property         | Convention                                            |
 | ---------------- | ----------------------------------------------------- |
 | **Namespace**    | `{environment}-{name}` (e.g. `staging-my-app`)        |
-| **Image**        | `registry.jterrazz.com/{name}:latest`                 |
+| **Image**        | `registry.jterrazz.com/{name}:{sha}` (digest-pinned)  |
 | **Storage path** | `/var/lib/k8s-data/{name}-{environment}/` on host     |
 | **Secrets**      | Infisical `dev` env for staging, `prod` for prod      |
 | **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com` |

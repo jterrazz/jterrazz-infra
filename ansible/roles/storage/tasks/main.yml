@@ -13,11 +13,12 @@
 
 # Static storage directories for apps that need persistent data
 # These directories survive app deletion (unlike dynamic local-path provisioner)
+# Mode 0755 — containers manage their own file ownership via securityContext
 - name: Create app storage directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    mode: "0777"
+    mode: "0755"
   loop:
     - /var/lib/k8s-data/n8n
     - /var/lib/k8s-data/signoz/clickhouse
