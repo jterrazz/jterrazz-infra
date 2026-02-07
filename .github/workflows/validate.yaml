@@ -82,6 +82,8 @@ jobs:
 
       - name: Setup Helm
         uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
 
       - name: Lint app Helm chart
         run: helm lint kubernetes/applications/chart
