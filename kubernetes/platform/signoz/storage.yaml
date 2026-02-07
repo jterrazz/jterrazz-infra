@@ -27,6 +27,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: data-volumeclaim-template-chi-signoz-clickhouse-cluster-0-0-0
+  namespace: platform-observability
 spec:
   accessModes:
     - ReadWriteOnce
@@ -64,6 +65,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: signoz-db-signoz-0
+  namespace: platform-observability
 spec:
   accessModes:
     - ReadWriteOnce
