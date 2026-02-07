@@ -175,7 +175,7 @@ Common labels
 {{- define "app.labels" -}}
 app: {{ include "app.name" . }}
 app.kubernetes.io/name: {{ include "app.name" . }}
-app.kubernetes.io/instance: {{ include "app.name" . }}-{{ .Values.environment }}
+app.kubernetes.io/instance: {{ .Values.environment }}-{{ include "app.name" . }}
 app.kubernetes.io/managed-by: helm
 environment: {{ .Values.environment }}
 {{- end -}}
