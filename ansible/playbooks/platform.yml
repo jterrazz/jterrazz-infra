@@ -295,7 +295,7 @@
     # 3. Infisical secrets operator
     - name: Install Infisical secrets operator via Helm
       ansible.builtin.command: >
-        helm upgrade --install infisical-secrets-operator infisical/secrets-operator
+        helm upgrade --install infisical infisical/secrets-operator
         --namespace platform-secrets
         --version 0.10.21
         --values {{ manifest_dest }}/kubernetes/platform/infisical/values.yaml
