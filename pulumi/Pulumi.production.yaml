@@ -2,9 +2,3 @@ config:
   jterrazz-infra:serverType: cax31
   jterrazz-infra:location: nbg1
   jterrazz-infra:image: ubuntu-24.04
-  jterrazz-infra:n8nEncryptionKey:
-    secure: AAABAJOeTU3O8ipScZBVb78w7sIYZFR3+5JePjZDOLPh8p6H6tWH5J6T3GeohQwyZkQfENyRcnorLg8mxc0igQ==
-  jterrazz-infra:clawdbotGatewayToken:
-    secure: AAABAEv+ZEL6tw6JDnuGBvC7QOuItPz6FABHHtwCbF4GS6T75yT2X9aQtBl4aenGo0U866Vla/G1zLAdHzqHQjU2Xpz3PZJDY02nG9hNSTeB+3LPJ9dH3RsLWuEOoX0b
-  jterrazz-infra:clawdbotClaudeToken:
-    secure: AAABAKQjsNG6UsE55IEYaJzZiT/++KPb+dtm+gRko2eBYaZ15TJhvhDbN4Wqf2kz3JbJzXxrnJGIgpItr0Fo6WdaHoxiFYJfAkYZYaBctyY8+HANgT/C0QDKy7okbr8tBrppEVFNLWZ4Qx4nbpyw+XAC3of2yHKCLKdKUEXKiISv4QVmCcUGui1sHFI=
