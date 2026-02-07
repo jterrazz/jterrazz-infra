@@ -1,11 +1,7 @@
 ---
 # Platform Services Playbook
-# Installs platform services via Helm and kubectl directly
-# All kubectl/helm commands run ON the VPS (no external k8s API access needed)
-#
-# Environment safety:
-#   LOCAL  — self-contained services only, dummy secrets, no external API calls
-#   PROD   — full deployment with real secrets, Cloudflare DNS, Let's Encrypt, Infisical
+# Installs platform services via Helm and kubectl on the production VPS.
+# All kubectl/helm commands run ON the VPS (no external k8s API access needed).
 
 - name: Platform Services Deployment
   hosts: all
@@ -13,7 +9,6 @@
   gather_facts: true
 
   vars:
-    deploy_environment: "{{ environment_type | default('local') }}"
     kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
     manifest_dest: /tmp/k8s-manifests
     templates_dir: "{{ playbook_dir }}/../templates"
@@ -21,26 +16,7 @@
 
   tasks:
     # ========================================
-    # Environment setup
-    # ========================================
-
-    - name: Set environment flags
-      ansible.builtin.set_fact:
-        is_production: "{{ deploy_environment == 'production' }}"
-
-    # In local dev, generate dummy secrets so self-contained services can start.
-    # These services work but won't connect to external APIs (Signal, Claude, etc.)
-    - name: Set local dev defaults for self-contained services
-      ansible.builtin.set_fact:
-        registry_password: "{{ registry_password | default('local-dev-password') }}"
-        n8n_encryption_key: "{{ n8n_encryption_key | default('local-dev-encryption-key') }}"
-        openclaw_gateway_token: "{{ openclaw_gateway_token | default('local-dev-token') }}"
-        openclaw_claude_token: "{{ openclaw_claude_token | default('local-dev-token') }}"
-      when: not is_production
-
-    # ========================================
-    # Pre-flight validation (production only)
-    # Local dev uses dummy secrets above — production MUST provide real ones
+    # Pre-flight validation
     # ========================================
 
     - name: Validate required secrets
@@ -53,10 +29,9 @@
         fail_msg: >
           Missing required secrets. Ensure cloudflare_api_token, infisical_client_id,
           infisical_client_secret, and registry_password are passed as extra vars.
-      when: is_production
 
     # ========================================
-    # Base infrastructure (all environments)
+    # Base infrastructure
     # ========================================
 
     - name: Wait for Traefik to be ready
@@ -86,30 +61,20 @@
         mode: "0644"
 
     # ========================================
-    # Tailscale IP (production only)
-    # Local dev doesn't run Tailscale — private services use .local mDNS instead
+    # Tailscale IP
     # ========================================
 
     - name: Get Tailscale IP
       ansible.builtin.command: tailscale ip -4
       register: platform_tailscale_ip_result
       changed_when: false
-      when: is_production
 
     - name: Set Tailscale IP fact
       ansible.builtin.set_fact:
         tailscale_ip: "{{ platform_tailscale_ip_result.stdout | trim }}"
-      when: is_production
-
-    # Local dev: set tailscale_ip to VM IP so templates that reference it don't fail
-    - name: Set fallback IP for local dev
-      ansible.builtin.set_fact:
-        tailscale_ip: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
-      when: not is_production
 
     # ========================================
-    # Registry setup (all environments)
-    # Local uses dummy password — still useful for testing image push/pull
+    # Registry setup
     # ========================================
 
     - name: Install apache2-utils for htpasswd
@@ -117,7 +82,6 @@
         name: apache2-utils
         state: present
         update_cache: true
-      when: registry_password is defined and registry_password | length > 0
 
     - name: Generate htpasswd hash for registry
       ansible.builtin.shell:
@@ -128,13 +92,11 @@
       register: htpasswd_result
       changed_when: false
       no_log: true
-      when: registry_password is defined and registry_password | length > 0
 
     - name: Set registry facts
       ansible.builtin.set_fact:
         registry_htpasswd: "{{ htpasswd_result.stdout | trim }}"
         server_ip: "{{ hostvars[inventory_hostname]['ansible_host'] | default(ansible_default_ipv4.address) }}"
-      when: registry_password is defined and registry_password | length > 0
       no_log: true
 
     - name: Template registry manifest with secrets
@@ -142,20 +104,17 @@
         src: "{{ templates_dir }}/kubernetes/registry.yaml.j2"
         dest: "{{ manifest_dest }}/kubernetes/platform/registry.yaml"
         mode: "0644"
-      when: registry_password is defined and registry_password | length > 0
 
     - name: Template registry pull secret for app namespaces
       ansible.builtin.template:
         src: "{{ templates_dir }}/kubernetes/registry-pull-secret.yaml.j2"
         dest: "{{ manifest_dest }}/registry-pull-secret.yaml"
         mode: "0644"
-      when: registry_password is defined and registry_password | length > 0
 
     - name: Apply registry pull secret
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/registry-pull-secret.yaml
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: registry_password is defined and registry_password | length > 0
       register: pull_secret_result
       changed_when: "'created' in pull_secret_result.stdout or 'configured' in pull_secret_result.stdout"
 
@@ -174,18 +133,16 @@
       changed_when: pv_clear.stdout != ''
       failed_when: false
 
-    # Apply base infrastructure (namespaces, network policies, storage config)
-    # The kustomization is environment-aware: local/ adds mDNS + self-signed certs
     - name: Deploy base infrastructure manifests
       ansible.builtin.command:
-        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/{{ deploy_environment }}
+        cmd: kubectl apply -k {{ manifest_dest }}/kubernetes/infrastructure/environments/production
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: infra_result
       changed_when: "'created' in infra_result.stdout or 'configured' in infra_result.stdout"
 
     # ========================================
-    # Helm setup (all environments)
+    # Helm setup
     # ========================================
 
     - name: Check if Helm is installed
@@ -233,12 +190,9 @@
       changed_when: false
 
     # ========================================
-    # Secrets (environment-dependent)
-    # Production secrets connect to real external services.
-    # Local secrets are dummies set above — services start but don't reach out.
+    # Secrets
     # ========================================
 
-    # PRODUCTION ONLY — Cloudflare token enables real DNS management + TLS issuance
     - name: Create Cloudflare API token secret for networking
       ansible.builtin.shell:
         cmd: |
@@ -250,12 +204,10 @@
         executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: is_production and cloudflare_api_token is defined and cloudflare_api_token | length > 0
       register: net_secret
       changed_when: "'created' in net_secret.stdout or 'configured' in net_secret.stdout"
       no_log: true
 
-    # PRODUCTION ONLY — Infisical fetches real secrets from the platform
     - name: Create Infisical credentials secret
       ansible.builtin.shell:
         cmd: |
@@ -268,12 +220,10 @@
         executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: is_production and infisical_client_id is defined and infisical_client_id | length > 0
       register: infisical_secret
       changed_when: "'created' in infisical_secret.stdout or 'configured' in infisical_secret.stdout"
       no_log: true
 
-    # ALL ENVIRONMENTS — n8n just needs a non-empty key (local uses dummy)
     - name: Create n8n encryption key secret
       ansible.builtin.shell:
         cmd: |
@@ -290,7 +240,6 @@
       changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
       no_log: true
 
-    # ALL ENVIRONMENTS — OpenClaw starts with dummy tokens locally (no Signal/Claude)
     - name: Create OpenClaw secrets
       ansible.builtin.shell:
         cmd: |
@@ -313,9 +262,7 @@
     # Order matters: cert-manager first (TLS), then networking, then apps
     # ========================================
 
-    # 1. cert-manager (all environments)
-    # The operator itself is safe — it only acts when Certificate CRDs are created.
-    # The ClusterIssuers (which talk to Let's Encrypt/Cloudflare) are production-only.
+    # 1. cert-manager
     - name: Install cert-manager via Helm
       ansible.builtin.command: >
         helm upgrade --install cert-manager jetstack/cert-manager
@@ -336,19 +283,14 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: false
 
-    # PRODUCTION ONLY — ClusterIssuers use Cloudflare DNS-01 + real Let's Encrypt.
-    # Local dev uses self-signed certs created by the local kustomization instead.
     - name: Apply cert-manager ClusterIssuers
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/cert-manager/issuers.yaml
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: issuers_result
       changed_when: "'created' in issuers_result.stdout or 'configured' in issuers_result.stdout"
-      when: is_production
 
-    # 2. external-dns (production only)
-    # Manages real DNS records on Cloudflare for jterrazz.com / clawrr.com.
-    # Local dev uses mDNS (.local domains) — no DNS management needed.
+    # 2. external-dns
     - name: Install external-dns via Helm
       ansible.builtin.command: >
         helm upgrade --install external-dns external-dns/external-dns
@@ -361,11 +303,8 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: externaldns_result
       changed_when: "'has been upgraded' in externaldns_result.stdout or 'has been installed' in externaldns_result.stdout"
-      when: is_production
 
-    # 3. Infisical secrets operator (production only)
-    # Connects to real Infisical API to sync secrets into the cluster.
-    # Local dev doesn't need runtime secret syncing.
+    # 3. Infisical secrets operator
     - name: Install Infisical secrets operator via Helm
       ansible.builtin.command: >
         helm upgrade --install infisical infisical/secrets-operator
@@ -378,9 +317,8 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: infisical_helm_result
       changed_when: "'has been upgraded' in infisical_helm_result.stdout or 'has been installed' in infisical_helm_result.stdout"
-      when: is_production
 
-    # 4. SigNoz observability platform (all environments)
+    # 4. SigNoz observability platform
     - name: Apply SigNoz storage manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/signoz/storage.yaml
       environment:
@@ -408,7 +346,7 @@
       register: signoz_ingress_result
       changed_when: "'created' in signoz_ingress_result.stdout or 'configured' in signoz_ingress_result.stdout"
 
-    # 5. SigNoz K8s infrastructure monitoring (all environments)
+    # 5. SigNoz K8s infrastructure monitoring
     - name: Install SigNoz K8s infra monitoring via Helm
       ansible.builtin.command: >
         helm upgrade --install signoz-k8s-infra signoz/k8s-infra
@@ -422,7 +360,7 @@
       register: signoz_k8s_result
       changed_when: "'has been upgraded' in signoz_k8s_result.stdout or 'has been installed' in signoz_k8s_result.stdout"
 
-    # 6. n8n workflow automation (all environments)
+    # 6. n8n workflow automation
     - name: Apply n8n storage manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/n8n/storage.yaml -n platform-automation
       environment:
@@ -450,8 +388,7 @@
       register: n8n_ingress_result
       changed_when: "'created' in n8n_ingress_result.stdout or 'configured' in n8n_ingress_result.stdout"
 
-    # 7. OpenClaw gateway (all environments)
-    # Locally starts with dummy tokens — gateway runs but Signal/Claude won't connect
+    # 7. OpenClaw gateway
     - name: Apply OpenClaw storage manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/storage.yaml -n platform-automation
       environment:
@@ -473,7 +410,7 @@
       register: openclaw_ingress_result
       changed_when: "'created' in openclaw_ingress_result.stdout or 'configured' in openclaw_ingress_result.stdout"
 
-    # 8. Portainer cluster dashboard (all environments)
+    # 8. Portainer cluster dashboard
     - name: Apply Portainer storage manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/portainer/storage.yaml -n platform-management
       environment:
@@ -526,19 +463,16 @@
       changed_when: portainer_init.status == 200
       failed_when: false
 
-    # 9. Apply registry manifests (all environments)
+    # 9. Apply registry manifests
     - name: Apply registry manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/registry.yaml
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: registry_password is defined and registry_password | length > 0
       register: registry_result
       changed_when: "'created' in registry_result.stdout or 'configured' in registry_result.stdout"
 
     # ========================================
-    # Publish app Helm chart to OCI registry (production only)
-    # Pushes the shared app chart so app CIs can pull it.
-    # Local dev doesn't need this — apps are deployed by CI, not locally.
+    # Publish app Helm chart to OCI registry
     # ========================================
 
     - name: Package app Helm chart
@@ -547,7 +481,6 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: helm_package_result
       changed_when: true
-      when: is_production and registry_password is defined and registry_password | length > 0
 
     - name: Login to OCI registry for Helm
       ansible.builtin.command: >
@@ -556,7 +489,6 @@
         --password "{{ registry_password }}"
       no_log: true
       changed_when: false
-      when: is_production and registry_password is defined and registry_password | length > 0
 
     - name: Push app chart to OCI registry
       ansible.builtin.shell:
@@ -564,10 +496,9 @@
         executable: /bin/bash
       register: chart_push_result
       changed_when: true
-      when: is_production and registry_password is defined and registry_password | length > 0
 
     # ========================================
-    # Bootstrap app deployments (production only, opt-in)
+    # Bootstrap app deployments (opt-in)
     # Triggers each app's CI to deploy via GitHub API.
     # Only needed on fresh cluster rebuild with bootstrap_apps=true.
     # ========================================
@@ -586,7 +517,7 @@
       loop:
         - jterrazz/signews-api
         - jterrazz/gateway-intelligence
-      when: is_production and github_pat is defined and github_pat | length > 0 and bootstrap_apps | default(false) | bool
+      when: github_pat is defined and github_pat | length > 0 and bootstrap_apps | default(false) | bool
       failed_when: false
 
     - name: Trigger app CI deployments (clawrr repos)
@@ -602,7 +533,7 @@
         status_code: [204]
       loop:
         - clawrr/web-landing
-      when: is_production and github_pat_clawrr is defined and github_pat_clawrr | length > 0 and bootstrap_apps | default(false) | bool
+      when: github_pat_clawrr is defined and github_pat_clawrr | length > 0 and bootstrap_apps | default(false) | bool
       failed_when: false
 
     # ========================================
@@ -614,7 +545,7 @@
         path: "{{ manifest_dest }}"
         state: absent
 
-    - name: Deployment complete (production)
+    - name: Deployment complete
       ansible.builtin.debug:
         msg: |
           Platform deployment complete!
@@ -630,28 +561,3 @@
             - openclaw
             - registry
           App chart published to: oci://registry.jterrazz.com/charts/app
-      when: is_production
-
-    - name: Deployment complete (local)
-      ansible.builtin.debug:
-        msg: |
-          Local platform deployment complete!
-
-          Services installed (with dummy secrets):
-            - cert-manager v1.19.2 (no issuers — using self-signed certs)
-            - signoz v0.108.0 + k8s-infra v0.15.0
-            - n8n v1.16.25
-            - openclaw (dummy tokens — Signal/Claude won't connect)
-            - portainer
-            - registry (local, dummy password)
-
-          Skipped (production only):
-            - external-dns (Cloudflare DNS)
-            - cert-manager issuers (Let's Encrypt)
-            - infisical operator (secrets platform)
-
-          Access via mDNS:
-            - http://portainer.local
-            - http://signoz.local
-            - http://n8n.local
-      when: not is_production

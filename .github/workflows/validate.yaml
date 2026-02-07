@@ -72,9 +72,6 @@ jobs:
           echo "Validating base manifests..."
           kubectl kustomize kubernetes/infrastructure/base > /dev/null
 
-          echo "Validating local environment..."
-          kubectl kustomize kubernetes/infrastructure/environments/local > /dev/null
-
           echo "Validating production environment..."
           kubectl kustomize kubernetes/infrastructure/environments/production > /dev/null
 

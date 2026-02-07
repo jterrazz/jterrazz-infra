@@ -1,10 +1,4 @@
 ---
-# Production Environment Overrides
+# Production Environment Variables
 
 environment_type: production
-
-# Enable Tailscale VPN (disabled by default in all.yml for local dev)
-skip_tailscale: false
-
-# Auto-generate k3s token (local uses fixed token for simplicity)
-k3s_token: ""

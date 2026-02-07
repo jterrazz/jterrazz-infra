@@ -1,5 +1,5 @@
 #!/bin/bash
-# Common utilities shared across all scripts (local, prod, CI)
+# Common utilities shared across all scripts
 # Source this file: source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 set -euo pipefail

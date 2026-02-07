@@ -1,6 +1,6 @@
 # @jterrazz/infra
 
-Minimal Kubernetes infrastructure with local development and production deployment on Hetzner Cloud.
+Production Kubernetes infrastructure on Hetzner Cloud.
 
 ## Architecture
 
@@ -61,13 +61,8 @@ Minimal Kubernetes infrastructure with local development and production deployme
 ## Quick Start
 
 ```bash
-# Local development
-make start    # Full setup with Multipass VM
-make status   # Check services
-make ssh      # Access VM
-
-# Production
-make deploy   # Deploy to Hetzner (or push to main)
+# Deploy to production (or push to main for automatic deployment)
+make deploy
 ```
 
 ## Project Structure
@@ -87,18 +82,17 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │       ├── traefik/        # Middlewares (private-access, rate-limit)
 │   │       └── network-policies/
 │   │
-│   ├── platform/               # Platform services (one folder per app)
-│   │   ├── portainer/          # Cluster dashboard
-│   │   ├── signoz/
-│   │   ├── n8n/
-│   │   ├── openclaw/
-│   │   ├── cert-manager/
-│   │   ├── external-dns/
-│   │   └── infisical/
+│   └── platform/               # Platform services (one folder per app)
+│       ├── portainer/          # Cluster dashboard
+│       ├── signoz/
+│       ├── n8n/
+│       ├── openclaw/
+│       ├── cert-manager/
+│       ├── external-dns/
+│       └── infisical/
 │
 ├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
 └── scripts/                    # Automation scripts
-    ├── local/                  #   Local dev (VM, status)
     ├── prod/                   #   Production (deploy, bootstrap)
     ├── ci/                     #   CI/CD (deployment summary)
     └── lib/                    #   Shared utilities
@@ -234,17 +228,11 @@ Or pass `bootstrap_apps=true` to Ansible to trigger automatically.
 | n8n       | `https://n8n.jterrazz.com`       | Workflow automation |
 | OpenClaw  | `https://openclaw.jterrazz.com`  | AI assistant        |
 
-All private services:
-
-- Use valid Let's Encrypt TLS certificates
-- DNS points to Tailscale IP
-- Only accessible when connected to Tailscale VPN
+All private services use valid Let's Encrypt TLS certificates, DNS points to Tailscale IP, and are only accessible when connected to Tailscale VPN.
 
 ## Storage
 
-All persistent data lives in `/var/lib/k8s-data/` on the VPS. This single folder contains everything that matters.
-
-### What's stored
+All persistent data lives in `/var/lib/k8s-data/` on the VPS.
 
 ```
 /var/lib/k8s-data/
@@ -254,126 +242,48 @@ All persistent data lives in `/var/lib/k8s-data/` on the VPS. This single folder
 └── signoz/        # Traces, metrics, logs, dashboards
 ```
 
-### What survives
-
-| Scenario             | Data preserved? |
-| -------------------- | --------------- |
-| Pod restart          | ✅ Yes          |
-| App redeployment     | ✅ Yes          |
-| K3s restart          | ✅ Yes          |
-| Full cluster rebuild | ✅ Yes          |
-| VPS reboot           | ✅ Yes          |
+Data survives pod restarts, app redeployments, K3s restarts, full cluster rebuilds, and VPS reboots.
 
 ### Backup
 
-To backup the entire VPS state, only this folder needs to be saved:
-
 ```bash
-# Simple backup
 tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/
-
-# Or rsync to remote
-rsync -avz /var/lib/k8s-data/ backup-server:/backups/k8s-data/
 ```
 
-### Future migration to block storage
-
-When ready to move to Hetzner Volumes (or any block storage):
-
-1. Attach volume to VPS
-2. Mount it at `/var/lib/k8s-data/`
-3. Copy existing data
-4. Apps continue working - no config changes needed
-
-The PVs use `hostPath` pointing to `/var/lib/k8s-data/{name}`, so as long as that path exists with the right data, everything works regardless of what's backing it.
-
-### File ownership
-
-All apps using `kubernetes/applications/chart/` run as UID 1000. New storage folders should be owned by `1000:1000`:
-
-```bash
-chown -R 1000:1000 /var/lib/k8s-data/my-app
-```
+PVs use `hostPath` pointing to `/var/lib/k8s-data/{name}`. All apps using the standard chart run as UID 1000 — new storage folders should be `chown -R 1000:1000`.
 
 ## Certificates & DNS
 
-### How it works
-
-1. **ClusterIssuer** (in `platform/cert-manager/issuers.yaml`) allows certificates for any `*.jterrazz.com` subdomain
+1. **ClusterIssuer** allows certificates for any `*.jterrazz.com` subdomain
 2. **Cert-Manager** requests certificates from Let's Encrypt via DNS-01 challenge
 3. **External-DNS** automatically creates/updates DNS records in Cloudflare
 4. Each app defines its own Certificate in its `ingress.yaml`
 
 ### Adding a new application
 
-1. In your app repository, create `.deploy/manifest.yaml`:
-
-```yaml
-apiVersion: jterrazz.com/v1
-kind: Application
-
-metadata:
-  name: my-app
-
-spec:
-  port: 3000
-  resources:
-    cpu: 100m
-    memory: 256Mi
-  health:
-    path: /health
-
-environments:
-  staging:
-    replicas: 1
-    ingress:
-      host: my-app-staging.jterrazz.com
-    env:
-      NODE_ENV: development
-
-  # Uncomment when ready for production
-  # prod:
-  #   replicas: 2
-  #   ingress:
-  #     host: my-app.jterrazz.com
-  #   env:
-  #     NODE_ENV: production
-```
-
-2. Add the CI deploy workflow to your app repo (see "CI-Driven Deployment" above)
-
-3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets (all other infrastructure secrets are fetched from Infisical at runtime)
-
+1. Create `.deploy/manifest.yaml` in your app repository (see format above)
+2. Add the CI deploy workflow
+3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets
 4. Push your code — CI builds, pushes, and deploys automatically
-
-5. Add your repo to `scripts/prod/trigger-app-deploys.sh` so it's included in cluster rebuilds
+5. Add your repo to `scripts/prod/trigger-app-deploys.sh` for cluster rebuilds
 
 ### Adding a new platform service
 
-For third-party Helm charts (not your own apps), create a folder in `kubernetes/platform/`:
-
 1. Create folder `kubernetes/platform/my-service/`
+2. Create `values.yaml`, `ingress.yaml`, and optionally `storage.yaml`
+3. Add the `helm upgrade --install` command to `ansible/playbooks/platform.yml`
 
-2. Create `values.yaml` with the Helm chart values
-
-3. Create `ingress.yaml` for Traefik IngressRoute + Certificate
-
-4. (Optional) Create `storage.yaml` if you need persistent data
-
-5. Add the `helm upgrade --install` command to `ansible/playbooks/platform.yml`
-
-## Production Setup
+## Setup
 
 ### Prerequisites
 
 ```bash
-# macOS
-brew install multipass ansible pulumi node
+brew install ansible pulumi node
 ```
 
 ### Required Secrets
 
-#### GitHub Actions secrets (all repos — only 4 for infra, 2 for apps)
+#### GitHub Actions secrets
 
 | Secret                    | Infra repo | App repos | Description                       |
 | ------------------------- | ---------- | --------- | --------------------------------- |
@@ -412,16 +322,10 @@ All other secrets are fetched at runtime from Infisical.
 ### Deploy
 
 ```bash
-# Manual deploy
-make deploy
-
-# Or push to main branch for automatic deployment
-git push origin main
+make deploy    # Or push to main for automatic deployment
 ```
 
 ## Security Model
-
-### Network Security
 
 | Port | Service | Access Level                |
 | ---- | ------- | --------------------------- |
@@ -430,16 +334,12 @@ git push origin main
 | 443  | HTTPS   | Public (your apps)          |
 | 6443 | K8s API | Tailscale + private only    |
 
-### Service Security
-
 - **Private services**: IP whitelist via `private-access` middleware (Tailscale IPs only)
 - **TLS**: All services use Let's Encrypt certificates
-- **DNS**: Managed by external-dns with `upsert-only` policy (won't delete unmanaged records)
+- **DNS**: Managed by external-dns with `upsert-only` policy
 - **Secrets**: Stored in Infisical, fetched at CI runtime and injected via Ansible
 
-## Observability with SigNoz
-
-### Sending Traces (OpenTelemetry)
+## Observability
 
 ```yaml
 env:
@@ -447,39 +347,7 @@ env:
     value: "http://signoz-otel-collector.platform-observability:4318"
 ```
 
-## Troubleshooting
-
-### Check Helm releases
-
-```bash
-helm list -A
-```
-
-### Certificate issues
-
-```bash
-kubectl get certificates -A
-kubectl describe certificate <name> -n <namespace>
-```
-
-### View pod logs
-
-```bash
-kubectl logs -n <namespace> <pod-name>
-```
-
-## Local Development
-
-```bash
-make start          # Create Multipass VM + full deploy
-make status         # Cluster status
-make ssh            # SSH into VM
-make destroy        # Destroy VM
-```
-
 ## Deployment Architecture
-
-### How it works
 
 ```
 INFRA REPO (push to main):
@@ -493,6 +361,11 @@ CLUSTER:
   No GitOps controller. No image polling. CI deploys directly over Tailscale.
 ```
 
-### Pulumi-managed resources
+## Troubleshooting
 
-- Hetzner VPS (server, firewall, SSH key)
+```bash
+helm list -A                                          # Check Helm releases
+kubectl get certificates -A                           # Certificate status
+kubectl describe certificate <name> -n <namespace>    # Certificate details
+kubectl logs -n <namespace> <pod-name>                # Pod logs
+```

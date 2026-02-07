@@ -7,10 +7,11 @@ Thumbs.db
 .idea/
 *.swp
 
-# Local development
-data/
-local-kubeconfig.yaml
+# Kubeconfig
 kubeconfig.yaml
+
+# Local data
+data/
 
 # Pulumi
 pulumi/node_modules/

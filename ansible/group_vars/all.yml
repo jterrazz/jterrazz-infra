@@ -5,19 +5,14 @@
 ansible_python_interpreter: /usr/bin/python3
 timezone: UTC
 
-# Environment - default local, override for production
-environment_type: local
-
 # k3s
 k3s_version: "v1.28.5+k3s1"
 k3s_config_dir: "/etc/rancher/k3s"
 k3s_data_dir: "/var/lib/rancher/k3s"
 k3s_node_ip: "{{ ansible_default_ipv4.address }}"
-k3s_token: "local-dev-token"
 
 # Storage
 storage_base_path: "/var/lib/k8s-data"
 
-# Security - defaults for local
+# Security
 skip_security: false
-skip_tailscale: true

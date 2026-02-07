@@ -6,9 +6,6 @@
   become: true
   gather_facts: true
 
-  vars:
-    kubeconfig_file: "{{ 'local-' if environment_type | default('local') == 'local' else '' }}kubeconfig.yaml"
-
   pre_tasks:
     - name: Create k3s directories
       ansible.builtin.file:
@@ -27,12 +24,12 @@
     - name: Fetch kubeconfig to local machine
       ansible.builtin.fetch:
         src: /etc/rancher/k3s/k3s.yaml
-        dest: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
+        dest: "{{ playbook_dir }}/../../kubeconfig.yaml"
         flat: true
 
     - name: Update kubeconfig server address
       ansible.builtin.replace:
-        path: "{{ playbook_dir }}/../../{{ kubeconfig_file }}"
+        path: "{{ playbook_dir }}/../../kubeconfig.yaml"
         regexp: 'https://127\.0\.0\.1:6443'
         replace: "https://{{ ansible_host }}:6443"
       delegate_to: localhost

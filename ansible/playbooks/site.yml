@@ -5,8 +5,8 @@
 # Each playbook can also be run independently for targeted updates.
 #
 # Usage:
-#   Full deploy:  ansible-playbook playbooks/site.yml -i inventories/local/hosts.yml
-#   Just k3s:     ansible-playbook playbooks/kubernetes.yml -i inventories/local/hosts.yml
+#   Full deploy:  ansible-playbook playbooks/site.yml -i inventories/production/hosts.yml
+#   Just k3s:     ansible-playbook playbooks/kubernetes.yml -i inventories/production/hosts.yml
 
 - name: Base System Setup
   ansible.builtin.import_playbook: base.yml
