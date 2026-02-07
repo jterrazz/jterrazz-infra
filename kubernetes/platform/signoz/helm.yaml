@@ -9,10 +9,9 @@ clickhouse:
   resources:
     requests:
       cpu: 1000m
-      memory: 2Gi
+      memory: 1Gi
     limits:
-      cpu: "2"
-      memory: 4Gi
+      memory: 2Gi
   files:
     config.d/z_log_disable.xml: |
       <?xml version="1.0"?>
@@ -42,19 +41,17 @@ clickhouse:
     resources:
       requests:
         cpu: 25m
-        memory: 512Mi
+        memory: 377Mi
       limits:
-        cpu: 200m
         memory: 768Mi
 
 queryService:
   resources:
     requests:
       cpu: 25m
-      memory: 150Mi
+      memory: 77Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      memory: 256Mi
 
 frontend:
   resources:
@@ -62,8 +59,7 @@ frontend:
       cpu: 10m
       memory: 64Mi
     limits:
-      cpu: 200m
-      memory: 256Mi
+      memory: 128Mi
 
 alertmanager:
   resources:
@@ -71,14 +67,12 @@ alertmanager:
       cpu: 5m
       memory: 32Mi
     limits:
-      cpu: 100m
-      memory: 128Mi
+      memory: 64Mi
 
 otelCollector:
   resources:
     requests:
       cpu: 25m
-      memory: 100Mi
+      memory: 82Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      memory: 256Mi

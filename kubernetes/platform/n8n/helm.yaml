@@ -7,10 +7,9 @@ main:
   resources:
     requests:
       cpu: 25m
-      memory: 300Mi
+      memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 1Gi
+      memory: 512Mi
 
 # Encryption key for credentials (managed via Pulumi/Ansible)
 # Secret created by Ansible with key N8N_ENCRYPTION_KEY

@@ -27,10 +27,9 @@ txtPrefix: "_external-dns."
 resources:
   requests:
     cpu: 5m
-    memory: 24Mi
+    memory: 17Mi
   limits:
-    cpu: 100m
-    memory: 64Mi
+    memory: 48Mi
 
 # Log what it's doing
 logLevel: debug
