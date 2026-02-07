@@ -4,3 +4,5 @@ port: 18789
 private: true
 storage:
   size: 10Gi
+  hostPathType: DirectoryOrCreate
+  selector: true

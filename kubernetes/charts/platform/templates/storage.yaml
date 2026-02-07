@@ -3,6 +3,10 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: {{ include "platform.name" . }}-data
+{{- if .Values.storage.selector }}
+  labels:
+    app: {{ include "platform.name" . }}
+{{- end }}
 spec:
   capacity:
     storage: {{ .Values.storage.size }}
@@ -12,6 +16,9 @@ spec:
   storageClassName: manual
   hostPath:
     path: /var/lib/k8s-data/{{ include "platform.name" . }}
+{{- if .Values.storage.hostPathType }}
+    type: {{ .Values.storage.hostPathType }}
+{{- end }}
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -32,5 +39,11 @@ spec:
   resources:
     requests:
       storage: {{ .Values.storage.size }}
+{{- if .Values.storage.selector }}
+  selector:
+    matchLabels:
+      app: {{ include "platform.name" . }}
+{{- else }}
   volumeName: {{ include "platform.name" . }}-data
+{{- end }}
 {{- end }}
