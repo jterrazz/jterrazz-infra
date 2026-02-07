@@ -543,6 +543,12 @@
       register: registry_result
       changed_when: "'created' in registry_result.stdout or 'configured' in registry_result.stdout"
 
+    - name: Wait for registry to be ready
+      ansible.builtin.command: kubectl rollout status deployment/registry -n platform-registry --timeout=60s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+
     # ========================================
     # Publish app Helm chart to OCI registry
     # ========================================
