@@ -259,6 +259,76 @@
       no_log: true
 
     # ========================================
+    # Adopt existing resources into platform chart Helm releases
+    # One-time migration: resources created by kubectl apply need Helm labels
+    # to be adopted by helm upgrade --install. Safe to run repeatedly.
+    # ========================================
+
+    - name: Adopt existing resources into platform chart releases
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          adopt_resource() {
+            local kind=$1 name=$2 namespace=$3 release=$4
+            if kubectl get "$kind" "$name" -n "$namespace" 2>/dev/null | grep -q "$name"; then
+              kubectl annotate "$kind" "$name" -n "$namespace" \
+                meta.helm.sh/release-name="$release" \
+                meta.helm.sh/release-namespace="$namespace" \
+                --overwrite 2>/dev/null || true
+              kubectl label "$kind" "$name" -n "$namespace" \
+                app.kubernetes.io/managed-by=Helm \
+                --overwrite 2>/dev/null || true
+            fi
+          }
+          # SigNoz
+          adopt_resource Certificate signoz-tls platform-observability signoz-platform
+          adopt_resource IngressRoute signoz platform-observability signoz-platform
+          # n8n
+          adopt_resource Certificate n8n-tls platform-automation n8n-platform
+          adopt_resource IngressRoute n8n platform-automation n8n-platform
+          adopt_resource PersistentVolumeClaim n8n-data platform-automation n8n-platform
+          # OpenClaw
+          adopt_resource Certificate openclaw-tls platform-automation openclaw-platform
+          adopt_resource IngressRoute openclaw platform-automation openclaw-platform
+          adopt_resource PersistentVolumeClaim openclaw-data platform-automation openclaw-platform
+          # Portainer
+          adopt_resource Certificate portainer-tls platform-management portainer-platform
+          adopt_resource IngressRoute portainer platform-management portainer-platform
+          adopt_resource PersistentVolumeClaim portainer-data platform-management portainer-platform
+          echo "done"
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Adopt cluster-scoped PVs into platform chart releases
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          adopt_pv() {
+            local name=$1 release=$2 namespace=$3
+            if kubectl get pv "$name" 2>/dev/null | grep -q "$name"; then
+              kubectl annotate pv "$name" \
+                meta.helm.sh/release-name="$release" \
+                meta.helm.sh/release-namespace="$namespace" \
+                --overwrite 2>/dev/null || true
+              kubectl label pv "$name" \
+                app.kubernetes.io/managed-by=Helm \
+                --overwrite 2>/dev/null || true
+            fi
+          }
+          adopt_pv n8n-data n8n-platform platform-automation
+          adopt_pv openclaw-data openclaw-platform platform-automation
+          adopt_pv portainer-data portainer-platform platform-management
+          echo "done"
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+      failed_when: false
+
+    # ========================================
     # Platform services — Helm installs
     # Order matters: cert-manager first (TLS), then networking, then apps.
     # Each service uses helm.yaml for its upstream chart config and
