@@ -550,14 +550,13 @@
         msg: |
           Platform deployment complete!
 
-          Platform services installed via Helm:
+          Services deployed:
             - cert-manager v1.19.2
             - external-dns v1.20.0
             - infisical v0.10.21
             - signoz v0.108.0 + k8s-infra v0.15.0
             - n8n v1.16.25
             - portainer
-          Local manifests applied:
             - openclaw
             - registry
           App chart published to: oci://registry.jterrazz.com/charts/app

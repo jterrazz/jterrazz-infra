@@ -231,6 +231,6 @@ cat << EOF
 - [Portainer Dashboard](https://portainer.jterrazz.com) (Tailscale)
 - [SigNoz Observability](https://signoz.jterrazz.com) (Tailscale)
 - [N8N Workflows](https://n8n.jterrazz.com) (Tailscale)
-- [OpenClaw Gateway](https://openclaw.jterrazz.com) (Public)
+- [OpenClaw Gateway](https://openclaw.jterrazz.com) (Tailscale)
 - [GitHub Commit](https://github.com/jterrazz/jterrazz-infra/commit/$COMMIT_SHA)
 EOF

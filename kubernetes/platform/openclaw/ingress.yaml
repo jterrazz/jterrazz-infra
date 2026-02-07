@@ -21,7 +21,7 @@ metadata:
   namespace: platform-automation
   annotations:
     external-dns.alpha.kubernetes.io/hostname: openclaw.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: jterrazz-vps.tail77a797.ts.net
+    external-dns.alpha.kubernetes.io/target: "jterrazz-vps.tail77a797.ts.net"
 spec:
   entryPoints:
     - websecure

@@ -61,8 +61,7 @@ Production Kubernetes infrastructure on Hetzner Cloud.
 ## Quick Start
 
 ```bash
-# Deploy to production (or push to main for automatic deployment)
-make deploy
+make deploy    # Or push to main for automatic deployment
 ```
 
 ## Project Structure
@@ -72,53 +71,30 @@ make deploy
 │   ├── playbooks/              # Orchestration playbooks
 │   └── roles/                  # Reusable roles (k3s, security, tailscale)
 │
-├── kubernetes/                 # Cluster manifests (applied via Ansible/Helm)
-│   ├── applications/           # App deployments
-│   │   └── chart/              # Standard Helm chart (published to OCI registry)
-│   │
-│   ├── infrastructure/         # Base capabilities (rarely changes)
-│   │   └── base/
-│   │       ├── storage/        # StorageClass definitions
-│   │       ├── traefik/        # Middlewares (private-access, rate-limit)
-│   │       └── network-policies/
-│   │
-│   └── platform/               # Platform services (one folder per app)
-│       ├── portainer/          # Cluster dashboard
-│       ├── signoz/
-│       ├── n8n/
-│       ├── openclaw/
-│       ├── cert-manager/
-│       ├── external-dns/
-│       └── infisical/
+├── kubernetes/                 # Cluster manifests
+│   ├── applications/chart/     # Standard app Helm chart (published to OCI registry)
+│   ├── infrastructure/         # Base: namespaces, storage, traefik, network policies
+│   └── platform/               # Platform services (one folder per service)
 │
 ├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
-└── scripts/                    # Automation scripts
-    ├── prod/                   #   Production (deploy, bootstrap)
-    ├── ci/                     #   CI/CD (deployment summary)
-    └── lib/                    #   Shared utilities
+└── scripts/
+    ├── deploy.sh               # Production deploy (Pulumi + Ansible)
+    ├── trigger-app-deploys.sh  # Bootstrap all app CIs after cluster rebuild
+    ├── ci/                     # CI scripts (deployment summary)
+    └── lib/                    # Shared utilities (colors, logging)
 ```
 
 ## Deploying Applications
 
 ### Standard App Chart
 
-The `kubernetes/applications/chart/` Helm chart provides a standardized way to deploy applications. It is published to the private OCI registry at `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml` - the chart handles all Kubernetes complexity.
+The `kubernetes/applications/chart/` Helm chart provides a standardized deployment for all applications. Published to `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml`.
 
-**What the chart auto-generates:**
-
-- Deployment with health probes, resource limits, and OTEL integration
-- Service pointing to the app's port
-- Traefik IngressRoute with TLS certificate
-- PersistentVolume/PVC (if storage is defined)
-- InfisicalSecret for secrets management
-- Image registry pull secrets
+**What the chart generates:** Deployment with health probes + resource limits + OTEL, Service, Traefik IngressRoute with TLS, PV/PVC (if storage defined), InfisicalSecret, registry pull secrets.
 
 ### App Manifest (`.deploy/manifest.yaml`)
 
-Each application defines a single manifest file in its own repository:
-
 ```yaml
-# In your app repository: .deploy/manifest.yaml
 apiVersion: jterrazz.com/v1
 kind: Application
 
@@ -151,30 +127,20 @@ environments:
 
 ### CI-Driven Deployment
 
-Apps deploy themselves via their own GitHub Actions CI. No GitOps controller needed.
+Apps deploy via their own GitHub Actions CI — no GitOps controller needed.
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Push Code     │ ──► │  Fetch secrets   │ ──► │   Build & Push  │ ──► │  helm upgrade   │
-│   (main/v*)     │     │  from Infisical  │     │   Docker Image  │     │  --install      │
-└─────────────────┘     └──────────────────┘     └─────────────────┘     └─────────────────┘
-                                                                                │
-                                                                                ▼
-                                                                        ┌─────────────────┐
-                                                                        │   App is Live   │
-                                                                        │   (~1 minute)   │
-                                                                        └─────────────────┘
+Push code → Fetch secrets from Infisical → Connect Tailscale → Build + push image → helm upgrade --install
 ```
 
-Each app's CI workflow:
+Each app's CI:
 
-1. Fetches infrastructure secrets from Infisical (`/infrastructure-apps` folder)
+1. Fetches secrets from Infisical (`/infrastructure-apps` folder)
 2. Connects to Tailscale VPN
 3. Builds and pushes Docker image to `registry.jterrazz.com`
-4. Runs `helm upgrade --install` using the shared OCI chart with `--atomic` (auto-rollback on failure)
+4. Runs `helm upgrade --install` with `--atomic` (auto-rollback on failure)
 
 ```yaml
-# Example app CI deploy step
 - name: Deploy
   run: |
     helm upgrade --install $ENV-$APP \
@@ -196,82 +162,110 @@ Each app's CI workflow:
 | **Secrets**      | Infisical `dev` env for staging, `prod` for prod      |
 | **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com` |
 
-### Platform Services
+### Adding a New Application
 
-Platform services (SigNoz, n8n, Portainer, etc.) are installed via Helm in the Ansible playbook. Each is **self-contained** in its own folder:
+1. Create `.deploy/manifest.yaml` in your app repo (see format above)
+2. Add CI deploy workflow
+3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets
+4. Push — CI builds, pushes, and deploys automatically
+5. Add repo to `scripts/trigger-app-deploys.sh` for cluster rebuilds
 
-```
-kubernetes/platform/my-service/
-├── values.yaml     # Helm chart values
-├── ingress.yaml    # IngressRoute + Certificate
-└── storage.yaml    # PV/PVC (if needed)
-```
+### Adding a New Platform Service
+
+1. Create `kubernetes/platform/my-service/` with `values.yaml`, `ingress.yaml`, optionally `storage.yaml`
+2. Add `helm upgrade --install` to `ansible/playbooks/platform.yml`
 
 ### Bootstrap After Cluster Rebuild
 
-On a fresh cluster, apps don't exist yet. Run the bootstrap script to trigger all app CIs:
-
 ```bash
-./scripts/prod/trigger-app-deploys.sh
+./scripts/trigger-app-deploys.sh
 ```
 
-Or pass `bootstrap_apps=true` to Ansible to trigger automatically.
+Or pass `bootstrap_apps=true` to the Ansible playbook.
 
 ## Services & Access
 
-### Private Services (via Tailscale)
+| Service   | URL                              | Access    |
+| --------- | -------------------------------- | --------- |
+| Portainer | `https://portainer.jterrazz.com` | Tailscale |
+| SigNoz    | `https://signoz.jterrazz.com`    | Tailscale |
+| n8n       | `https://n8n.jterrazz.com`       | Tailscale |
+| OpenClaw  | `https://openclaw.jterrazz.com`  | Tailscale |
 
-| Service   | URL                              | Purpose             |
-| --------- | -------------------------------- | ------------------- |
-| Portainer | `https://portainer.jterrazz.com` | Cluster dashboard   |
-| SigNoz    | `https://signoz.jterrazz.com`    | Observability       |
-| n8n       | `https://n8n.jterrazz.com`       | Workflow automation |
-| OpenClaw  | `https://openclaw.jterrazz.com`  | AI assistant        |
+All private services use Let's Encrypt TLS. DNS points to Tailscale IP — only accessible on Tailscale VPN.
 
-All private services use valid Let's Encrypt TLS certificates, DNS points to Tailscale IP, and are only accessible when connected to Tailscale VPN.
+## OpenClaw Setup
+
+OpenClaw is a personal AI assistant using Claude Max with Signal integration.
+
+### Secrets
+
+Managed via Infisical, deployed as K8s secrets by Ansible:
+
+- `GATEWAY_TOKEN` — Web UI authentication
+- `CLAUDE_TOKEN` — Claude Max OAuth token (used as `ANTHROPIC_API_KEY`)
+
+### Getting a Claude OAuth Token
+
+```bash
+claude login
+cat ~/.claude/.credentials.json   # Look for "oauthToken": "sk-ant-oat01-..."
+```
+
+### Initial Setup (first deploy only)
+
+1. **Access the Web UI**: `https://openclaw.jterrazz.com/?token=<gateway-token>`
+2. **Approve device pairing**:
+   ```bash
+   kubectl exec -n platform-automation deploy/openclaw -- node /app/dist/entry.js devices list
+   kubectl exec -n platform-automation deploy/openclaw -- node /app/dist/entry.js devices approve <request-id>
+   ```
+3. **(Optional) Link Signal** — requires a separate phone number:
+   ```bash
+   kubectl exec -it -n platform-automation deploy/openclaw -- node /app/dist/entry.js channels login --channel signal
+   ```
+
+### Updating Claude Token
+
+```bash
+# 1. Get new token
+claude login && cat ~/.claude/.credentials.json
+
+# 2. Update in Infisical, then re-deploy (push to main or make deploy)
+
+# 3. Restart pod to pick up new secret
+kubectl rollout restart deployment/openclaw -n platform-automation
+```
+
+### Data Persistence
+
+Stored on PV at `/var/lib/k8s-data/openclaw/`:
+
+- `config/` — Gateway config, auth profiles, device pairings
+- `workspace/` — Agent workspace and memories
+- `signal-cli/` — Signal credentials and message history
 
 ## Storage
 
-All persistent data lives in `/var/lib/k8s-data/` on the VPS.
+All persistent data lives in `/var/lib/k8s-data/` on the VPS. Data survives pod restarts, redeployments, K3s restarts, cluster rebuilds, and VPS reboots.
 
 ```
 /var/lib/k8s-data/
-├── openclaw/      # AI assistant config, memories, Signal data
-├── n8n/           # n8n workflows and credentials
-├── signews-api/   # App database (SQLite)
-└── signoz/        # Traces, metrics, logs, dashboards
+├── openclaw/      # AI assistant data
+├── n8n/           # Workflows and credentials
+├── signews-api/   # App database
+└── signoz/        # Traces, metrics, logs
 ```
 
-Data survives pod restarts, app redeployments, K3s restarts, full cluster rebuilds, and VPS reboots.
+PVs use `hostPath`. All apps run as UID 1000 — new storage: `chown -R 1000:1000`.
 
-### Backup
-
-```bash
-tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/
-```
-
-PVs use `hostPath` pointing to `/var/lib/k8s-data/{name}`. All apps using the standard chart run as UID 1000 — new storage folders should be `chown -R 1000:1000`.
+**Backup**: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`
 
 ## Certificates & DNS
 
-1. **ClusterIssuer** allows certificates for any `*.jterrazz.com` subdomain
-2. **Cert-Manager** requests certificates from Let's Encrypt via DNS-01 challenge
-3. **External-DNS** automatically creates/updates DNS records in Cloudflare
-4. Each app defines its own Certificate in its `ingress.yaml`
-
-### Adding a new application
-
-1. Create `.deploy/manifest.yaml` in your app repository (see format above)
-2. Add the CI deploy workflow
-3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets
-4. Push your code — CI builds, pushes, and deploys automatically
-5. Add your repo to `scripts/prod/trigger-app-deploys.sh` for cluster rebuilds
-
-### Adding a new platform service
-
-1. Create folder `kubernetes/platform/my-service/`
-2. Create `values.yaml`, `ingress.yaml`, and optionally `storage.yaml`
-3. Add the `helm upgrade --install` command to `ansible/playbooks/platform.yml`
+1. **ClusterIssuer** allows certificates for `*.jterrazz.com` and `*.clawrr.com`
+2. **Cert-Manager** issues via Let's Encrypt DNS-01 challenge (Cloudflare)
+3. **External-DNS** creates/updates Cloudflare DNS records automatically
 
 ## Setup
 
@@ -283,63 +277,35 @@ brew install ansible pulumi node
 
 ### Required Secrets
 
-#### GitHub Actions secrets
+#### GitHub Actions
 
-| Secret                    | Infra repo | App repos | Description                       |
-| ------------------------- | ---------- | --------- | --------------------------------- |
-| `PULUMI_ACCESS_TOKEN`     | Yes        |           | Pulumi API token                  |
-| `HCLOUD_TOKEN`            | Yes        |           | Hetzner Cloud API token           |
-| `INFISICAL_CLIENT_ID`     | Yes        | Yes       | Infisical machine identity ID     |
-| `INFISICAL_CLIENT_SECRET` | Yes        | Yes       | Infisical machine identity secret |
+| Secret                    | Infra repo | App repos |
+| ------------------------- | ---------- | --------- |
+| `PULUMI_ACCESS_TOKEN`     | Yes        |           |
+| `HCLOUD_TOKEN`            | Yes        |           |
+| `INFISICAL_CLIENT_ID`     | Yes        | Yes       |
+| `INFISICAL_CLIENT_SECRET` | Yes        | Yes       |
 
-All other secrets are fetched at runtime from Infisical.
+#### Infisical — `/infrastructure` folder (prod env)
 
-#### Infisical — `jterrazz` project, `/infrastructure` folder (prod env)
+`TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `CLOUDFLARE_API_TOKEN`, `GITHUB_TOKEN_JTERRAZZ`, `GITHUB_TOKEN_CLAWRR`, `DOCKER_REGISTRY_PASSWORD`, `PORTAINER_ADMIN_PASSWORD`, `OPENCLAW_CLAUDE_TOKEN`, `OPENCLAW_GATEWAY_TOKEN`, `N8N_ENCRYPTION_KEY`
 
-| Secret                          | Description                                  |
-| ------------------------------- | -------------------------------------------- |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for VPN access        |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for VPN access        |
-| `CLOUDFLARE_API_TOKEN`          | Cloudflare API token for DNS/certificates    |
-| `GITHUB_TOKEN_JTERRAZZ`         | GitHub token for triggering jterrazz app CIs |
-| `GITHUB_TOKEN_CLAWRR`           | GitHub token for triggering clawrr app CIs   |
-| `DOCKER_REGISTRY_PASSWORD`      | Docker registry password                     |
-| `PORTAINER_ADMIN_PASSWORD`      | Portainer admin password                     |
-| `OPENCLAW_CLAUDE_TOKEN`         | Claude API token for openclaw                |
-| `OPENCLAW_GATEWAY_TOKEN`        | Gateway token for openclaw                   |
-| `N8N_ENCRYPTION_KEY`            | n8n credentials encryption key               |
+#### Infisical — `/infrastructure-apps` folder (prod env)
 
-#### Infisical — `jterrazz` project, `/infrastructure-apps` folder (prod env)
+`TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD`, `KUBECONFIG_BASE64`
 
-| Secret                          | Description                                 |
-| ------------------------------- | ------------------------------------------- |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for CI VPN access    |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for CI VPN access    |
-| `DOCKER_REGISTRY_USERNAME`      | Docker registry username (`deploy`)         |
-| `DOCKER_REGISTRY_PASSWORD`      | Docker registry password                    |
-| `KUBECONFIG_BASE64`             | Base64-encoded kubeconfig with Tailscale IP |
+## Security
 
-### Deploy
-
-```bash
-make deploy    # Or push to main for automatic deployment
-```
-
-## Security Model
-
-| Port | Service | Access Level                |
+| Port | Service | Access                      |
 | ---- | ------- | --------------------------- |
 | 22   | SSH     | Public (key-only, fail2ban) |
 | 80   | HTTP    | Public (redirects to HTTPS) |
 | 443  | HTTPS   | Public (your apps)          |
-| 6443 | K8s API | Tailscale + private only    |
-
-- **Private services**: IP whitelist via `private-access` middleware (Tailscale IPs only)
-- **TLS**: All services use Let's Encrypt certificates
-- **DNS**: Managed by external-dns with `upsert-only` policy
-- **Secrets**: Stored in Infisical, fetched at CI runtime and injected via Ansible
+| 6443 | K8s API | Tailscale only              |
 
 ## Observability
+
+Send traces via OpenTelemetry:
 
 ```yaml
 env:
@@ -347,25 +313,12 @@ env:
     value: "http://signoz-otel-collector.platform-observability:4318"
 ```
 
-## Deployment Architecture
-
-```
-INFRA REPO (push to main):
-  Pulumi → Ansible → helm install platform services + publish app chart to OCI registry
-
-APP REPO (push to main / tag v*):
-  CI → fetch secrets from Infisical → connect Tailscale → build + push image → helm upgrade --install
-
-CLUSTER:
-  Portainer (dashboard) | cert-manager | external-dns | signoz | n8n | infisical | openclaw | registry
-  No GitOps controller. No image polling. CI deploys directly over Tailscale.
-```
-
 ## Troubleshooting
 
 ```bash
-helm list -A                                          # Check Helm releases
+helm list -A                                          # Helm releases
 kubectl get certificates -A                           # Certificate status
 kubectl describe certificate <name> -n <namespace>    # Certificate details
 kubectl logs -n <namespace> <pod-name>                # Pod logs
+kubectl logs -n platform-automation deploy/openclaw -f # OpenClaw logs
 ```

@@ -13,7 +13,7 @@ NC := \033[0m
 ##@ Production
 
 deploy: ## Deploy to production (Pulumi + Ansible)
-	./scripts/prod/deploy.sh
+	./scripts/deploy.sh
 
 ##@ Utilities
 

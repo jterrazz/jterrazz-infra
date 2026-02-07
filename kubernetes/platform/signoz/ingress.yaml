@@ -1,5 +1,16 @@
 ---
-# SigNoz IngressRoute - Private access via Tailscale
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: signoz-tls
+spec:
+  secretName: signoz-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - signoz.jterrazz.com
+---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -21,16 +32,3 @@ spec:
           port: 8080
   tls:
     secretName: signoz-tls
----
-# TLS Certificate
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: signoz-tls
-spec:
-  secretName: signoz-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - signoz.jterrazz.com
