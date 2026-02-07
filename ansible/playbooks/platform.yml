@@ -281,20 +281,20 @@
             fi
           }
           # SigNoz
-          adopt_resource Certificate signoz-tls platform-observability signoz-platform
-          adopt_resource IngressRoute signoz platform-observability signoz-platform
+          adopt_resource certificate.cert-manager.io signoz-tls platform-observability signoz-platform
+          adopt_resource ingressroute.traefik.io signoz platform-observability signoz-platform
           # n8n
-          adopt_resource Certificate n8n-tls platform-automation n8n-platform
-          adopt_resource IngressRoute n8n platform-automation n8n-platform
-          adopt_resource PersistentVolumeClaim n8n-data platform-automation n8n-platform
+          adopt_resource certificate.cert-manager.io n8n-tls platform-automation n8n-platform
+          adopt_resource ingressroute.traefik.io n8n platform-automation n8n-platform
+          adopt_resource persistentvolumeclaim n8n-data platform-automation n8n-platform
           # OpenClaw
-          adopt_resource Certificate openclaw-tls platform-automation openclaw-platform
-          adopt_resource IngressRoute openclaw platform-automation openclaw-platform
-          adopt_resource PersistentVolumeClaim openclaw-data platform-automation openclaw-platform
+          adopt_resource certificate.cert-manager.io openclaw-tls platform-automation openclaw-platform
+          adopt_resource ingressroute.traefik.io openclaw platform-automation openclaw-platform
+          adopt_resource persistentvolumeclaim openclaw-data platform-automation openclaw-platform
           # Portainer
-          adopt_resource Certificate portainer-tls platform-management portainer-platform
-          adopt_resource IngressRoute portainer platform-management portainer-platform
-          adopt_resource PersistentVolumeClaim portainer-data platform-management portainer-platform
+          adopt_resource certificate.cert-manager.io portainer-tls platform-management portainer-platform
+          adopt_resource ingressroute.traefik.io portainer platform-management portainer-platform
+          adopt_resource persistentvolumeclaim portainer-data platform-management portainer-platform
           echo "done"
         executable: /bin/bash
       environment:
