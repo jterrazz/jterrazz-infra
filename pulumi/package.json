@@ -2,7 +2,6 @@
   "name": "jterrazz-infra",
   "version": "1.0.0",
   "description": "Hetzner VPS infrastructure",
-  "main": "index.ts",
   "scripts": {
     "build": "tsc"
   },
