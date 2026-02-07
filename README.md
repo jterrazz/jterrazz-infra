@@ -369,38 +369,29 @@ brew install multipass ansible pulumi node
 
 ### Required Secrets
 
-#### Infra repo (`jterrazz-infra`) — GitHub Actions secrets
+#### GitHub Actions secrets (all repos — only 4 for infra, 2 for apps)
 
-| Secret                          | Description                                  |
-| ------------------------------- | -------------------------------------------- |
-| `PULUMI_ACCESS_TOKEN`           | Pulumi API token                             |
-| `HCLOUD_TOKEN`                  | Hetzner Cloud API token                      |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | For server provisioning                      |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | For server provisioning                      |
-| `CLOUDFLARE_API_TOKEN`          | For DNS and certificates                     |
-| `DEPLOY_PAT`                    | GitHub PAT for triggering app CI deployments |
-| `DEPLOY_PAT_CLAWRR`             | GitHub PAT for clawrr org app CI deployments |
-| `INFISICAL_CLIENT_ID`           | For secrets management                       |
-| `INFISICAL_CLIENT_SECRET`       | For secrets management                       |
+| Secret                    | Infra repo | App repos | Description                       |
+| ------------------------- | ---------- | --------- | --------------------------------- |
+| `PULUMI_ACCESS_TOKEN`     | Yes        |           | Pulumi API token                  |
+| `HCLOUD_TOKEN`            | Yes        |           | Hetzner Cloud API token           |
+| `INFISICAL_CLIENT_ID`     | Yes        | Yes       | Infisical machine identity ID     |
+| `INFISICAL_CLIENT_SECRET` | Yes        | Yes       | Infisical machine identity secret |
 
-#### App repos — GitHub Actions secrets (only 2 per repo)
-
-| Secret                    | Description                       |
-| ------------------------- | --------------------------------- |
-| `INFISICAL_CLIENT_ID`     | Infisical machine identity ID     |
-| `INFISICAL_CLIENT_SECRET` | Infisical machine identity secret |
-
-All other infrastructure secrets (Tailscale, registry, kubeconfig) are fetched at runtime from Infisical.
+All other secrets are fetched at runtime from Infisical.
 
 #### Infisical — `jterrazz` project, `/infrastructure-ci` folder (prod env)
 
-| Secret                          | Description                                 |
-| ------------------------------- | ------------------------------------------- |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for CI VPN access    |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for CI VPN access    |
-| `REGISTRY_USERNAME`             | Docker registry username (`deploy`)         |
-| `REGISTRY_PASSWORD`             | Docker registry password                    |
-| `KUBECONFIG_BASE64`             | Base64-encoded kubeconfig with Tailscale IP |
+| Secret                          | Used by      | Description                                 |
+| ------------------------------- | ------------ | ------------------------------------------- |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | Infra + Apps | Tailscale OAuth client for VPN access       |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | Infra + Apps | Tailscale OAuth secret for VPN access       |
+| `CLOUDFLARE_API_TOKEN`          | Infra        | Cloudflare API token for DNS/certificates   |
+| `DEPLOY_PAT`                    | Infra        | GitHub PAT for triggering jterrazz app CIs  |
+| `DEPLOY_PAT_CLAWRR`             | Infra        | GitHub PAT for triggering clawrr app CIs    |
+| `REGISTRY_USERNAME`             | Apps         | Docker registry username (`deploy`)         |
+| `REGISTRY_PASSWORD`             | Apps         | Docker registry password                    |
+| `KUBECONFIG_BASE64`             | Apps         | Base64-encoded kubeconfig with Tailscale IP |
 
 ### Deploy
 
