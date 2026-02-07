@@ -1,9 +1,9 @@
 #!/bin/bash
-# Bootstrap app deployments by triggering each app's CI workflow
-# Run this after a fresh cluster rebuild to deploy all applications
+# Trigger app CI workflows to deploy all applications
+# Run this after a fresh cluster rebuild to deploy all apps
 #
 # Usage:
-#   ./scripts/bootstrap-apps.sh
+#   ./scripts/prod/trigger-app-deploys.sh
 #
 # Prerequisites:
 #   - gh CLI authenticated (gh auth login)
@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 JTERRAZZ_REPOS=(
   "jterrazz/signews-api"
@@ -29,7 +29,7 @@ for repo in "${JTERRAZZ_REPOS[@]}"; do
   if gh workflow run deploy.yaml --repo "$repo"; then
     success "Triggered $repo"
   else
-    warning "Failed to trigger $repo (workflow may not exist yet)"
+    warn "Failed to trigger $repo (workflow may not exist yet)"
   fi
 done
 
@@ -38,7 +38,7 @@ for repo in "${CLAWRR_REPOS[@]}"; do
   if gh workflow run deploy.yaml --repo "$repo"; then
     success "Triggered $repo"
   else
-    warning "Failed to trigger $repo (workflow may not exist yet)"
+    warn "Failed to trigger $repo (workflow may not exist yet)"
   fi
 done
 

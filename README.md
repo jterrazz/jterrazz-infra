@@ -98,6 +98,10 @@ make deploy   # Deploy to Hetzner (or push to main)
 │
 ├── pulumi/                     # Infrastructure as Code (Hetzner VPS)
 └── scripts/                    # Automation scripts
+    ├── local/                  #   Local dev (VM, status)
+    ├── prod/                   #   Production (deploy, bootstrap)
+    ├── ci/                     #   CI/CD (deployment summary)
+    └── lib/                    #   Shared utilities
 ```
 
 ## Deploying Applications
@@ -214,7 +218,7 @@ kubernetes/platform/my-service/
 On a fresh cluster, apps don't exist yet. Run the bootstrap script to trigger all app CIs:
 
 ```bash
-./scripts/bootstrap-apps.sh
+./scripts/prod/trigger-app-deploys.sh
 ```
 
 Or pass `bootstrap_apps=true` to Ansible to trigger automatically.
@@ -342,7 +346,7 @@ environments:
 
 4. Push your code — CI builds, pushes, and deploys automatically
 
-5. Add your repo to `scripts/bootstrap-apps.sh` so it's included in cluster rebuilds
+5. Add your repo to `scripts/prod/trigger-app-deploys.sh` so it's included in cluster rebuilds
 
 ### Adding a new platform service
 

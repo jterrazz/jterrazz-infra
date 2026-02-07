@@ -1,6 +1,6 @@
 #!/bin/bash
-# Common utilities for all scripts
-# Source this file: source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# Common utilities shared across all scripts (local, prod, CI)
+# Source this file: source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 set -euo pipefail
 
@@ -19,51 +19,7 @@ error() { echo -e "${RED}✗ $1${NC}" >&2; }
 section() { echo -e "\n${GREEN}▶ $1${NC}"; }
 subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
-# Script setup - will be overridden by caller if needed
-if [[ -z "${SCRIPT_DIR:-}" ]]; then
-    export SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
-fi
+# Project root directory (two levels up from lib/)
 if [[ -z "${PROJECT_DIR:-}" ]]; then
-    export PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    export PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fi
-
-# Common configuration
-export VM_NAME="${VM_NAME:-jterrazz-infra}"
-export KUBECONFIG_PATH="$PROJECT_DIR/local-kubeconfig.yaml"
-
-# Check if we're in local environment (multipass available)
-is_local() {
-    command -v multipass &> /dev/null
-}
-
-# Get VM IP reliably
-get_vm_ip() {
-    if is_local && multipass info "$VM_NAME" &>/dev/null; then
-        multipass info "$VM_NAME" --format json 2>/dev/null | \
-            jq -r ".info.\"$VM_NAME\".ipv4[0] // empty" | \
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || echo ""
-    fi
-}
-
-# SSH helper for VM
-ssh_vm() {
-    local vm_ip
-    vm_ip=$(get_vm_ip)
-
-    if [[ -z "$vm_ip" ]]; then
-        error "Cannot determine VM IP"
-        return 1
-    fi
-
-    # Create SSH directory if it doesn't exist
-    mkdir -p "$PROJECT_DIR/data/ssh"
-
-    # Use SSH with suppressed warnings but functional authentication
-    ssh -i "$PROJECT_DIR/data/ssh/id_rsa" \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile="$PROJECT_DIR/data/ssh/known_hosts" \
-        -o PasswordAuthentication=no \
-        -o ConnectTimeout=5 \
-        -o LogLevel=QUIET \
-        ubuntu@"$vm_ip" "$@" 2>/dev/null
-}

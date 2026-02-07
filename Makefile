@@ -13,27 +13,27 @@ NC := \033[0m
 ##@ Local Development
 
 start: ## Full setup - VM, K3s, apps
-	./scripts/local-dev.sh full
+	./scripts/local/dev.sh full
 
 stop: ## Delete VM
-	./scripts/local-dev.sh delete
+	./scripts/local/dev.sh delete
 
 ssh: ## SSH into VM
-	./scripts/local-dev.sh ssh
+	./scripts/local/dev.sh ssh
 
 status: ## Show services
-	./scripts/local-dev.sh status
+	./scripts/local/dev.sh status
 
 vm: ## Create VM only
-	./scripts/local-dev.sh create
+	./scripts/local/dev.sh create
 
 ansible: ## Run Ansible (idempotent - safe to re-run)
-	./scripts/local-dev.sh ansible
+	./scripts/local/dev.sh ansible
 
 ##@ Production
 
 deploy: ## Deploy to production (Pulumi + Ansible)
-	./scripts/bootstrap.sh
+	./scripts/prod/deploy.sh
 
 ##@ Utilities
 

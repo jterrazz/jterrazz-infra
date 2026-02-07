@@ -128,8 +128,8 @@ jobs:
           DURATION_STR="${MINUTES}m ${SECONDS}s"
 
           # Run deployment summary script
-          chmod +x scripts/deployment-summary.sh
-          scripts/deployment-summary.sh \
+          chmod +x scripts/ci/deployment-summary.sh
+          scripts/ci/deployment-summary.sh \
             "${{ steps.pulumi.outputs.serverIp }}" \
             "~/.ssh/id_ed25519" \
             "${{ github.sha }}" \

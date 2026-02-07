@@ -1,10 +1,48 @@
 #!/bin/bash
-# VM management utilities
+# Local VM management utilities (Multipass)
+# Provides: VM lifecycle, SSH access, IP resolution
 
 # VM Configuration
+export VM_NAME="${VM_NAME:-jterrazz-infra}"
 export VM_CPUS="${VM_CPUS:-4}"
 export VM_MEMORY="${VM_MEMORY:-8G}"
 export VM_DISK="${VM_DISK:-20G}"
+export KUBECONFIG_PATH="$PROJECT_DIR/local-kubeconfig.yaml"
+
+# Check if we're in local environment (multipass available)
+is_local() {
+    command -v multipass &> /dev/null
+}
+
+# Get VM IP reliably
+get_vm_ip() {
+    if is_local && multipass info "$VM_NAME" &>/dev/null; then
+        multipass info "$VM_NAME" --format json 2>/dev/null | \
+            jq -r ".info.\"$VM_NAME\".ipv4[0] // empty" | \
+            grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || echo ""
+    fi
+}
+
+# SSH helper for VM
+ssh_vm() {
+    local vm_ip
+    vm_ip=$(get_vm_ip)
+
+    if [[ -z "$vm_ip" ]]; then
+        error "Cannot determine VM IP"
+        return 1
+    fi
+
+    mkdir -p "$PROJECT_DIR/data/ssh"
+
+    ssh -i "$PROJECT_DIR/data/ssh/id_rsa" \
+        -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile="$PROJECT_DIR/data/ssh/known_hosts" \
+        -o PasswordAuthentication=no \
+        -o ConnectTimeout=5 \
+        -o LogLevel=QUIET \
+        ubuntu@"$vm_ip" "$@" 2>/dev/null
+}
 
 # Check if VM exists
 vm_exists() {
@@ -28,7 +66,6 @@ ensure_vm_running() {
             lts
         success "VM created successfully"
 
-        # Wait for network to be ready
         info "Waiting for VM network..."
         local retries=30
         while [[ $retries -gt 0 ]]; do
@@ -50,7 +87,7 @@ ensure_vm_running() {
         if [[ "$status" != "Running" ]]; then
             info "Starting VM '$VM_NAME'..."
             multipass start "$VM_NAME"
-            sleep 5  # Give it a moment to start
+            sleep 5
             success "VM started"
         else
             success "VM '$VM_NAME' is already running"
@@ -63,23 +100,19 @@ setup_vm_ssh() {
     local ssh_dir="$PROJECT_DIR/data/ssh"
     local key_path="$ssh_dir/id_rsa"
 
-    # Create SSH directory
     mkdir -p "$ssh_dir"
 
-    # Generate SSH key if needed
     if [[ ! -f "$key_path" ]]; then
         ssh-keygen -t rsa -b 2048 -f "$key_path" -N "" -C "local-dev@$VM_NAME"
         success "SSH key generated"
     fi
 
-    # Get VM IP
     local vm_ip=$(get_vm_ip)
     if [[ -z "$vm_ip" ]]; then
         error "Cannot determine VM IP"
         return 1
     fi
 
-    # Wait for multipass exec to be ready
     info "Waiting for VM shell access..."
     local retries=30
     while [[ $retries -gt 0 ]]; do
@@ -95,11 +128,9 @@ setup_vm_ssh() {
         return 1
     fi
 
-    # Clean known hosts
     ssh-keygen -R "$vm_ip" 2>/dev/null || true
     rm -f "$ssh_dir/known_hosts" 2>/dev/null || true
 
-    # Install public key (append to authorized_keys)
     local pub_key=$(cat "$key_path.pub")
     multipass exec "$VM_NAME" -- bash -c "
         mkdir -p ~/.ssh && chmod 700 ~/.ssh
@@ -107,10 +138,8 @@ setup_vm_ssh() {
         chmod 600 ~/.ssh/authorized_keys
     "
 
-    # Wait for SSH daemon to be ready
     sleep 3
 
-    # Test connection with retries
     info "Testing SSH connection..."
     local ssh_retries=15
     while [[ $ssh_retries -gt 0 ]]; do
@@ -135,11 +164,8 @@ delete_vm() {
     fi
 
     info "Deleting VM '$VM_NAME'..."
-
-    # Try graceful shutdown
     multipass stop "$VM_NAME" 2>/dev/null || true
 
-    # Delete VM
     if multipass delete "$VM_NAME" 2>/dev/null && multipass purge 2>/dev/null; then
         success "VM deleted successfully"
     else

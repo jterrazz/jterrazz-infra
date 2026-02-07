@@ -1,9 +1,10 @@
 #!/bin/bash
 # Production deployment script
+# Deploys infrastructure via Pulumi + configures server via Ansible
 
 set -euo pipefail
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 PULUMI_DIR="$PROJECT_DIR/pulumi"
 ANSIBLE_DIR="$PROJECT_DIR/ansible"
