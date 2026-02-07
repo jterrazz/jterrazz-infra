@@ -160,10 +160,7 @@
         - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
         - { name: signoz, url: "https://charts.signoz.io" }
         - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
-        - {
-            name: infisical,
-            url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/",
-          }
+        - { name: infisical, url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/" }
         - { name: portainer, url: "https://portainer.github.io/k8s/" }
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
