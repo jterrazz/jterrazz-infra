@@ -224,22 +224,22 @@
       changed_when: "'created' in n8n_secret.stdout or 'configured' in n8n_secret.stdout"
       no_log: true
 
-    # Create Clawdbot secrets
-    - name: Create Clawdbot secrets
+    # Create OpenClaw secrets
+    - name: Create OpenClaw secrets
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          kubectl create secret generic clawdbot-secrets \
-            --from-literal=GATEWAY_TOKEN="{{ clawdbot_gateway_token }}" \
-            --from-literal=CLAUDE_TOKEN="{{ clawdbot_claude_token }}" \
+          kubectl create secret generic openclaw-secrets \
+            --from-literal=GATEWAY_TOKEN="{{ openclaw_gateway_token }}" \
+            --from-literal=CLAUDE_TOKEN="{{ openclaw_claude_token }}" \
             --namespace platform-automation \
             --dry-run=client -o yaml | kubectl apply -f -
         executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      when: clawdbot_gateway_token is defined and clawdbot_gateway_token | length > 0
-      register: clawdbot_secret
-      changed_when: "'created' in clawdbot_secret.stdout or 'configured' in clawdbot_secret.stdout"
+      when: openclaw_gateway_token is defined and openclaw_gateway_token | length > 0
+      register: openclaw_secret
+      changed_when: "'created' in openclaw_secret.stdout or 'configured' in openclaw_secret.stdout"
       no_log: true
 
     # ========================================
@@ -375,27 +375,27 @@
       register: n8n_ingress_result
       changed_when: "'created' in n8n_ingress_result.stdout or 'configured' in n8n_ingress_result.stdout"
 
-    # 7. Clawdbot (local manifests only, no Helm chart)
-    - name: Apply Clawdbot storage manifests
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/storage.yaml -n platform-automation
+    # 7. OpenClaw (local manifests only, no Helm chart)
+    - name: Apply OpenClaw storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/storage.yaml -n platform-automation
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: clawdbot_storage_result
-      changed_when: "'created' in clawdbot_storage_result.stdout or 'configured' in clawdbot_storage_result.stdout"
+      register: openclaw_storage_result
+      changed_when: "'created' in openclaw_storage_result.stdout or 'configured' in openclaw_storage_result.stdout"
 
-    - name: Apply Clawdbot deployment
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/deployment.yaml -n platform-automation
+    - name: Apply OpenClaw deployment
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/deployment.yaml -n platform-automation
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: clawdbot_deploy_result
-      changed_when: "'created' in clawdbot_deploy_result.stdout or 'configured' in clawdbot_deploy_result.stdout"
+      register: openclaw_deploy_result
+      changed_when: "'created' in openclaw_deploy_result.stdout or 'configured' in openclaw_deploy_result.stdout"
 
-    - name: Apply Clawdbot ingress
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/clawdbot/ingress.yaml -n platform-automation
+    - name: Apply OpenClaw ingress
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openclaw/ingress.yaml -n platform-automation
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: clawdbot_ingress_result
-      changed_when: "'created' in clawdbot_ingress_result.stdout or 'configured' in clawdbot_ingress_result.stdout"
+      register: openclaw_ingress_result
+      changed_when: "'created' in openclaw_ingress_result.stdout or 'configured' in openclaw_ingress_result.stdout"
 
     # 8. Portainer cluster dashboard
     - name: Apply Portainer storage manifests
@@ -547,6 +547,6 @@
             - n8n v1.16.25
             - portainer
           Local manifests applied:
-            - clawdbot
+            - openclaw
             - registry
           App chart published to: oci://registry.jterrazz.com/charts/app

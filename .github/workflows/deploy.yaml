@@ -109,8 +109,8 @@ jobs:
             -e "registry_password=${{ env.DOCKER_REGISTRY_PASSWORD }}" \
             -e "portainer_password=${{ env.PORTAINER_ADMIN_PASSWORD }}" \
             -e "n8n_encryption_key=${{ env.N8N_ENCRYPTION_KEY }}" \
-            -e "clawdbot_claude_token=${{ env.CLAWDBOT_CLAUDE_TOKEN }}" \
-            -e "clawdbot_gateway_token=${{ env.CLAWDBOT_GATEWAY_TOKEN }}" \
+            -e "openclaw_claude_token=${{ env.OPENCLAW_CLAUDE_TOKEN }}" \
+            -e "openclaw_gateway_token=${{ env.OPENCLAW_GATEWAY_TOKEN }}" \
             -e "github_pat=${{ env.GITHUB_TOKEN_JTERRAZZ }}" \
             -e "github_pat_clawrr=${{ env.GITHUB_TOKEN_CLAWRR }}" \
             -e "infisical_client_id=${{ secrets.INFISICAL_CLIENT_ID }}" \

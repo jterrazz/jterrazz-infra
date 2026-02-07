@@ -56,7 +56,7 @@ Minimal Kubernetes infrastructure with local development and production deployme
 | **Infisical**    | Automated secrets management          |
 | **Tailscale**    | Private VPN for secure access         |
 | **n8n**          | Workflow automation                   |
-| **Clawdbot**     | Personal AI assistant (Claude Max)    |
+| **OpenClaw**     | Personal AI assistant (Claude Max)    |
 
 ## Quick Start
 
@@ -91,7 +91,7 @@ make deploy   # Deploy to Hetzner (or push to main)
 │   │   ├── portainer/          # Cluster dashboard
 │   │   ├── signoz/
 │   │   ├── n8n/
-│   │   ├── clawdbot/
+│   │   ├── openclaw/
 │   │   ├── cert-manager/
 │   │   ├── external-dns/
 │   │   └── infisical/
@@ -228,7 +228,7 @@ Or pass `bootstrap_apps=true` to Ansible to trigger automatically.
 | Portainer | `https://portainer.jterrazz.com` | Cluster dashboard   |
 | SigNoz    | `https://signoz.jterrazz.com`    | Observability       |
 | n8n       | `https://n8n.jterrazz.com`       | Workflow automation |
-| Clawdbot  | `https://clawdbot.jterrazz.com`  | AI assistant        |
+| OpenClaw  | `https://openclaw.jterrazz.com`  | AI assistant        |
 
 All private services:
 
@@ -244,7 +244,7 @@ All persistent data lives in `/var/lib/k8s-data/` on the VPS. This single folder
 
 ```
 /var/lib/k8s-data/
-├── clawdbot/      # AI assistant config, memories, Signal data
+├── openclaw/      # AI assistant config, memories, Signal data
 ├── n8n/           # n8n workflows and credentials
 ├── signews-api/   # App database (SQLite)
 └── signoz/        # Traces, metrics, logs, dashboards
@@ -391,8 +391,8 @@ All other secrets are fetched at runtime from Infisical.
 | `GITHUB_TOKEN_CLAWRR`           | GitHub token for triggering clawrr app CIs   |
 | `DOCKER_REGISTRY_PASSWORD`      | Docker registry password                     |
 | `PORTAINER_ADMIN_PASSWORD`      | Portainer admin password                     |
-| `CLAWDBOT_CLAUDE_TOKEN`         | Claude API token for clawdbot                |
-| `CLAWDBOT_GATEWAY_TOKEN`        | Gateway token for clawdbot                   |
+| `OPENCLAW_CLAUDE_TOKEN`         | Claude API token for openclaw                |
+| `OPENCLAW_GATEWAY_TOKEN`        | Gateway token for openclaw                   |
 | `N8N_ENCRYPTION_KEY`            | n8n credentials encryption key               |
 
 #### Infisical — `jterrazz` project, `/infrastructure-apps` folder (prod env)
@@ -485,7 +485,7 @@ APP REPO (push to main / tag v*):
   CI → fetch secrets from Infisical → connect Tailscale → build + push image → helm upgrade --install
 
 CLUSTER:
-  Portainer (dashboard) | cert-manager | external-dns | signoz | n8n | infisical | clawdbot | registry
+  Portainer (dashboard) | cert-manager | external-dns | signoz | n8n | infisical | openclaw | registry
   No GitOps controller. No image polling. CI deploys directly over Tailscale.
 ```
 

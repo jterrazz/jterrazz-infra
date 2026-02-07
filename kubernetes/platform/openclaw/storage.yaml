@@ -1,12 +1,12 @@
 ---
-# Persistent storage for Clawdbot data
+# Persistent storage for OpenClaw data
 # Stores: config, conversation history, signal-cli data, workspace files
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: clawdbot-data
+  name: openclaw-data
   labels:
-    app: clawdbot
+    app: openclaw
 spec:
   capacity:
     storage: 10Gi
@@ -15,13 +15,13 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/clawdbot
+    path: /var/lib/k8s-data/openclaw
     type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: clawdbot-data
+  name: openclaw-data
   namespace: platform-automation
 spec:
   accessModes:
@@ -32,4 +32,4 @@ spec:
       storage: 10Gi
   selector:
     matchLabels:
-      app: clawdbot
+      app: openclaw

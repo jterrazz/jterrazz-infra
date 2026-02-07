@@ -1,45 +1,45 @@
 ---
-# Clawdbot Deployment
+# OpenClaw Deployment
 # Runs the gateway with signal-cli for Signal messaging
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: clawdbot
+  name: openclaw
   namespace: platform-automation
   labels:
-    app: clawdbot
+    app: openclaw
 spec:
   replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: clawdbot
+      app: openclaw
   template:
     metadata:
       labels:
-        app: clawdbot
+        app: openclaw
     spec:
       # Init container to setup config from K8s secrets if not exists
       initContainers:
         - name: init-config
-          image: ghcr.io/zot24/clawdbot-docker:latest
+          image: ghcr.io/openclaw/openclaw:latest
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
           args:
             - |
               set -e
-              CONFIG_DIR=/root/.clawdbot
-              CONFIG_FILE=$CONFIG_DIR/clawdbot.json
+              CONFIG_DIR=/root/.openclaw
+              CONFIG_FILE=$CONFIG_DIR/openclaw.json
               AUTH_DIR=$CONFIG_DIR/agents/main/agent
               AUTH_FILE=$AUTH_DIR/auth-profiles.json
 
               # Create directories
               mkdir -p $CONFIG_DIR $AUTH_DIR
 
-              # Create clawdbot.json if it doesn't exist
+              # Create openclaw.json if it doesn't exist
               if [ ! -f "$CONFIG_FILE" ]; then
-                echo "Creating initial clawdbot.json..."
+                echo "Creating initial openclaw.json..."
                 cat > $CONFIG_FILE << EOF
               {
                 "agents": {
@@ -59,7 +59,7 @@ spec:
               EOF
                 chmod 600 $CONFIG_FILE
               else
-                echo "clawdbot.json already exists, skipping..."
+                echo "openclaw.json already exists, skipping..."
               fi
 
               # Create auth-profiles.json if it doesn't exist
@@ -90,21 +90,21 @@ spec:
             - name: GATEWAY_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: clawdbot-secrets
+                  name: openclaw-secrets
                   key: GATEWAY_TOKEN
             - name: CLAUDE_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: clawdbot-secrets
+                  name: openclaw-secrets
                   key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
-              mountPath: /root/.clawdbot
+              mountPath: /root/.openclaw
               subPath: config
       containers:
-        - name: clawdbot
+        - name: openclaw
           # Community image with signal-cli, playwright, etc
-          image: ghcr.io/zot24/clawdbot-docker:latest
+          image: ghcr.io/openclaw/openclaw:latest
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
@@ -123,11 +123,11 @@ spec:
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: clawdbot-secrets
+                  name: openclaw-secrets
                   key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
-              mountPath: /root/.clawdbot
+              mountPath: /root/.openclaw
               subPath: config
             - name: data
               mountPath: /root/clawd
@@ -158,15 +158,15 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: clawdbot-data
+            claimName: openclaw-data
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: clawdbot
+  name: openclaw
   namespace: platform-automation
   labels:
-    app: clawdbot
+    app: openclaw
 spec:
   type: ClusterIP
   ports:
@@ -174,4 +174,4 @@ spec:
       port: 18789
       targetPort: gateway
   selector:
-    app: clawdbot
+    app: openclaw

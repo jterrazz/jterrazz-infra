@@ -23,3 +23,4 @@
     - /var/lib/k8s-data/signoz/clickhouse
     - /var/lib/k8s-data/signoz/db
     - /var/lib/k8s-data/portainer
+    - /var/lib/k8s-data/openclaw
