@@ -170,7 +170,7 @@ Apps deploy themselves via their own GitHub Actions CI. No GitOps controller nee
 
 Each app's CI workflow:
 
-1. Fetches infrastructure secrets from Infisical (`/infrastructure-ci` folder)
+1. Fetches infrastructure secrets from Infisical (`/infrastructure-apps` folder)
 2. Connects to Tailscale VPN
 3. Builds and pushes Docker image to `registry.jterrazz.com`
 4. Runs `helm upgrade --install` using the shared OCI chart with `--atomic` (auto-rollback on failure)
@@ -380,18 +380,30 @@ brew install multipass ansible pulumi node
 
 All other secrets are fetched at runtime from Infisical.
 
-#### Infisical — `jterrazz` project, `/infrastructure-ci` folder (prod env)
+#### Infisical — `jterrazz` project, `/infrastructure` folder (prod env)
 
-| Secret                          | Used by      | Description                                  |
-| ------------------------------- | ------------ | -------------------------------------------- |
-| `TAILSCALE_OAUTH_CLIENT_ID`     | Infra + Apps | Tailscale OAuth client for VPN access        |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | Infra + Apps | Tailscale OAuth secret for VPN access        |
-| `CLOUDFLARE_API_TOKEN`          | Infra        | Cloudflare API token for DNS/certificates    |
-| `GITHUB_TOKEN_JTERRAZZ`         | Infra        | GitHub token for triggering jterrazz app CIs |
-| `GITHUB_TOKEN_CLAWRR`           | Infra        | GitHub token for triggering clawrr app CIs   |
-| `REGISTRY_USERNAME`             | Apps         | Docker registry username (`deploy`)          |
-| `REGISTRY_PASSWORD`             | Apps         | Docker registry password                     |
-| `KUBECONFIG_BASE64`             | Apps         | Base64-encoded kubeconfig with Tailscale IP  |
+| Secret                          | Description                                  |
+| ------------------------------- | -------------------------------------------- |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for VPN access        |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for VPN access        |
+| `CLOUDFLARE_API_TOKEN`          | Cloudflare API token for DNS/certificates    |
+| `GITHUB_TOKEN_JTERRAZZ`         | GitHub token for triggering jterrazz app CIs |
+| `GITHUB_TOKEN_CLAWRR`           | GitHub token for triggering clawrr app CIs   |
+| `DOCKER_REGISTRY_PASSWORD`      | Docker registry password                     |
+| `PORTAINER_ADMIN_PASSWORD`      | Portainer admin password                     |
+| `CLAWDBOT_CLAUDE_TOKEN`         | Claude API token for clawdbot                |
+| `CLAWDBOT_GATEWAY_TOKEN`        | Gateway token for clawdbot                   |
+| `N8N_ENCRYPTION_KEY`            | n8n credentials encryption key               |
+
+#### Infisical — `jterrazz` project, `/infrastructure-apps` folder (prod env)
+
+| Secret                          | Description                                 |
+| ------------------------------- | ------------------------------------------- |
+| `TAILSCALE_OAUTH_CLIENT_ID`     | Tailscale OAuth client for CI VPN access    |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale OAuth secret for CI VPN access    |
+| `REGISTRY_USERNAME`             | Docker registry username (`deploy`)         |
+| `REGISTRY_PASSWORD`             | Docker registry password                    |
+| `KUBECONFIG_BASE64`             | Base64-encoded kubeconfig with Tailscale IP |
 
 ### Deploy
 
