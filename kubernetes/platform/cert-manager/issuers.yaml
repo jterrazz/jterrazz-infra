@@ -27,6 +27,7 @@ spec:
           dnsZones:
             - jterrazz.com
             - clawrr.com
+            - clawssify.com
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -49,3 +50,4 @@ spec:
           dnsZones:
             - jterrazz.com
             - clawrr.com
+            - clawssify.com

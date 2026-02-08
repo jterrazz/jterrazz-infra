@@ -12,6 +12,7 @@ env:
 domainFilters:
   - jterrazz.com
   - clawrr.com
+  - clawssify.com
 
 # Only create records, don't delete unmanaged ones
 policy: upsert-only
