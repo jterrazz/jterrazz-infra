@@ -1,6 +1,9 @@
-resources:
-  requests:
-    cpu: 5m
-    memory: 32Mi
-  limits:
-    memory: 96Mi
+controllerManager:
+  manager:
+    resources:
+      requests:
+        cpu: 5m
+        memory: 64Mi
+      limits:
+        cpu: null
+        memory: 128Mi

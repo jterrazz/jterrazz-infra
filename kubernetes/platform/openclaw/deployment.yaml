@@ -119,7 +119,7 @@ spec:
             - name: NODE_ENV
               value: "production"
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=512"
+              value: "--max-old-space-size=768"
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -138,9 +138,9 @@ spec:
           resources:
             requests:
               cpu: 25m
-              memory: 376Mi
+              memory: 512Mi
             limits:
-              memory: 768Mi
+              memory: 1Gi
           livenessProbe:
             httpGet:
               path: /health

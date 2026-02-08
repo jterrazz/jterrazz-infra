@@ -28,7 +28,7 @@ txtPrefix: "_external-dns."
 resources:
   requests:
     cpu: 5m
-    memory: 17Mi
+    memory: 24Mi
   limits:
     memory: 48Mi
 

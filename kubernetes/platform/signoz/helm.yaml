@@ -41,7 +41,7 @@ clickhouse:
     resources:
       requests:
         cpu: 25m
-        memory: 377Mi
+        memory: 448Mi
       limits:
         memory: 768Mi
 
