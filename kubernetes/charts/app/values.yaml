@@ -57,6 +57,12 @@ environments: {}
 # Set by app CI during helm upgrade --install
 environment: ""
 
+# Registry credentials (passed from CI via --set)
+registry:
+  server: registry.jterrazz.com
+  username: ""
+  password: ""
+
 # Infrastructure settings
 infrastructure:
   publicIp: "46.224.186.190"

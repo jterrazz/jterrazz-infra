@@ -595,6 +595,7 @@
       loop:
         - jterrazz/signews-api
         - jterrazz/gateway-intelligence
+        - jterrazz/clawssify-web-landing
       when: github_pat is defined and github_pat | length > 0 and bootstrap_apps | default(false) | bool
       failed_when: false
 
