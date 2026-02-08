@@ -8,7 +8,7 @@ global:
     retryPeriod: 2s
 resources:
   requests:
-    cpu: 10m
+    cpu: 100m
     memory: 32Mi
   limits:
     memory: 64Mi
