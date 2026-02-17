@@ -99,8 +99,7 @@ spec:
                   key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
-              mountPath: /root/.openclaw
-              subPath: config
+              mountPath: /root
       containers:
         - name: openclaw
           # Community image with signal-cli, playwright, etc
@@ -127,14 +126,7 @@ spec:
                   key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
-              mountPath: /root/.openclaw
-              subPath: config
-            - name: data
-              mountPath: /root/clawd
-              subPath: workspace
-            - name: data
-              mountPath: /root/.local/share/signal-cli
-              subPath: signal-cli
+              mountPath: /root
           resources:
             requests:
               cpu: 25m
