@@ -340,7 +340,7 @@
       ansible.builtin.command: >
         helm upgrade --install cert-manager jetstack/cert-manager
         --namespace platform-networking
-        --version v1.19.2
+        --version v1.19.3
         --values {{ manifest_dest }}/kubernetes/platform/cert-manager/helm.yaml
         --wait
         --timeout 5m
@@ -382,7 +382,7 @@
       ansible.builtin.command: >
         helm upgrade --install infisical infisical/secrets-operator
         --namespace platform-secrets
-        --version 0.10.21
+        --version 0.10.23
         --values {{ manifest_dest }}/kubernetes/platform/infisical/helm.yaml
         --wait
         --timeout 5m
@@ -403,7 +403,7 @@
       ansible.builtin.command: >
         helm upgrade --install signoz signoz/signoz
         --namespace platform-observability
-        --version 0.108.0
+        --version 0.110.1
         --values {{ manifest_dest }}/kubernetes/platform/signoz/helm.yaml
         --wait
         --timeout 10m
@@ -443,7 +443,7 @@
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
         --namespace platform-automation
-        --version 1.16.25
+        --version 1.16.28
         --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
         --wait
         --timeout 5m
@@ -630,11 +630,11 @@
           Platform deployment complete!
 
           Services deployed:
-            - cert-manager v1.19.2
+            - cert-manager v1.19.3
             - external-dns v1.20.0
-            - infisical v0.10.21
-            - signoz v0.108.0 + k8s-infra v0.15.0
-            - n8n v1.16.25
+            - infisical v0.10.23
+            - signoz v0.110.1 + k8s-infra v0.15.0
+            - n8n v1.16.28
             - portainer
             - openclaw
             - registry
