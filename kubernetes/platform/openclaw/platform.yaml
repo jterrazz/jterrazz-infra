@@ -3,6 +3,6 @@ host: openclaw.jterrazz.com
 port: 18789
 private: true
 storage:
-  size: 10Gi
+  size: 42Gi
   hostPathType: DirectoryOrCreate
   selector: true

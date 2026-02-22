@@ -22,7 +22,7 @@ spec:
       # Init container to setup config from K8s secrets if not exists
       initContainers:
         - name: init-config
-          image: ghcr.io/openclaw/openclaw:latest
+          image: ghcr.io/openclaw/openclaw:2026.2.21
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
@@ -103,7 +103,7 @@ spec:
       containers:
         - name: openclaw
           # Community image with signal-cli, playwright, etc
-          image: ghcr.io/openclaw/openclaw:latest
+          image: ghcr.io/openclaw/openclaw:2026.2.21
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
