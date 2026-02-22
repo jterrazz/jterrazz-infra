@@ -19,8 +19,29 @@ spec:
       labels:
         app: openclaw
     spec:
-      # Init container to setup config from K8s secrets if not exists
+      # Seed system dirs so agent-installed packages persist across restarts
       initContainers:
+        - name: seed-system
+          image: ghcr.io/openclaw/openclaw:2026.2.21
+          securityContext:
+            runAsUser: 0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              # Seed /usr/local from image: add new files, keep existing (agent installs)
+              echo "Seeding /usr/local..."
+              cp -a -n /usr/local/. /persist-usr-local/ 2>/dev/null || true
+              # Seed /opt from image
+              echo "Seeding /opt..."
+              cp -a -n /opt/. /persist-opt/ 2>/dev/null || true
+              echo "System seed complete."
+          volumeMounts:
+            - name: system-usr-local
+              mountPath: /persist-usr-local
+            - name: system-opt
+              mountPath: /persist-opt
+        # Setup config from K8s secrets if not exists
         - name: init-config
           image: ghcr.io/openclaw/openclaw:2026.2.21
           securityContext:
@@ -100,6 +121,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /root
+            - name: system-usr-local
+              mountPath: /usr/local
+            - name: system-opt
+              mountPath: /opt
       containers:
         - name: openclaw
           # Community image with signal-cli, playwright, etc
@@ -127,6 +152,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /root
+            - name: system-usr-local
+              mountPath: /usr/local
+            - name: system-opt
+              mountPath: /opt
           resources:
             requests:
               cpu: 25m
@@ -150,6 +179,14 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: openclaw-data
+        - name: system-usr-local
+          hostPath:
+            path: /var/lib/k8s-data/openclaw-system/usr-local
+            type: DirectoryOrCreate
+        - name: system-opt
+          hostPath:
+            path: /var/lib/k8s-data/openclaw-system/opt
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service
