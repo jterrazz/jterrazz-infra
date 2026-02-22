@@ -80,7 +80,7 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v3
         with:
-          version: v3.14.0
+          version: v3.20.0
 
       - name: Lint Helm charts
         run: |

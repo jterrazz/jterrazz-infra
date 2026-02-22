@@ -2,7 +2,7 @@
 # k3s Role - Default Variables
 
 # Version
-k3s_version: "v1.28.5+k3s1"
+k3s_version: "v1.35.1+k3s1"
 
 # Directories
 k3s_config_dir: "/etc/rancher/k3s"

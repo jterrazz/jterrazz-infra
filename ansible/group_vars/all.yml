@@ -6,7 +6,7 @@ ansible_python_interpreter: /usr/bin/python3
 timezone: UTC
 
 # k3s
-k3s_version: "v1.28.5+k3s1"
+k3s_version: "v1.35.1+k3s1"
 k3s_config_dir: "/etc/rancher/k3s"
 k3s_data_dir: "/var/lib/rancher/k3s"
 k3s_node_ip: "{{ ansible_default_ipv4.address }}"

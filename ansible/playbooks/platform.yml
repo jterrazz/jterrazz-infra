@@ -164,7 +164,7 @@
         - name: Run Helm install script
           ansible.builtin.command: /tmp/get_helm.sh
           environment:
-            DESIRED_VERSION: v3.14.0
+            DESIRED_VERSION: v3.20.0
           changed_when: true
 
         - name: Cleanup Helm install script
@@ -382,7 +382,7 @@
       ansible.builtin.command: >
         helm upgrade --install infisical infisical/secrets-operator
         --namespace platform-secrets
-        --version 0.10.23
+        --version 0.10.25
         --values {{ manifest_dest }}/kubernetes/platform/infisical/helm.yaml
         --wait
         --timeout 5m
@@ -403,7 +403,7 @@
       ansible.builtin.command: >
         helm upgrade --install signoz signoz/signoz
         --namespace platform-observability
-        --version 0.110.1
+        --version 0.112.0
         --values {{ manifest_dest }}/kubernetes/platform/signoz/helm.yaml
         --wait
         --timeout 10m
@@ -443,7 +443,7 @@
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
         --namespace platform-automation
-        --version 1.16.28
+        --version 1.16.29
         --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
         --wait
         --timeout 5m
@@ -632,9 +632,9 @@
           Services deployed:
             - cert-manager v1.19.3
             - external-dns v1.20.0
-            - infisical v0.10.23
-            - signoz v0.110.1 + k8s-infra v0.15.0
-            - n8n v1.16.28
+            - infisical v0.10.25
+            - signoz v0.112.0 + k8s-infra v0.15.0
+            - n8n v1.16.29
             - portainer
             - openclaw
             - registry
