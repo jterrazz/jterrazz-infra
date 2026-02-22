@@ -569,7 +569,7 @@
       changed_when: false
 
     - name: Push app chart to OCI registry
-      ansible.builtin.command: helm push {{ helm_package_result.stdout.split(': ')[-1] }} oci://registry.jterrazz.com/charts
+      ansible.builtin.command: "helm push {{ helm_package_result.stdout.split(': ')[-1] }} oci://registry.jterrazz.com/charts"
       register: chart_push_result
       changed_when: true
 
