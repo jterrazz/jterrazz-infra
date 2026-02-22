@@ -28,6 +28,7 @@ spec:
             - jterrazz.com
             - clawrr.com
             - clawssify.com
+            - sig.news
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -51,3 +52,4 @@ spec:
             - jterrazz.com
             - clawrr.com
             - clawssify.com
+            - sig.news

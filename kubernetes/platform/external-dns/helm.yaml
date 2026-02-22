@@ -13,6 +13,7 @@ domainFilters:
   - jterrazz.com
   - clawrr.com
   - clawssify.com
+  - sig.news
 
 # Only create records, don't delete unmanaged ones
 policy: upsert-only
