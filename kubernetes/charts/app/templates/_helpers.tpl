@@ -110,14 +110,10 @@ Memory limit (defaults to 2x memory request)
 {{- end -}}
 
 {{/*
-Infisical environment - maps staging to dev, prod to prod
+Infisical environment - maps directly to matching environment
 */}}
 {{- define "app.infisicalEnv" -}}
-{{- if eq .Values.environment "staging" -}}
-dev
-{{- else -}}
-prod
-{{- end -}}
+{{- .Values.environment -}}
 {{- end -}}
 
 {{/*
