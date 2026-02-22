@@ -10,6 +10,10 @@ metadata:
 spec:
   replicas: {{ include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1) }}
   revisionHistoryLimit: 3
+  {{- if .Values.spec.storage }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "app.selectorLabels" . | nindent 6 }}
