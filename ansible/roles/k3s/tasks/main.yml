@@ -91,6 +91,7 @@
     INSTALL_K3S_VERSION={{ k3s_version }} sh /tmp/k3s-install.sh
   environment:
     K3S_TOKEN: "{{ k3s_cluster_token }}"
+  changed_when: true
   when: k3s_needs_install
   notify: Restart k3s
 
