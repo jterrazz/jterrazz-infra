@@ -569,9 +569,7 @@
       changed_when: false
 
     - name: Push app chart to OCI registry
-      ansible.builtin.shell:
-        cmd: helm push /tmp/app-*.tgz oci://registry.jterrazz.com/charts
-        executable: /bin/bash
+      ansible.builtin.command: helm push {{ helm_package_result.stdout.split(': ')[-1] }} oci://registry.jterrazz.com/charts
       register: chart_push_result
       changed_when: true
 
