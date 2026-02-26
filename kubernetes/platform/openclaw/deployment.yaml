@@ -22,7 +22,7 @@ spec:
       # Seed system dirs so agent-installed packages persist across restarts
       initContainers:
         - name: seed-system
-          image: ghcr.io/openclaw/openclaw:2026.2.21
+          image: ghcr.io/openclaw/openclaw:2026.2.25
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
@@ -43,7 +43,7 @@ spec:
               mountPath: /persist-opt
         # Setup config from K8s secrets if not exists
         - name: init-config
-          image: ghcr.io/openclaw/openclaw:2026.2.21
+          image: ghcr.io/openclaw/openclaw:2026.2.25
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
@@ -128,7 +128,7 @@ spec:
       containers:
         - name: openclaw
           # Community image with signal-cli, playwright, etc
-          image: ghcr.io/openclaw/openclaw:2026.2.21
+          image: ghcr.io/openclaw/openclaw:2026.2.25
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
