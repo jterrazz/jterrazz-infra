@@ -14,6 +14,7 @@ domainFilters:
   - clawrr.com
   - clawssify.com
   - sig.news
+  - spwn.sh
 
 # Only create records, don't delete unmanaged ones
 policy: upsert-only

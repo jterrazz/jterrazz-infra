@@ -29,6 +29,7 @@ spec:
             - clawrr.com
             - clawssify.com
             - sig.news
+            - spwn.sh
 ---
 # Staging issuer for testing (higher rate limits)
 apiVersion: cert-manager.io/v1
@@ -53,3 +54,4 @@ spec:
             - clawrr.com
             - clawssify.com
             - sig.news
+            - spwn.sh
