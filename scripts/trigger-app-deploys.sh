@@ -13,6 +13,7 @@ REPOS=(
   "jterrazz/signews-api"
   "jterrazz/gateway-intelligence"
   "jterrazz/clawssify-web-landing"
+  "jterrazz/universe-web"
   "clawrr/web-landing"
 )
 
