@@ -75,10 +75,11 @@ spec:
             - name: data
               mountPath: {{ .Values.spec.storage.mountPath }}
             {{- end }}
-            {{- range $filename, $_ := .Values.spec.configFiles }}
+            {{- range $filename, $content := .Values.spec.configFiles }}
             - name: config
               mountPath: /app/{{ $filename }}
               subPath: {{ $filename }}
+              readOnly: true
             {{- end }}
           {{- end }}
           resources:
