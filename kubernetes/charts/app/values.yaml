@@ -47,6 +47,7 @@ spec:
     memory: 256Mi
     memoryLimit: ""
   storage: {}
+  configFiles: {}
   health:
     path: /health
     initialDelaySeconds: 10

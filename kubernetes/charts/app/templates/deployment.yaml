@@ -69,10 +69,17 @@ spec:
                   key: {{ . }}
             {{- end }}
             {{- end }}
-          {{- if .Values.spec.storage }}
+          {{- if or .Values.spec.storage .Values.spec.configFiles }}
           volumeMounts:
+            {{- if .Values.spec.storage }}
             - name: data
               mountPath: {{ .Values.spec.storage.mountPath }}
+            {{- end }}
+            {{- range $filename, $_ := .Values.spec.configFiles }}
+            - name: config
+              mountPath: /app/{{ $filename }}
+              subPath: {{ $filename }}
+            {{- end }}
           {{- end }}
           resources:
             requests:
@@ -92,10 +99,17 @@ spec:
               port: {{ .Values.spec.port }}
             initialDelaySeconds: 5
             periodSeconds: 10
-      {{- if .Values.spec.storage }}
+      {{- if or .Values.spec.storage .Values.spec.configFiles }}
       volumes:
+        {{- if .Values.spec.storage }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "app.name" . }}-data
+        {{- end }}
+        {{- if .Values.spec.configFiles }}
+        - name: config
+          configMap:
+            name: {{ include "app.name" . }}-config
+        {{- end }}
       {{- end }}
 {{- end }}
