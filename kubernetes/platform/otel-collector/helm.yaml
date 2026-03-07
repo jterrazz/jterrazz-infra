@@ -1,0 +1,79 @@
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+mode: deployment
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+# Override the default service name for cleaner DNS
+fullnameOverride: otel-collector
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  # Disable unused default ports
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    batch:
+      timeout: 5s
+      send_batch_size: 1024
+
+  exporters:
+    otlphttp/tempo:
+      endpoint: http://tempo.platform-telemetry.svc:4318
+      tls:
+        insecure: true
+    otlphttp/loki:
+      endpoint: http://loki.platform-telemetry.svc:3100/otlp
+      tls:
+        insecure: true
+    prometheusremotewrite:
+      endpoint: http://prometheus-server.platform-telemetry.svc:80/api/v1/write
+      tls:
+        insecure: true
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/tempo]
+      logs:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [otlphttp/loki]
+      metrics:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [prometheusremotewrite]

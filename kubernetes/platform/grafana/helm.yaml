@@ -1,0 +1,35 @@
+persistence:
+  enabled: true
+  existingClaim: grafana-data
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+# Datasources auto-configured for the telemetry stack
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server.platform-telemetry.svc:80
+        isDefault: true
+      - name: Loki
+        type: loki
+        url: http://loki.platform-telemetry.svc:3100
+      - name: Tempo
+        type: tempo
+        url: http://tempo.platform-telemetry.svc:3100
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+          tracesToMetrics:
+            datasourceUid: prometheus
+
+# Disable built-in ingress (we use Traefik IngressRoute)
+ingress:
+  enabled: false

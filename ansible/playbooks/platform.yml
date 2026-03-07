@@ -14,6 +14,7 @@
     templates_dir: "{{ playbook_dir }}/../templates"
     platform_chart: "{{ manifest_dest }}/kubernetes/charts/platform"
     portainer_admin_password: "{{ portainer_password | default('changeme-on-first-login') }}"
+    grafana_admin_password: "{{ grafana_password | default('changeme-on-first-login') }}"
 
   tasks:
     # ========================================
@@ -191,6 +192,9 @@
         - name: infisical
           url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
         - { name: portainer, url: "https://portainer.github.io/k8s/" }
+        - { name: grafana, url: "https://grafana.github.io/helm-charts" }
+        - { name: prometheus-community, url: "https://prometheus-community.github.io/helm-charts" }
+        - { name: open-telemetry, url: "https://open-telemetry.github.io/opentelemetry-helm-charts" }
       register: repo_add
       changed_when: "'has been added' in repo_add.stdout"
       failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
@@ -292,6 +296,9 @@
           # SigNoz
           adopt_resource certificate.cert-manager.io signoz-tls platform-observability signoz-platform
           adopt_resource ingressroute.traefik.io signoz platform-observability signoz-platform
+          # Grafana
+          adopt_resource certificate.cert-manager.io grafana-tls platform-telemetry grafana-platform
+          adopt_resource ingressroute.traefik.io grafana platform-telemetry grafana-platform
           # n8n
           adopt_resource certificate.cert-manager.io n8n-tls platform-automation n8n-platform
           adopt_resource ingressroute.traefik.io n8n platform-automation n8n-platform
@@ -450,7 +457,105 @@
       register: signoz_k8s_result
       changed_when: "'has been upgraded' in signoz_k8s_result.stdout or 'has been installed' in signoz_k8s_result.stdout"
 
-    # 6. n8n workflow automation
+    # 6. Grafana telemetry stack (Grafana + Loki + Tempo + Prometheus + OTel Collector)
+
+    - name: Create platform-telemetry namespace
+      ansible.builtin.command: kubectl create namespace platform-telemetry
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: telemetry_ns_result
+      changed_when: "'created' in telemetry_ns_result.stdout"
+      failed_when: telemetry_ns_result.rc != 0 and 'already exists' not in telemetry_ns_result.stderr
+
+    - name: Apply telemetry storage manifests
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/telemetry/storage.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: telemetry_storage_result
+      changed_when: "'created' in telemetry_storage_result.stdout or 'configured' in telemetry_storage_result.stdout"
+
+    - name: Install Prometheus via Helm
+      ansible.builtin.command: >
+        helm upgrade --install prometheus prometheus-community/prometheus
+        --namespace platform-telemetry
+        --version 28.13.0
+        --values {{ manifest_dest }}/kubernetes/platform/prometheus/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: prometheus_result
+      changed_when: "'has been upgraded' in prometheus_result.stdout or 'has been installed' in prometheus_result.stdout"
+
+    - name: Install Loki via Helm
+      ansible.builtin.command: >
+        helm upgrade --install loki grafana/loki
+        --namespace platform-telemetry
+        --version 6.53.0
+        --values {{ manifest_dest }}/kubernetes/platform/loki/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: loki_result
+      changed_when: "'has been upgraded' in loki_result.stdout or 'has been installed' in loki_result.stdout"
+
+    - name: Install Tempo via Helm
+      ansible.builtin.command: >
+        helm upgrade --install tempo grafana/tempo
+        --namespace platform-telemetry
+        --version 1.24.4
+        --values {{ manifest_dest }}/kubernetes/platform/tempo/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: tempo_result
+      changed_when: "'has been upgraded' in tempo_result.stdout or 'has been installed' in tempo_result.stdout"
+
+    - name: Install OpenTelemetry Collector via Helm
+      ansible.builtin.command: >
+        helm upgrade --install otel-collector open-telemetry/opentelemetry-collector
+        --namespace platform-telemetry
+        --version 0.146.1
+        --values {{ manifest_dest }}/kubernetes/platform/otel-collector/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: otel_result
+      changed_when: "'has been upgraded' in otel_result.stdout or 'has been installed' in otel_result.stdout"
+
+    - name: Install Grafana via Helm
+      ansible.builtin.command: >
+        helm upgrade --install grafana grafana/grafana
+        --namespace platform-telemetry
+        --version 10.5.15
+        --values {{ manifest_dest }}/kubernetes/platform/grafana/helm.yaml
+        --set adminPassword={{ grafana_admin_password }}
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: grafana_result
+      changed_when: "'has been upgraded' in grafana_result.stdout or 'has been installed' in grafana_result.stdout"
+
+    - name: Deploy Grafana platform resources
+      ansible.builtin.command: >
+        helm upgrade --install grafana-platform {{ platform_chart }}
+        --namespace platform-telemetry
+        --values {{ manifest_dest }}/kubernetes/platform/grafana/platform.yaml
+        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
+        --wait
+        --timeout 2m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: grafana_platform_result
+      changed_when: "'has been upgraded' in grafana_platform_result.stdout or 'has been installed' in grafana_platform_result.stdout"
+
+    # 7. n8n workflow automation
     - name: Install n8n via Helm
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
@@ -479,7 +584,7 @@
       register: n8n_platform_result
       changed_when: "'has been upgraded' in n8n_platform_result.stdout or 'has been installed' in n8n_platform_result.stdout"
 
-    # 7. OpenClaw gateway
+    # 8. OpenClaw gateway
     - name: Deploy OpenClaw platform resources
       ansible.builtin.command: >
         helm upgrade --install openclaw-platform {{ platform_chart }}
@@ -502,7 +607,7 @@
       register: openclaw_deploy_result
       changed_when: "'created' in openclaw_deploy_result.stdout or 'configured' in openclaw_deploy_result.stdout"
 
-    # 8. Portainer cluster dashboard
+    # 9. Portainer cluster dashboard
     - name: Install Portainer via Helm
       ansible.builtin.command: >
         helm upgrade --install portainer portainer/portainer
@@ -557,7 +662,7 @@
       failed_when: false
       no_log: true
 
-    # 9. Apply registry manifests
+    # 10. Apply registry manifests
     - name: Apply registry manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/registry.yaml
       environment:

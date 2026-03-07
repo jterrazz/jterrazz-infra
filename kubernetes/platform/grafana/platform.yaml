@@ -1,0 +1,4 @@
+name: grafana
+host: grafana.jterrazz.com
+port: 80
+private: true

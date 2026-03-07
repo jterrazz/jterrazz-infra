@@ -1,0 +1,31 @@
+server:
+  persistentVolume:
+    existingClaim: prometheus-data
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  retention: "15d"
+  # Enable remote write receiver so OTel collector can push metrics
+  extraFlags:
+    - "web.enable-remote-write-receiver"
+  # Fix data directory permissions (Prometheus runs as nobody:65534)
+  initContainers:
+    - name: fix-permissions
+      image: busybox:1.37
+      command: ["sh", "-c", "chown -R 65534:65534 /data"]
+      volumeMounts:
+        - name: storage-volume
+          mountPath: /data
+
+# Disable components not needed (OTel collector handles collection)
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false

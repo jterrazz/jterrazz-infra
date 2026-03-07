@@ -1,0 +1,59 @@
+# Loki monolithic (single binary) mode for single-node setup
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 30d
+
+singleBinary:
+  replicas: 1
+  persistence:
+    storageClass: manual
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 25m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+# Disable distributed mode components
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Disable nginx gateway (accessed internally)
+gateway:
+  enabled: false
+
+# Disable self-monitoring and tests
+monitoring:
+  selfMonitoring:
+    enabled: false
+  lokiCanary:
+    enabled: false
+
+test:
+  enabled: false
+
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
