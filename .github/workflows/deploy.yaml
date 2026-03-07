@@ -111,6 +111,7 @@ jobs:
             -e "n8n_encryption_key=${{ env.N8N_ENCRYPTION_KEY }}" \
             -e "openclaw_claude_token=${{ env.OPENCLAW_CLAUDE_TOKEN }}" \
             -e "openclaw_gateway_token=${{ env.OPENCLAW_GATEWAY_TOKEN }}" \
+            -e "grafana_password=${{ env.GRAFANA_PASSWORD }}" \
             -e "github_pat=${{ env.GITHUB_TOKEN_JTERRAZZ }}" \
             -e "github_pat_clawrr=${{ env.GITHUB_TOKEN_CLAWRR }}" \
             -e "infisical_client_id=${{ secrets.INFISICAL_CLIENT_ID }}" \
