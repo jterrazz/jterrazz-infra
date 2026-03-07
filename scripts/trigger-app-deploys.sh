@@ -11,6 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 REPOS=(
   "jterrazz/signews-api"
+  "jterrazz/signews-web"
   "jterrazz/gateway-intelligence"
   "jterrazz/clawssify-web-landing"
   "jterrazz/universe-web"

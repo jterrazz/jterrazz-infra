@@ -8,7 +8,7 @@
 - App chart published to `oci://registry.jterrazz.com/charts/app`
 
 ## Deployed Apps
-- **signews-web** (`jterrazz/n00-web`): Next.js 16 at `sig.news`, namespace `prod-signews-web`
+- **signews-web** (`jterrazz/signews-web`): Next.js 16 at `sig.news`, namespace `prod-signews-web`
 - **signews-api** (`jterrazz/signews-api`): namespace `prod-signews-api`
 - **clawssify-web-landing** (`jterrazz/clawssify-web-landing`): at `clawssify.com`, namespace `prod-clawssify-web-landing`
 - **clawrr-web-landing** (`clawrr/web-landing`): at `clawrr.com` (uses separate `github_pat_clawrr`)
