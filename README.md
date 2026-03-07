@@ -90,11 +90,11 @@ make deploy    # Or push to main for automatic deployment
 
 ### Standard App Chart
 
-The `kubernetes/charts/app/` Helm chart provides a standardized deployment for all applications. Published to `oci://registry.jterrazz.com/charts/app`. Apps only need a `.deploy/manifest.yaml`.
+The `kubernetes/charts/app/` Helm chart provides a standardized deployment for all applications. Published to `oci://registry.jterrazz.com/charts/app`. Apps only need a `.infrastructure/application.yaml`.
 
 **What the chart generates:** Deployment with health probes + resource limits + OTEL, Service, Traefik IngressRoute with TLS, PV/PVC (if storage defined), InfisicalSecret, registry pull secrets.
 
-### App Manifest (`.deploy/manifest.yaml`)
+### App Manifest (`.infrastructure/application.yaml`)
 
 ```yaml
 apiVersion: jterrazz.com/v1
@@ -147,7 +147,7 @@ Each app's CI:
   run: |
     helm upgrade --install $ENV-$APP \
       oci://registry.jterrazz.com/charts/app \
-      -f .deploy/manifest.yaml \
+      -f .infrastructure/application.yaml \
       --set environment=$ENV \
       --set spec.image=registry.jterrazz.com/$APP:$TAG \
       -n $ENV-$APP --create-namespace \
@@ -166,7 +166,7 @@ Each app's CI:
 
 ### Adding a New Application
 
-1. Create `.deploy/manifest.yaml` in your app repo (see format above)
+1. Create `.infrastructure/application.yaml` in your app repo (see format above)
 2. Add CI deploy workflow
 3. Add `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` as GitHub repo secrets
 4. Push — CI builds, pushes, and deploys automatically

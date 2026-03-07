@@ -1,5 +1,5 @@
 # Default values for app chart
-# Apps define their config in .deploy/manifest.yaml with this structure:
+# Apps define their config in .infrastructure/application.yaml with this structure:
 #
 # metadata:
 #   name: my-app
