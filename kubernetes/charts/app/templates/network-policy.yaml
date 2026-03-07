@@ -13,11 +13,11 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow traffic from Traefik (ingress controller)
+    # Allow traffic from Traefik (ingress controller in kube-system)
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: platform-networking
+              kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ .Values.spec.port }}
   egress:
