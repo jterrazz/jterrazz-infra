@@ -83,7 +83,7 @@ jobs:
 All app repos must have a `Makefile` with `build`, `lint`, and `test` targets. This is the universal CI interface regardless of language/toolchain.
 
 ## App Deployment Pattern (for new apps)
-1. **In app repo**: `Dockerfile` (multi-stage), `.deploy/manifest.yaml` (jterrazz.com/v1 Application), `Makefile` (build/lint/test targets), `.github/workflows/build-and-deploy.yaml` + `validate.yaml` (using shared workflows from `jterrazz/jterrazz-workflows`)
+1. **In app repo**: `Dockerfile` (multi-stage), `.infrastructure/application.yaml` (jterrazz.com/v1 Application), `Makefile` (build/lint/test targets), `.github/workflows/build-and-deploy.yaml` + `validate.yaml` (using shared workflows from `jterrazz/jterrazz-workflows`)
 2. **In infra repo**: Add domain to `issuers.yaml` + `helm.yaml`, add repo to bootstrap list in `platform.yml`
 3. **GitHub secrets**: Set `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET` on the app repo (same values as other jterrazz repos)
 4. **Cloudflare**: Domain on CF nameservers, API token with zone access, SSL mode **Full (Strict)**
