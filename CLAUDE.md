@@ -29,13 +29,66 @@
 - cert-manager Certificates with `letsencrypt-production` ClusterIssuer
 - Tailscale for private service access
 
+## Centralized CI/CD Workflows (`jterrazz/jterrazz-workflows`)
+All app repos use shared reusable workflows and composite actions from `jterrazz/jterrazz-workflows`.
+
+### Environment Strategy
+- **Push to `main` branch** → builds `latest` tag → deploys to `staging-<app-name>` namespace
+- **Push a `v*` tag** → builds with that tag → deploys to `prod-<app-name>` namespace
+
+### Reusable Workflows
+- **`validate.yaml`** — Runs `make build`, `make lint`, `make test`. Optional `node-version` input for Node.js setup.
+- **`build-and-deploy.yaml`** — Full pipeline: validate → Docker build+push → Helm deploy → cleanup old images. Inputs: `image-name` (required), `timeout`, `manifest`, `dockerfile`, `build-args`, `keep-latest-versions`, `node-version`.
+
+### Composite Actions
+- **`actions/setup-infra`** — Fetches secrets from Infisical, connects Tailscale, logs into container registry
+- **`actions/docker-build-push`** — Builds and pushes Docker image to `registry.jterrazz.com`
+- **`actions/helm-deploy`** — Deploys via `helm upgrade --install` using the app chart from OCI registry
+- **`actions/cleanup-images`** — Removes old `v*` tags from registry (keeps N latest), runs registry GC, prunes containerd
+
+### App Repo CI Setup
+Each app repo needs minimal workflow files:
+```yaml
+# .github/workflows/build-and-deploy.yaml
+name: Build and Deploy
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-and-deploy:
+    uses: jterrazz/jterrazz-workflows/.github/workflows/build-and-deploy.yaml@main
+    with:
+      image-name: <app-name>
+    secrets:
+      INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+      INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+```
+```yaml
+# .github/workflows/validate.yaml
+name: Validate
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  validate:
+    uses: jterrazz/jterrazz-workflows/.github/workflows/validate.yaml@main
+```
+
+### Makefile Convention
+All app repos must have a `Makefile` with `build`, `lint`, and `test` targets. This is the universal CI interface regardless of language/toolchain.
+
 ## App Deployment Pattern (for new apps)
-1. **In app repo**: `Dockerfile` (multi-stage), `.deploy/manifest.yaml` (jterrazz.com/v1 Application), `.github/workflows/deploy.yaml` + `validate.yaml`
+1. **In app repo**: `Dockerfile` (multi-stage), `.deploy/manifest.yaml` (jterrazz.com/v1 Application), `Makefile` (build/lint/test targets), `.github/workflows/build-and-deploy.yaml` + `validate.yaml` (using shared workflows from `jterrazz/jterrazz-workflows`)
 2. **In infra repo**: Add domain to `issuers.yaml` + `helm.yaml`, add repo to bootstrap list in `platform.yml`
 3. **GitHub secrets**: Set `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET` on the app repo (same values as other jterrazz repos)
 4. **Cloudflare**: Domain on CF nameservers, API token with zone access, SSL mode **Full (Strict)**
-5. CI flow: validate → build+push to `registry.jterrazz.com` → `helm upgrade --install` via Tailscale
-6. Manifest format: `apiVersion: jterrazz.com/v1`, `kind: Application`, with `metadata.name`, `spec.port`, `spec.resources`, `environments.prod` (host, replicas, ingress)
+5. CI flow: validate (`make build/lint/test`) → Docker build+push to `registry.jterrazz.com` → `helm upgrade --install` via Tailscale → cleanup old images
+6. Manifest format: `apiVersion: jterrazz.com/v1`, `kind: Application`, with `metadata.name`, `spec.port`, `spec.resources`, `environments.[prod|staging]` (host, replicas, ingress)
 
 ## Connection Details
 - Pulumi stack: `jterrazz/production` (needs `PULUMI_ACCESS_TOKEN`)
