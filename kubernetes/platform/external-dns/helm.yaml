@@ -35,4 +35,4 @@ resources:
     memory: 48Mi
 
 # Log what it's doing
-logLevel: debug
+logLevel: info

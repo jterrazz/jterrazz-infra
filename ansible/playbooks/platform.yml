@@ -74,6 +74,15 @@
       ansible.builtin.set_fact:
         tailscale_ip: "{{ platform_tailscale_ip_result.stdout | trim }}"
 
+    - name: Get Tailscale DNS hostname
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status_result
+      changed_when: false
+
+    - name: Set infrastructure facts
+      ansible.builtin.set_fact:
+        tailscale_dns_hostname: "{{ (tailscale_status_result.stdout | from_json).Self.DNSName | regex_replace('\\.$', '') }}"
+
     # ========================================
     # Registry setup
     # ========================================
@@ -417,6 +426,9 @@
         helm upgrade --install signoz-platform {{ platform_chart }}
         --namespace platform-observability
         --values {{ manifest_dest }}/kubernetes/platform/signoz/platform.yaml
+        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
         --timeout 2m
       environment:
@@ -457,6 +469,9 @@
         helm upgrade --install n8n-platform {{ platform_chart }}
         --namespace platform-automation
         --values {{ manifest_dest }}/kubernetes/platform/n8n/platform.yaml
+        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
         --timeout 2m
       environment:
@@ -470,6 +485,9 @@
         helm upgrade --install openclaw-platform {{ platform_chart }}
         --namespace platform-automation
         --values {{ manifest_dest }}/kubernetes/platform/openclaw/platform.yaml
+        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
         --timeout 2m
       environment:
@@ -502,6 +520,9 @@
         helm upgrade --install portainer-platform {{ platform_chart }}
         --namespace platform-management
         --values {{ manifest_dest }}/kubernetes/platform/portainer/platform.yaml
+        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
         --timeout 2m
       environment:
@@ -534,6 +555,7 @@
       register: portainer_init
       changed_when: portainer_init.status == 200
       failed_when: false
+      no_log: true
 
     # 9. Apply registry manifests
     - name: Apply registry manifests

@@ -61,23 +61,18 @@ spec:
               # Create openclaw.json if it doesn't exist
               if [ ! -f "$CONFIG_FILE" ]; then
                 echo "Creating initial openclaw.json..."
-                cat > $CONFIG_FILE << EOF
-              {
-                "agents": {
-                  "defaults": {
-                    "workspace": "/root/clawd"
-                  }
-                },
-                "gateway": {
-                  "mode": "local",
-                  "port": 18789,
-                  "bind": "lan",
-                  "auth": {
-                    "token": "$GATEWAY_TOKEN"
-                  }
+                python3 -c "
+              import json, os
+              config = {
+                'agents': {'defaults': {'workspace': '/root/clawd'}},
+                'gateway': {
+                  'mode': 'local', 'port': 18789, 'bind': 'lan',
+                  'auth': {'token': os.environ['GATEWAY_TOKEN']}
                 }
               }
-              EOF
+              with open('$CONFIG_FILE', 'w') as f:
+                json.dump(config, f, indent=2)
+              "
                 chmod 600 $CONFIG_FILE
               else
                 echo "openclaw.json already exists, skipping..."
@@ -86,17 +81,19 @@ spec:
               # Create auth-profiles.json if it doesn't exist
               if [ ! -f "$AUTH_FILE" ]; then
                 echo "Creating initial auth-profiles.json..."
-                cat > $AUTH_FILE << EOF
-              {
-                "profiles": {
-                  "anthropic:claude-cli": {
-                    "type": "oauth",
-                    "provider": "anthropic",
-                    "accessToken": "$CLAUDE_TOKEN"
+                python3 -c "
+              import json, os
+              profiles = {
+                'profiles': {
+                  'anthropic:claude-cli': {
+                    'type': 'oauth', 'provider': 'anthropic',
+                    'accessToken': os.environ['CLAUDE_TOKEN']
                   }
                 }
               }
-              EOF
+              with open('$AUTH_FILE', 'w') as f:
+                json.dump(profiles, f, indent=2)
+              "
                 chmod 600 $AUTH_FILE
               else
                 echo "auth-profiles.json already exists, skipping..."
@@ -127,11 +124,11 @@ spec:
               mountPath: /opt
       containers:
         - name: openclaw
-          # Community image with signal-cli, playwright, etc
           image: ghcr.io/openclaw/openclaw:2026.2.25
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
+            allowPrivilegeEscalation: false
           # Run the gateway
           command: ["node"]
           args: ["/app/dist/entry.js", "gateway", "run"]
@@ -143,12 +140,7 @@ spec:
             - name: NODE_ENV
               value: "production"
             - name: NODE_OPTIONS
-              value: "--max-old-space-size=768"
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: openclaw-secrets
-                  key: CLAUDE_TOKEN
+              value: "--max-old-space-size=1536"
           volumeMounts:
             - name: data
               mountPath: /root
@@ -161,7 +153,7 @@ spec:
               cpu: 25m
               memory: 512Mi
             limits:
-              memory: 1Gi
+              memory: 2Gi
           livenessProbe:
             httpGet:
               path: /health

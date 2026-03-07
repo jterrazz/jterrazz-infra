@@ -10,7 +10,8 @@ storage: {}
 # storage:
 #   size: 1Gi
 
+# Infrastructure settings (injected by Ansible at deploy time)
 infrastructure:
-  tailscaleHostname: "jterrazz-vps.tail77a797.ts.net"
-  publicIp: "46.224.186.190"
-  nodeName: "jterrazz-vps"
+  tailscaleHostname: ""
+  publicIp: ""
+  nodeName: ""

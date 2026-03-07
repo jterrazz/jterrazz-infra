@@ -1,41 +1,5 @@
 # Default values for app chart
-# Apps define their config in .infrastructure/application.yaml with this structure:
-#
-# metadata:
-#   name: my-app
-#
-# spec:
-#   port: 3000
-#   resources:
-#     cpu: 100m
-#     memory: 256Mi
-#   health:
-#     path: /health
-#
-# environments:
-#   staging:
-#     branch: main
-#     replicas: 1
-#     ingress:
-#       host: my-app-staging.jterrazz.com
-#       path: /
-#     secrets:
-#       path: /my-app
-#       env: [SECRET_KEY]
-#     env:
-#       NODE_ENV: production
-#
-#   prod:
-#     tag: v1.0.0
-#     replicas: 1
-#     ingress:
-#       host: my-app.jterrazz.com
-#       path: /
-#     secrets:
-#       path: /my-app
-#       env: [SECRET_KEY]
-#     env:
-#       NODE_ENV: production
+# Apps define their config in .infrastructure/application.yaml
 
 metadata:
   name: ""
@@ -48,6 +12,8 @@ spec:
     memoryLimit: ""
   storage: {}
   configFiles: {}
+  networkPolicy:
+    allowedServices: []
   health:
     path: /health
     initialDelaySeconds: 10
@@ -64,7 +30,7 @@ registry:
   username: ""
   password: ""
 
-# Infrastructure settings
+# Infrastructure settings (injected by CI via --set)
 infrastructure:
-  publicIp: "46.224.186.190"
-  tailscaleHostname: "jterrazz-vps.tail77a797.ts.net"
+  publicIp: ""
+  tailscaleHostname: ""

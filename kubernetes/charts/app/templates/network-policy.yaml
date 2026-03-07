@@ -1,0 +1,67 @@
+{{- if eq (include "app.envExists" .) "true" -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "app.name" . }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from Traefik (ingress controller)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-networking
+      ports:
+        - port: {{ .Values.spec.port }}
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow HTTPS to external services
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+    {{- /* Allow traffic to SigNoz if declared */}}
+    {{- if has "signoz" (default (list) .Values.spec.networkPolicy.allowedServices) }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-observability
+      ports:
+        - port: 4318
+          protocol: TCP
+    {{- end }}
+    {{- /* Allow traffic to explicitly declared services */}}
+    {{- range .Values.spec.networkPolicy.allowedServices }}
+    {{- if ne . "signoz" }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prod-{{ . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging-{{ . }}
+    {{- end }}
+    {{- end }}
+{{- end }}
