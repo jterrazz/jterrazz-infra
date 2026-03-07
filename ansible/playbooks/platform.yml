@@ -527,14 +527,24 @@
       changed_when: "'has been upgraded' in otel_result.stdout or 'has been installed' in otel_result.stdout"
 
     - name: Install Grafana via Helm
-      ansible.builtin.command: >
-        helm upgrade --install grafana grafana/grafana
-        --namespace platform-telemetry
-        --version 10.5.15
-        --values {{ manifest_dest }}/kubernetes/platform/grafana/helm.yaml
-        --set adminPassword={{ grafana_admin_password }}
-        --wait
-        --timeout 5m
+      ansible.builtin.command:
+        argv:
+          - helm
+          - upgrade
+          - --install
+          - grafana
+          - grafana/grafana
+          - --namespace
+          - platform-telemetry
+          - --version
+          - "10.5.15"
+          - --values
+          - "{{ manifest_dest }}/kubernetes/platform/grafana/helm.yaml"
+          - --set
+          - "adminPassword={{ grafana_admin_password }}"
+          - --wait
+          - --timeout
+          - 5m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: grafana_result
