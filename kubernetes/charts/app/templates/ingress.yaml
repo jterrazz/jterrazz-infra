@@ -22,15 +22,15 @@ kind: IngressRoute
 metadata:
   name: {{ $appName }}
   annotations:
-    {{- if $ingress.private }}
-    # Private: use Tailscale hostname (not proxied)
-    external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
-    external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.tailscaleHostname | quote }}
-    {{- else }}
+    {{- if $ingress.public }}
     # Public: use server public IP with Cloudflare proxy
     external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
     external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.publicIp | quote }}
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    {{- else }}
+    # Private: use Tailscale hostname (not proxied)
+    external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.tailscaleHostname | quote }}
     {{- end }}
   labels:
     {{- include "app.labels" . | nindent 4 }}
@@ -40,9 +40,9 @@ spec:
   routes:
     - match: Host(`{{ $ingress.host }}`){{ if $hasPath }} && PathPrefix(`{{ $ingress.path }}`){{ end }}
       kind: Rule
-      {{- if or $ingress.private $hasPath }}
+      {{- if or (not $ingress.public) $hasPath }}
       middlewares:
-        {{- if $ingress.private }}
+        {{- if not $ingress.public }}
         - name: private-access
           namespace: platform-networking
         {{- end }}
