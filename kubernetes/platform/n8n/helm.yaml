@@ -1,6 +1,8 @@
 # Main node configuration
 main:
   editorBaseUrl: "https://n8n.jterrazz.com"
+  extraEnv:
+    N8N_PROXY_HOPS: "1"
   persistence:
     enabled: true
     existingClaim: n8n-data

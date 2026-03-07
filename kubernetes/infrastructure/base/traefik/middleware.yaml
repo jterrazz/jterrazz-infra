@@ -21,7 +21,7 @@ spec:
         depth: 0
 
 ---
-# IP whitelist for private access (Tailscale + private networks)
+# IP allowlist for private access (Tailscale + private networks)
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -30,7 +30,7 @@ metadata:
   labels:
     app.kubernetes.io/name: traefik
 spec:
-  ipWhiteList:
+  ipAllowList:
     sourceRange:
       - "100.64.0.0/10" # Tailscale
       - "10.0.0.0/8" # Private
