@@ -3,7 +3,7 @@
 ## Project Overview
 - K3s single-node cluster on Hetzner VPS (46.224.186.190)
 - SSH: `root@<ip>` with Ed25519 key from Pulumi output `sshPrivateKey`
-- Stack: Traefik, cert-manager, external-dns, SigNoz, n8n, Infisical, OpenClaw, Portainer, Docker registry
+- Stack: Traefik, cert-manager, external-dns, Grafana, Loki, Tempo, Prometheus, OTel Collector, n8n, Infisical, OpenClaw, Portainer, Docker registry
 - **No GitOps controller** — CI-driven deploys via `helm upgrade --install`
 - App chart published to `oci://registry.jterrazz.com/charts/app`
 

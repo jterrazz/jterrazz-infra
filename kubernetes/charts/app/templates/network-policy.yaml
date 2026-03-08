@@ -37,16 +37,6 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
-    {{- /* Allow traffic to SigNoz if declared */}}
-    {{- if has "signoz" (default (list) .Values.spec.networkPolicy.allowedServices) }}
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: platform-observability
-      ports:
-        - port: 4318
-          protocol: TCP
-    {{- end }}
     {{- /* Allow traffic to OTel Collector if declared */}}
     {{- if has "otel-collector" (default (list) .Values.spec.networkPolicy.allowedServices) }}
     - to:
@@ -61,7 +51,7 @@ spec:
     {{- end }}
     {{- /* Allow traffic to explicitly declared services */}}
     {{- range .Values.spec.networkPolicy.allowedServices }}
-    {{- if and (ne . "signoz") (ne . "otel-collector") }}
+    {{- if ne . "otel-collector" }}
     - to:
         - namespaceSelector:
             matchLabels:

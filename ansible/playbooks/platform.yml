@@ -187,7 +187,6 @@
       loop:
         - { name: jetstack, url: "https://charts.jetstack.io" }
         - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
-        - { name: signoz, url: "https://charts.signoz.io" }
         - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
         - name: infisical
           url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
@@ -293,9 +292,6 @@
                 --overwrite 2>/dev/null || true
             fi
           }
-          # SigNoz
-          adopt_resource certificate.cert-manager.io signoz-tls platform-observability signoz-platform
-          adopt_resource ingressroute.traefik.io signoz platform-observability signoz-platform
           # Grafana
           adopt_resource certificate.cert-manager.io grafana-tls platform-telemetry grafana-platform
           adopt_resource ingressroute.traefik.io grafana platform-telemetry grafana-platform
@@ -407,57 +403,7 @@
       register: infisical_helm_result
       changed_when: "'has been upgraded' in infisical_helm_result.stdout or 'has been installed' in infisical_helm_result.stdout"
 
-    # 4. SigNoz observability platform
-    - name: Apply SigNoz storage manifests
-      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/signoz/storage.yaml
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: signoz_storage_result
-      changed_when: "'created' in signoz_storage_result.stdout or 'configured' in signoz_storage_result.stdout"
-
-    - name: Install SigNoz via Helm
-      ansible.builtin.command: >
-        helm upgrade --install signoz signoz/signoz
-        --namespace platform-observability
-        --version 0.112.0
-        --values {{ manifest_dest }}/kubernetes/platform/signoz/helm.yaml
-        --wait
-        --timeout 10m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: signoz_result
-      changed_when: "'has been upgraded' in signoz_result.stdout or 'has been installed' in signoz_result.stdout"
-
-    - name: Deploy SigNoz platform resources
-      ansible.builtin.command: >
-        helm upgrade --install signoz-platform {{ platform_chart }}
-        --namespace platform-observability
-        --values {{ manifest_dest }}/kubernetes/platform/signoz/platform.yaml
-        --set infrastructure.publicIp={{ server_ip }}
-        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
-        --set infrastructure.nodeName={{ inventory_hostname }}
-        --wait
-        --timeout 2m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: signoz_platform_result
-      changed_when: "'has been upgraded' in signoz_platform_result.stdout or 'has been installed' in signoz_platform_result.stdout"
-
-    # 5. SigNoz K8s infrastructure monitoring
-    - name: Install SigNoz K8s infra monitoring via Helm
-      ansible.builtin.command: >
-        helm upgrade --install signoz-k8s-infra signoz/k8s-infra
-        --namespace platform-observability
-        --version 0.15.0
-        --values {{ manifest_dest }}/kubernetes/platform/signoz-k8s-infra/helm.yaml
-        --wait
-        --timeout 5m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: signoz_k8s_result
-      changed_when: "'has been upgraded' in signoz_k8s_result.stdout or 'has been installed' in signoz_k8s_result.stdout"
-
-    # 6. Grafana telemetry stack (Grafana + Loki + Tempo + Prometheus + OTel Collector)
+    # 4. Grafana telemetry stack (Grafana + Loki + Tempo + Prometheus + OTel Collector)
 
     - name: Create platform-telemetry namespace
       ansible.builtin.command: kubectl create namespace platform-telemetry
@@ -585,7 +531,7 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: true
 
-    # 7. n8n workflow automation
+    # 5. n8n workflow automation
     - name: Install n8n via Helm
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
@@ -614,7 +560,7 @@
       register: n8n_platform_result
       changed_when: "'has been upgraded' in n8n_platform_result.stdout or 'has been installed' in n8n_platform_result.stdout"
 
-    # 8. OpenClaw gateway
+    # 6. OpenClaw gateway
     - name: Deploy OpenClaw platform resources
       ansible.builtin.command: >
         helm upgrade --install openclaw-platform {{ platform_chart }}
@@ -637,7 +583,7 @@
       register: openclaw_deploy_result
       changed_when: "'created' in openclaw_deploy_result.stdout or 'configured' in openclaw_deploy_result.stdout"
 
-    # 9. Portainer cluster dashboard
+    # 7. Portainer cluster dashboard
     - name: Install Portainer via Helm
       ansible.builtin.command: >
         helm upgrade --install portainer portainer/portainer
@@ -789,7 +735,7 @@
             - cert-manager v1.19.3
             - external-dns v1.20.0
             - infisical v0.10.25
-            - signoz v0.112.0 + k8s-infra v0.15.0
+            - grafana + loki + tempo + prometheus + otel-collector
             - n8n v1.16.29
             - portainer
             - openclaw

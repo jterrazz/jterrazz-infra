@@ -21,7 +21,5 @@
     mode: "0755"
   loop:
     - /var/lib/k8s-data/n8n
-    - /var/lib/k8s-data/signoz/clickhouse
-    - /var/lib/k8s-data/signoz/db
     - /var/lib/k8s-data/portainer
     - /var/lib/k8s-data/openclaw

@@ -68,7 +68,7 @@ spec:
             {{- /* Default OTEL endpoint if not overridden by user */}}
             {{- if not (hasKey $envVars "OTEL_EXPORTER_OTLP_ENDPOINT") }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://signoz-otel-collector.platform-observability:4318"
+              value: "http://otel-collector.platform-telemetry:4318"
             {{- end }}
             {{- /* Secret environment variables from Infisical */}}
             {{- if $secrets.env }}

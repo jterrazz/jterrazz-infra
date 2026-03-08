@@ -29,7 +29,7 @@ Production Kubernetes infrastructure on Hetzner Cloud.
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    K3s Cluster                           │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │   │
-│  │  │   Traefik   │  │  Portainer  │  │     SigNoz      │  │   │
+│  │  │   Traefik   │  │  Portainer  │  │    Grafana      │  │   │
 │  │  │  (Ingress)  │  │ (Dashboard) │  │ (Observability) │  │   │
 │  │  └─────────────┘  └─────────────┘  └─────────────────┘  │   │
 │  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │   │
@@ -50,7 +50,11 @@ Production Kubernetes infrastructure on Hetzner Cloud.
 | **K3s**          | Lightweight Kubernetes                |
 | **Traefik**      | Ingress controller with automatic TLS |
 | **Portainer**    | Cluster dashboard                     |
-| **SigNoz**       | Observability (traces, metrics, logs) |
+| **Grafana**      | Observability dashboards              |
+| **Prometheus**   | Metrics collection                    |
+| **Loki**         | Log aggregation                       |
+| **Tempo**        | Distributed tracing                   |
+| **OTel Collector** | Telemetry pipeline                  |
 | **Cert-Manager** | Automatic Let's Encrypt certificates  |
 | **External-DNS** | Automatic Cloudflare DNS management   |
 | **Infisical**    | Automated secrets management          |
@@ -203,7 +207,7 @@ Or pass `bootstrap_apps=true` to the Ansible playbook.
 | Service   | URL                              | Access    |
 | --------- | -------------------------------- | --------- |
 | Portainer | `https://portainer.jterrazz.com` | Tailscale |
-| SigNoz    | `https://signoz.jterrazz.com`    | Tailscale |
+| Grafana   | `https://grafana.jterrazz.com`   | Tailscale |
 | n8n       | `https://n8n.jterrazz.com`       | Tailscale |
 | OpenClaw  | `https://openclaw.jterrazz.com`  | Tailscale |
 
@@ -269,7 +273,7 @@ All persistent data lives in `/var/lib/k8s-data/` on the VPS. Data survives pod 
 ├── openclaw/      # AI assistant data
 ├── n8n/           # Workflows and credentials
 ├── signews-api/   # App database
-└── signoz/        # Traces, metrics, logs
+└── portainer/     # Dashboard data
 ```
 
 PVs use `hostPath`. All apps run as UID 1000 — new storage: `chown -R 1000:1000`.
@@ -320,13 +324,7 @@ brew install ansible pulumi node
 
 ## Observability
 
-Send traces via OpenTelemetry:
-
-```yaml
-env:
-  - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://signoz-otel-collector.platform-observability:4318"
-```
+The app chart auto-injects `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, and `OTEL_EXPORTER_OTLP_ENDPOINT` into every deployment. Apps using the OpenTelemetry SDK will pick these up automatically.
 
 ## Troubleshooting
 
