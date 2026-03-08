@@ -1,4 +1,4 @@
-{{- if eq (include "app.envExists" .) "true" -}}
+{{- if and (eq (include "app.envExists" .) "true") (eq .Values.environment "prod") -}}
 {{- range $name, $json := .Values.spec.dashboards }}
 ---
 apiVersion: v1
