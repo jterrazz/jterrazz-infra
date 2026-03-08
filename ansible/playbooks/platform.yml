@@ -512,9 +512,11 @@
       changed_when: "'has been upgraded' in grafana_platform_result.stdout or 'has been installed' in grafana_platform_result.stdout"
 
     - name: Deploy Grafana infrastructure dashboards
-      ansible.builtin.shell: |
-        DASHBOARD_DIR="{{ manifest_dest }}/kubernetes/platform/grafana/dashboards"
-        for json_file in "$DASHBOARD_DIR"/*.json; do
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          DASHBOARD_DIR="{{ manifest_dest }}/kubernetes/platform/grafana/dashboards"
+          for json_file in "$DASHBOARD_DIR"/*.json; do
           [ -f "$json_file" ] || continue
           name="dashboard-$(basename "$json_file" .json)"
           kubectl create configmap "$name" \
@@ -527,6 +529,7 @@
             grafana_folder=infrastructure | \
           kubectl apply -f -
         done
+        executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: true
