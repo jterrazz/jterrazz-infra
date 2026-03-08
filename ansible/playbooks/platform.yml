@@ -516,18 +516,18 @@
           set -o pipefail
           DASHBOARD_DIR="{{ manifest_dest }}/kubernetes/platform/grafana/dashboards"
           for json_file in "$DASHBOARD_DIR"/*.json; do
-          [ -f "$json_file" ] || continue
-          name="dashboard-$(basename "$json_file" .json)"
-          kubectl create configmap "$name" \
-            --from-file="$(basename "$json_file")=$json_file" \
-            --namespace platform-telemetry \
-            --dry-run=client -o yaml | \
-          kubectl label -f - --local --dry-run=client -o yaml \
-            grafana_dashboard=1 | \
-          kubectl annotate -f - --local --dry-run=client -o yaml \
-            grafana_folder=infrastructure | \
-          kubectl apply -f -
-        done
+            [ -f "$json_file" ] || continue
+            name="dashboard-$(basename "$json_file" .json)"
+            kubectl create configmap "$name" \
+              --from-file="$(basename "$json_file")=$json_file" \
+              --namespace platform-telemetry \
+              --dry-run=client -o yaml | \
+            kubectl label -f - --local --dry-run=client -o yaml \
+              grafana_dashboard=1 | \
+            kubectl annotate -f - --local --dry-run=client -o yaml \
+              grafana_folder=infrastructure | \
+            kubectl apply -f -
+          done
         executable: /bin/bash
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
