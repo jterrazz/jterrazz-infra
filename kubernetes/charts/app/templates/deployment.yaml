@@ -56,6 +56,15 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- /* Auto-injected OTEL identity from metadata */}}
+            {{- if not (hasKey $envVars "OTEL_SERVICE_NAME") }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ include "app.name" . }}
+            {{- end }}
+            {{- if not (hasKey $envVars "OTEL_RESOURCE_ATTRIBUTES") }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment={{ .Values.environment }}"
+            {{- end }}
             {{- /* Default OTEL endpoint if not overridden by user */}}
             {{- if not (hasKey $envVars "OTEL_EXPORTER_OTLP_ENDPOINT") }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
