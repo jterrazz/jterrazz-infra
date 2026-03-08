@@ -47,9 +47,21 @@ spec:
         - port: 4318
           protocol: TCP
     {{- end }}
+    {{- /* Allow traffic to OTel Collector if declared */}}
+    {{- if has "otel-collector" (default (list) .Values.spec.networkPolicy.allowedServices) }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-telemetry
+      ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    {{- end }}
     {{- /* Allow traffic to explicitly declared services */}}
     {{- range .Values.spec.networkPolicy.allowedServices }}
-    {{- if ne . "signoz" }}
+    {{- if and (ne . "signoz") (ne . "otel-collector") }}
     - to:
         - namespaceSelector:
             matchLabels:
