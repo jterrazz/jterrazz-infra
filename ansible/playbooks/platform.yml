@@ -259,7 +259,6 @@
           set -o pipefail
           kubectl create secret generic openclaw-secrets \
             --from-literal=GATEWAY_TOKEN="{{ openclaw_gateway_token }}" \
-            --from-literal=CLAUDE_TOKEN="{{ openclaw_claude_token }}" \
             --namespace platform-automation \
             --dry-run=client -o yaml | kubectl apply -f -
         executable: /bin/bash

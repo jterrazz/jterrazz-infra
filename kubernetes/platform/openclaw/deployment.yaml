@@ -22,7 +22,7 @@ spec:
       # Seed system dirs so agent-installed packages persist across restarts
       initContainers:
         - name: seed-system
-          image: ghcr.io/openclaw/openclaw:2026.2.25
+          image: ghcr.io/openclaw/openclaw:2026.3.7
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
@@ -43,7 +43,7 @@ spec:
               mountPath: /persist-opt
         # Setup config from K8s secrets if not exists
         - name: init-config
-          image: ghcr.io/openclaw/openclaw:2026.2.25
+          image: ghcr.io/openclaw/openclaw:2026.3.7
           securityContext:
             runAsUser: 0
           command: ["/bin/sh", "-c"]
@@ -52,11 +52,8 @@ spec:
               set -e
               CONFIG_DIR=/root/.openclaw
               CONFIG_FILE=$CONFIG_DIR/openclaw.json
-              AUTH_DIR=$CONFIG_DIR/agents/main/agent
-              AUTH_FILE=$AUTH_DIR/auth-profiles.json
-
               # Create directories
-              mkdir -p $CONFIG_DIR $AUTH_DIR
+              mkdir -p $CONFIG_DIR
 
               # Create openclaw.json if it doesn't exist
               if [ ! -f "$CONFIG_FILE" ]; then
@@ -64,10 +61,10 @@ spec:
                 python3 -c "
               import json, os
               config = {
-                'agents': {'defaults': {'workspace': '/root/clawd'}},
+                'agents': {'defaults': {'workspace': '/root/clawd', 'model': {'primary': 'google/gemini-3.1-flash-lite-preview'}}},
                 'gateway': {
                   'mode': 'local', 'port': 18789, 'bind': 'lan',
-                  'auth': {'token': os.environ['GATEWAY_TOKEN']}
+                  'auth': {'mode': 'token', 'token': os.environ['GATEWAY_TOKEN']}
                 }
               }
               with open('$CONFIG_FILE', 'w') as f:
@@ -76,27 +73,6 @@ spec:
                 chmod 600 $CONFIG_FILE
               else
                 echo "openclaw.json already exists, skipping..."
-              fi
-
-              # Create auth-profiles.json if it doesn't exist
-              if [ ! -f "$AUTH_FILE" ]; then
-                echo "Creating initial auth-profiles.json..."
-                python3 -c "
-              import json, os
-              profiles = {
-                'profiles': {
-                  'anthropic:claude-cli': {
-                    'type': 'oauth', 'provider': 'anthropic',
-                    'accessToken': os.environ['CLAUDE_TOKEN']
-                  }
-                }
-              }
-              with open('$AUTH_FILE', 'w') as f:
-                json.dump(profiles, f, indent=2)
-              "
-                chmod 600 $AUTH_FILE
-              else
-                echo "auth-profiles.json already exists, skipping..."
               fi
 
               # Create credentials directory
@@ -110,11 +86,6 @@ spec:
                 secretKeyRef:
                   name: openclaw-secrets
                   key: GATEWAY_TOKEN
-            - name: CLAUDE_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: openclaw-secrets
-                  key: CLAUDE_TOKEN
           volumeMounts:
             - name: data
               mountPath: /root
@@ -124,7 +95,7 @@ spec:
               mountPath: /opt
       containers:
         - name: openclaw
-          image: ghcr.io/openclaw/openclaw:2026.2.25
+          image: ghcr.io/openclaw/openclaw:2026.3.7
           imagePullPolicy: Always
           securityContext:
             runAsUser: 0
