@@ -20,12 +20,26 @@ server:
         - name: storage-volume
           mountPath: /data
 
-# Disable components not needed (OTel collector handles collection)
+# Disable components not needed
 alertmanager:
-  enabled: false
-kube-state-metrics:
-  enabled: false
-prometheus-node-exporter:
   enabled: false
 prometheus-pushgateway:
   enabled: false
+
+# Infrastructure metrics
+kube-state-metrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
+prometheus-node-exporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi

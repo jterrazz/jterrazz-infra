@@ -565,6 +565,26 @@
       register: grafana_platform_result
       changed_when: "'has been upgraded' in grafana_platform_result.stdout or 'has been installed' in grafana_platform_result.stdout"
 
+    - name: Deploy Grafana infrastructure dashboards
+      ansible.builtin.shell: |
+        DASHBOARD_DIR="{{ manifest_dest }}/kubernetes/platform/grafana/dashboards"
+        for json_file in "$DASHBOARD_DIR"/*.json; do
+          [ -f "$json_file" ] || continue
+          name="dashboard-$(basename "$json_file" .json)"
+          kubectl create configmap "$name" \
+            --from-file="$(basename "$json_file")=$json_file" \
+            --namespace platform-telemetry \
+            --dry-run=client -o yaml | \
+          kubectl label -f - --local --dry-run=client -o yaml \
+            grafana_dashboard=1 | \
+          kubectl annotate -f - --local --dry-run=client -o yaml \
+            grafana_folder=infrastructure | \
+          kubectl apply -f -
+        done
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: true
+
     # 7. n8n workflow automation
     - name: Install n8n via Helm
       ansible.builtin.command: >

@@ -12,6 +12,7 @@ spec:
     memoryLimit: ""
   storage: {}
   configFiles: {}
+  dashboards: {}
   networkPolicy:
     allowedServices: []
   health:
