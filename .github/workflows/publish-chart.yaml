@@ -1,0 +1,46 @@
+name: Publish Helm Chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kubernetes/charts/app/**'
+  workflow_dispatch:
+
+concurrency:
+  group: publish-chart
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Package and Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v3
+        with:
+          version: v3.17.3
+
+      - name: Fetch registry credentials from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: https://eu.infisical.com
+          project-slug: jterrazz
+          env-slug: prod
+          secret-path: /infrastructure-apps
+
+      - name: Login to OCI registry
+        run: |
+          echo "${{ env.DOCKER_REGISTRY_PASSWORD }}" | helm registry login registry.jterrazz.com \
+            --username ${{ env.DOCKER_REGISTRY_USERNAME }} --password-stdin
+
+      - name: Package and push chart
+        run: |
+          helm package kubernetes/charts/app --destination /tmp/
+          PKG=$(ls /tmp/app-*.tgz)
+          helm push "$PKG" oci://registry.jterrazz.com/charts
+          echo "Published: $PKG"
