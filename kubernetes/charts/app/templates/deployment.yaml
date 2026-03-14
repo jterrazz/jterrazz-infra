@@ -19,6 +19,8 @@ spec:
       {{- include "app.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        rollout/release-revision: {{ .Release.Revision | quote }}
       labels:
         {{- include "app.selectorLabels" . | nindent 8 }}
     spec:
