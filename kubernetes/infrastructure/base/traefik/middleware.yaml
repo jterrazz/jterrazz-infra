@@ -18,7 +18,46 @@ spec:
     period: 1s
     sourceCriterion:
       ipStrategy:
-        depth: 0
+        depth: 1
+
+---
+# Gzip/Brotli compression for text-based responses
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: compress
+  namespace: platform-networking
+  labels:
+    app.kubernetes.io/name: traefik
+spec:
+  compress:
+    excludedContentTypes:
+      - image/png
+      - image/jpeg
+      - image/gif
+      - image/webp
+
+---
+# Security headers (HSTS, XSS protection, content-type sniffing, framing)
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: platform-networking
+  labels:
+    app.kubernetes.io/name: traefik
+spec:
+  headers:
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    stsPreload: true
+    frameDeny: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+    referrerPolicy: strict-origin-when-cross-origin
+    customResponseHeaders:
+      X-Powered-By: ""
+      Server: ""
 
 ---
 # IP allowlist for private access (Tailscale + private networks)

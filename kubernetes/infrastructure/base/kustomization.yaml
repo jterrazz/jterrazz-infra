@@ -17,3 +17,4 @@ resources:
   - traefik/traefik-config.yaml
   - traefik/middleware.yaml
   - traefik/global-https-redirect.yaml
+  - traefik/tls-options.yaml
