@@ -110,10 +110,19 @@ Memory limit (defaults to 2x memory request)
 {{- end -}}
 
 {{/*
-Infisical environment - maps directly to matching environment
+Infisical environment - uses secretsEnv override if set, otherwise maps to environment
 */}}
 {{- define "app.infisicalEnv" -}}
-{{- .Values.environment -}}
+{{- $env := .Values.environment -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments $env -}}
+{{- $envConfig = index .Values.environments $env -}}
+{{- end -}}
+{{- if hasKey $envConfig "secretsEnv" -}}
+{{- $envConfig.secretsEnv -}}
+{{- else -}}
+{{- $env -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
