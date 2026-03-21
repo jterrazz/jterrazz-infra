@@ -32,9 +32,16 @@
 ## Centralized CI/CD Workflows (`jterrazz/jterrazz-workflows`)
 All app repos use shared reusable workflows and composite actions from `jterrazz/jterrazz-workflows`.
 
-### Environment Strategy
-- **Push to `main` branch** → builds `latest` tag → deploys to `staging-<app-name>` namespace
-- **Push a `v*` tag** → builds with that tag → deploys to `prod-<app-name>` namespace
+### Environment Strategy (Tag-Based Deployments)
+Environments in `application.yaml` declare a `tag` field that controls deployment triggers:
+- **`tag: main`** → deployed on `main` push, image `latest`
+- **`tag: next`** → deployed on `v*` tag push, image is that tag
+- **`tag: v1.2.0`** (pinned) → deployed only on `workflow_dispatch`
+- **No `tag` field** (legacy) → original behavior: main → staging, v* → prod
+
+Promotion: change `prod.tag` in `application.yaml`, push to main, trigger `workflow_dispatch`.
+
+Use `secretsEnv: prod` on non-standard environments (like `next`) to map to an existing Infisical env.
 
 ### Reusable Workflows
 - **`validate.yaml`** — Runs `make build`, `make lint`, `make test`. Optional `node-version` input for Node.js setup.

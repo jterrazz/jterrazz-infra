@@ -100,6 +100,10 @@ The `kubernetes/charts/app/` Helm chart provides a standardized deployment for a
 
 ### App Manifest (`.infrastructure/application.yaml`)
 
+Each app defines its deployment in a single `application.yaml`. The Helm chart reads `spec` for base config and `environments` for per-environment overrides (environment values take precedence).
+
+#### Full Example
+
 ```yaml
 apiVersion: jterrazz.com/v1
 kind: Application
@@ -109,63 +113,180 @@ metadata:
 
 spec:
   port: 3000
+
   resources:
     cpu: 100m
-    memory: 256Mi
+    memory: 512Mi
+    memoryLimit: 1024Mi       # Optional, defaults to 2x memory
+
+  storage:                    # Optional — enables PV/PVC, switches to Recreate strategy
+    size: 1Gi
+    mountPath: /data
+
+  secrets:
+    path: /my-app             # Infisical folder path
+    env:                      # Secret keys injected as env vars
+      - DATABASE_PASSWORD
+      - API_KEY
+
+  env:                        # Plain environment variables
+    DATABASE_URL: file:/data/db.sqlite
+
+  configFiles:                # Optional — mounted as files at /app/{filename}
+    config.json: |
+      {"key": "value"}
+
+  networkPolicy:
+    allowedServices:          # Egress allowed to these services' namespaces
+      - otel-collector        # Special: routes to platform-telemetry:4317/4318
+      - other-service         # Routes to {prod,staging}-other-service
+
   health:
-    path: /health
+    path: /health             # Liveness probe path (default: /health)
+    initialDelaySeconds: 10   # Default: 10
+    periodSeconds: 30         # Default: 30
+
+  ingress:                    # Base ingress (can be overridden per env)
+    path: /api                # Optional path prefix (stripped before forwarding)
 
 environments:
   staging:
+    tag: main                 # Deployed on main branch push (image: latest)
     replicas: 1
     ingress:
       host: my-app-staging.jterrazz.com
+      public: true
     env:
-      NODE_ENV: development
+      LOG_LEVEL: debug
+
+  next:
+    tag: next                 # Deployed on v* tag push (image: that tag)
+    replicas: 1
+    secretsEnv: prod          # Use prod secrets from Infisical (no 'next' env in Infisical)
+    ingress:
+      host: my-app-next.jterrazz.com
+      public: true
 
   prod:
+    tag: v1.2.0               # Pinned — only deployed on workflow_dispatch
     replicas: 2
     ingress:
       host: my-app.jterrazz.com
+      public: true
     env:
-      NODE_ENV: production
+      LOG_LEVEL: warn
 ```
+
+#### Spec Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `spec.port` | int | `3000` | Container port (also injected as `PORT` env var) |
+| `spec.image` | string | `registry.jterrazz.com/{name}:latest` | Full image reference (typically set by CI via `--set`) |
+| `spec.runAsRoot` | bool | `false` | Skip security context (default: runs as UID 1000) |
+| `spec.resources.cpu` | string | `100m` | CPU request |
+| `spec.resources.memory` | string | `256Mi` | Memory request |
+| `spec.resources.memoryLimit` | string | 2x memory | Memory limit |
+| `spec.storage.size` | string | — | PV size (enables persistent storage) |
+| `spec.storage.mountPath` | string | — | Container mount path |
+| `spec.secrets.path` | string | — | Infisical folder path |
+| `spec.secrets.env` | string[] | — | Secret keys to inject as env vars |
+| `spec.env` | map | — | Plain environment variables |
+| `spec.configFiles` | map | — | Files mounted at `/app/{filename}` |
+| `spec.networkPolicy.allowedServices` | string[] | `[]` | Services allowed for egress |
+| `spec.health.path` | string | `/health` | Liveness/readiness probe path |
+| `spec.health.initialDelaySeconds` | int | `10` | Liveness probe initial delay |
+| `spec.health.periodSeconds` | int | `30` | Liveness probe interval |
+| `spec.ingress.host` | string | — | Hostname for routing |
+| `spec.ingress.path` | string | `/` | Path prefix (stripped by middleware) |
+| `spec.ingress.public` | bool | `false` | Public (Cloudflare proxy) vs private (Tailscale) |
+| `spec.dashboards` | map | — | Grafana dashboard JSON files (prod only) |
+
+#### Environment Overrides
+
+Each entry under `environments` can override any `spec` field plus these environment-specific fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `tag` | string | Deployment trigger — see [Tag-Based Deployments](#tag-based-deployments) |
+| `replicas` | int | Pod replica count (default: 1) |
+| `secretsEnv` | string | Override Infisical environment (e.g. `next` env can use `prod` secrets) |
+| `ingress` | object | Override ingress config (host, path, public) |
+| `env` | map | Additional/override environment variables |
+| `resources` | object | Override cpu, memory, memoryLimit |
+
+#### Tag-Based Deployments
+
+The `tag` field on each environment controls when it gets deployed:
+
+| Tag Value | Trigger | Image Used | Use Case |
+|-----------|---------|------------|----------|
+| `main` | `git push main` | `latest` | Staging / dev |
+| `next` | `git push v*` tag | The pushed tag | Pre-production, safe migration |
+| `v1.2.0` (pinned) | `workflow_dispatch` only | Exact version | Production, frozen |
+
+This enables running multiple API versions in parallel for safe client migration:
+
+```yaml
+environments:
+  staging:
+    tag: main           # Auto-deploys on every main push
+  next:
+    tag: next           # Auto-deploys on every v* tag
+  prod:
+    tag: v1.2.0         # Frozen — only changes via manual dispatch
+```
+
+**Promotion flow:** Change `prod.tag` to `v2.0.0` in `application.yaml`, push to main, then trigger `workflow_dispatch` in GitHub Actions.
+
+**Backward compatible:** Apps without `tag` fields use the original behavior (main → staging, v* tags → prod).
+
+#### Auto-Injected Environment Variables
+
+These are set automatically on every deployment:
+
+| Variable | Value |
+|----------|-------|
+| `PORT` | From `spec.port` |
+| `OTEL_SERVICE_NAME` | App name |
+| `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment={env}` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector.platform-telemetry:4318` |
+
+All can be overridden via `spec.env` or environment-level `env`.
 
 ### CI-Driven Deployment
 
-Apps deploy via their own GitHub Actions CI — no GitOps controller needed.
+Apps deploy via their own GitHub Actions CI using reusable workflows from `jterrazz/jterrazz-workflows`.
 
 ```
-Push code → Fetch secrets from Infisical → Connect Tailscale → Build + push image → helm upgrade --install
+Push code → Fetch secrets from Infisical → Connect Tailscale → Build + push image → Deploy matching environments
 ```
 
-Each app's CI:
-
-1. Fetches secrets from Infisical (`/infrastructure-apps` folder)
-2. Connects to Tailscale VPN
-3. Builds and pushes Docker image to `registry.jterrazz.com`
-4. Runs `helm upgrade --install` with `--atomic` (auto-rollback on failure)
+App CI workflow (`.github/workflows/build-and-deploy.yaml`):
 
 ```yaml
-- name: Deploy
-  run: |
-    helm upgrade --install $ENV-$APP \
-      oci://registry.jterrazz.com/charts/app \
-      -f .infrastructure/application.yaml \
-      --set environment=$ENV \
-      --set spec.image=registry.jterrazz.com/$APP:$TAG \
-      -n $ENV-$APP --create-namespace \
-      --wait --timeout 3m --atomic
+jobs:
+  build-and-deploy:
+    uses: jterrazz/jterrazz-workflows/.github/workflows/build-and-deploy.yaml@main
+    with:
+      image-name: my-app
+      timeout: '10m'
+      node-version: '24'
+    secrets:
+      INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+      INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 ```
+
+The workflow reads `application.yaml`, resolves which environments to deploy based on the trigger and `tag` fields, builds the Docker image, and runs `helm upgrade --install` with `--atomic` for each target environment.
 
 ### Conventions
 
 | Property         | Convention                                            |
 | ---------------- | ----------------------------------------------------- |
 | **Namespace**    | `{environment}-{name}` (e.g. `staging-my-app`)        |
-| **Image**        | `registry.jterrazz.com/{name}:{sha}` (digest-pinned)  |
+| **Image**        | `registry.jterrazz.com/{name}:{tag}`                  |
 | **Storage path** | `/var/lib/k8s-data/{name}-{environment}/` on host     |
-| **Secrets**      | Infisical `dev` env for staging, `prod` for prod      |
+| **Secrets**      | Infisical env matches deployment env (override with `secretsEnv`) |
 | **Domains**      | `{name}-staging.jterrazz.com` / `{name}.jterrazz.com` |
 
 ### Adding a New Application
