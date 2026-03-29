@@ -8,6 +8,7 @@
 - App chart published to `oci://registry.jterrazz.com/charts/app`
 
 ## Deployed Apps
+- **spwn-web** (`jterrazz/spwn-web`): Next.js at `spwn.sh`, namespace `prod-spwn-web`
 - **signews-web** (`jterrazz/signews-web`): Next.js 16 at `sig.news`, namespace `prod-signews-web`
 - **signews-api** (`jterrazz/signews-api`): namespace `prod-signews-api`
 - **clawssify-web-landing** (`jterrazz/clawssify-web-landing`): at `clawssify.com`, namespace `prod-clawssify-web-landing`
@@ -15,7 +16,7 @@
 - **gateway-intelligence** (`jterrazz/gateway-intelligence`): namespace `prod-gateway-intelligence`
 
 ## Managed Domains
-- `jterrazz.com`, `clawrr.com`, `clawssify.com`, `sig.news` — all in cert-manager dnsZones + external-dns domainFilters
+- `jterrazz.com`, `spwn.sh`, `clawrr.com`, `clawssify.com`, `sig.news` — all in cert-manager dnsZones + external-dns domainFilters
 - Adding a new domain requires: cert-manager `issuers.yaml` (both prod+staging), external-dns `helm.yaml`, and Cloudflare API token with Zone:Read + DNS:Edit for that zone
 - Cloudflare SSL mode must be **Full (Strict)** for all domains
 
@@ -144,3 +145,4 @@ kubectl get ingressroute -n prod-<app-name>
 - **Helm adoption**: Annotate existing resources with `meta.helm.sh/release-name`, `meta.helm.sh/release-namespace`, and label `app.kubernetes.io/managed-by=Helm`.
 - **Immutable k8s fields**: Deployment selectors, PV `hostPath.type`, PVC `spec.selector` — delete and recreate if they need to change.
 - **CRD kubectl names**: Use fully qualified names: `certificate.cert-manager.io`, `ingressroute.traefik.io`.
+- **Renaming a project**: When `metadata.name` changes in `application.yaml` (e.g. universe-web → spwn-web), CI creates a new Helm release under the new name but the old release keeps running. You MUST manually delete the old deployment: `helm uninstall prod-<old-name> -n prod-<old-name> && kubectl delete namespace prod-<old-name>`. Competing IngressRoutes for the same domain cause Traefik to serve the stale deployment.
