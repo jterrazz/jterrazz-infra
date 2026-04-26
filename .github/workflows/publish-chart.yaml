@@ -23,7 +23,7 @@ jobs:
           version: v3.17.3
 
       - name: Setup infrastructure
-        uses: jterrazz/jterrazz-workflows/actions/infra-connect@main
+        uses: jterrazz/jterrazz-actions/actions/infra-connect@main
         with:
           infisical-client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}

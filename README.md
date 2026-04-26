@@ -256,7 +256,7 @@ All can be overridden via `spec.env` or environment-level `env`.
 
 ### CI-Driven Deployment
 
-Apps deploy via their own GitHub Actions CI using reusable workflows from `jterrazz/jterrazz-workflows`.
+Apps deploy via their own GitHub Actions CI using reusable workflows from `jterrazz/jterrazz-actions`.
 
 ```
 Push code → Fetch secrets from Infisical → Connect Tailscale → Build + push image → Deploy matching environments
@@ -267,7 +267,7 @@ App CI workflow (`.github/workflows/build-and-deploy.yaml`):
 ```yaml
 jobs:
   build-and-deploy:
-    uses: jterrazz/jterrazz-workflows/.github/workflows/build-and-deploy.yaml@main
+    uses: jterrazz/jterrazz-actions/.github/workflows/build-and-deploy.yaml@main
     with:
       image-name: my-app
       timeout: '10m'
