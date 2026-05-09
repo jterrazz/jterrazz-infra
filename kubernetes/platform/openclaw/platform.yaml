@@ -1,8 +1,0 @@
-name: openclaw
-host: openclaw.jterrazz.com
-port: 18789
-private: true
-storage:
-  size: 42Gi
-  hostPathType: DirectoryOrCreate
-  selector: true

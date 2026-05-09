@@ -103,7 +103,6 @@ EXTDNS_STATUS=$(get_service_status "platform-networking" "external-dns")
 GRAFANA_STATUS=$(get_service_status "platform-telemetry" "grafana")
 REGISTRY_STATUS=$(get_service_status "platform-registry")
 N8N_STATUS=$(get_service_status "platform-automation" "n8n")
-OPENCLAW_STATUS=$(get_service_status "platform-automation" "openclaw")
 
 # Helper to format service row
 format_service_row() {
@@ -172,7 +171,6 @@ $(format_service_row "Cert-Manager" "$CERTMGR_STATUS")
 $(format_service_row "External-DNS" "$EXTDNS_STATUS")
 $(format_service_row "Grafana" "$GRAFANA_STATUS")
 $(format_service_row "N8N" "$N8N_STATUS")
-$(format_service_row "OpenClaw" "$OPENCLAW_STATUS")
 $(format_service_row "Registry" "$REGISTRY_STATUS")
 
 ### 📱 Applications (Helm Releases)
@@ -231,6 +229,5 @@ cat << EOF
 - [Portainer Dashboard](https://portainer.jterrazz.com) (Tailscale)
 - [Grafana](https://grafana.jterrazz.com) (Tailscale)
 - [N8N Workflows](https://n8n.jterrazz.com) (Tailscale)
-- [OpenClaw Gateway](https://openclaw.jterrazz.com) (Tailscale)
 - [GitHub Commit](https://github.com/jterrazz/jterrazz-infra/commit/$COMMIT_SHA)
 EOF

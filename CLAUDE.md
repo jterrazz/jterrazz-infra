@@ -3,7 +3,7 @@
 ## Project Overview
 - K3s single-node cluster on Hetzner VPS (46.224.186.190)
 - SSH: `root@<ip>` with Ed25519 key from Pulumi output `sshPrivateKey`
-- Stack: Traefik, cert-manager, external-dns, Grafana, Loki, Tempo, Prometheus, OTel Collector, n8n, Infisical, OpenClaw, Portainer, Docker registry
+- Stack: Traefik, cert-manager, external-dns, Grafana, Loki, Tempo, Prometheus, OTel Collector, n8n, Infisical, Portainer, Docker registry
 - **No GitOps controller** — CI-driven deploys via `helm upgrade --install`
 - App chart published to `oci://registry.jterrazz.com/charts/app`
 
@@ -106,14 +106,6 @@ All app repos must have a `Makefile` with `build`, `lint`, and `test` targets. T
 - Registry password: `pulumi stack output dockerRegistryPassword --show-secrets`
 - `.env` file has: PULUMI_ACCESS_TOKEN, HCLOUD_TOKEN, TAILSCALE_*, CLOUDFLARE_API_TOKEN, INFISICAL_CLIENT_ID, INFISICAL_CLIENT_SECRET
 - Infisical secrets at path `/infrastructure-apps` contain: DOCKER_REGISTRY_*, TAILSCALE_OAUTH_CLIENT_ID, TAILSCALE_OAUTH_CLIENT_SECRET, KUBECONFIG_BASE64
-
-## OpenClaw
-- Deployed in `platform-automation` namespace, image-based (not Helm chart)
-- Config at `/root/.openclaw/openclaw.json` inside container
-- CLI: `kubectl exec -n platform-automation deploy/openclaw -- node /app/openclaw.mjs <command>` (no `openclaw` binary in PATH)
-- Gateway token in k8s secret `openclaw-secrets` (keys: `GATEWAY_TOKEN`, `CLAUDE_TOKEN`)
-- Control UI pairing through reverse proxy (Traefik) requires `gateway.controlUi.dangerouslyDisableDeviceAuth: true`
-- `trustedProxies: ["10.42.0.0/16"]` for k8s pod network
 
 ## Common Operations
 

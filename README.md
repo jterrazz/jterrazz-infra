@@ -60,7 +60,6 @@ Production Kubernetes infrastructure on Hetzner Cloud.
 | **Infisical**    | Automated secrets management          |
 | **Tailscale**    | Private VPN for secure access         |
 | **n8n**          | Workflow automation                   |
-| **OpenClaw**     | Personal AI assistant (Claude Max)    |
 
 ## Quick Start
 
@@ -330,60 +329,8 @@ Or pass `bootstrap_apps=true` to the Ansible playbook.
 | Portainer | `https://portainer.jterrazz.com` | Tailscale |
 | Grafana   | `https://grafana.jterrazz.com`   | Tailscale |
 | n8n       | `https://n8n.jterrazz.com`       | Tailscale |
-| OpenClaw  | `https://openclaw.jterrazz.com`  | Tailscale |
 
 All private services use Let's Encrypt TLS. DNS points to Tailscale IP — only accessible on Tailscale VPN.
-
-## OpenClaw Setup
-
-OpenClaw is a personal AI assistant using Claude Max with Signal integration.
-
-### Secrets
-
-Managed via Infisical, deployed as K8s secrets by Ansible:
-
-- `GATEWAY_TOKEN` — Web UI authentication
-- `CLAUDE_TOKEN` — Claude Max OAuth token (used as `ANTHROPIC_API_KEY`)
-
-### Getting a Claude OAuth Token
-
-```bash
-claude login
-cat ~/.claude/.credentials.json   # Look for "oauthToken": "sk-ant-oat01-..."
-```
-
-### Initial Setup (first deploy only)
-
-1. **Access the Web UI**: `https://openclaw.jterrazz.com/?token=<gateway-token>`
-2. **Approve device pairing**:
-   ```bash
-   kubectl exec -n platform-automation deploy/openclaw -- node /app/dist/entry.js devices list
-   kubectl exec -n platform-automation deploy/openclaw -- node /app/dist/entry.js devices approve <request-id>
-   ```
-3. **(Optional) Link Signal** — requires a separate phone number:
-   ```bash
-   kubectl exec -it -n platform-automation deploy/openclaw -- node /app/dist/entry.js channels login --channel signal
-   ```
-
-### Updating Claude Token
-
-```bash
-# 1. Get new token
-claude login && cat ~/.claude/.credentials.json
-
-# 2. Update in Infisical, then re-deploy (push to main or make deploy)
-
-# 3. Restart pod to pick up new secret
-kubectl rollout restart deployment/openclaw -n platform-automation
-```
-
-### Data Persistence
-
-Stored on PV at `/var/lib/k8s-data/openclaw/`:
-
-- `config/` — Gateway config, auth profiles, device pairings
-- `workspace/` — Agent workspace and memories
-- `signal-cli/` — Signal credentials and message history
 
 ## Storage
 
@@ -391,7 +338,6 @@ All persistent data lives in `/var/lib/k8s-data/` on the VPS. Data survives pod 
 
 ```
 /var/lib/k8s-data/
-├── openclaw/      # AI assistant data
 ├── n8n/           # Workflows and credentials
 ├── signews-api/   # App database
 └── portainer/     # Dashboard data
@@ -428,7 +374,7 @@ brew install ansible pulumi node
 
 #### Infisical — `/infrastructure` folder (prod env)
 
-`TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `CLOUDFLARE_API_TOKEN`, `GITHUB_TOKEN_JTERRAZZ`, `GITHUB_TOKEN_CLAWRR`, `DOCKER_REGISTRY_PASSWORD`, `PORTAINER_ADMIN_PASSWORD`, `OPENCLAW_CLAUDE_TOKEN`, `OPENCLAW_GATEWAY_TOKEN`, `N8N_ENCRYPTION_KEY`
+`TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `CLOUDFLARE_API_TOKEN`, `GITHUB_TOKEN_JTERRAZZ`, `GITHUB_TOKEN_CLAWRR`, `DOCKER_REGISTRY_PASSWORD`, `PORTAINER_ADMIN_PASSWORD`, `N8N_ENCRYPTION_KEY`
 
 #### Infisical — `/infrastructure-apps` folder (prod env)
 
@@ -454,5 +400,4 @@ helm list -A                                          # Helm releases
 kubectl get certificates -A                           # Certificate status
 kubectl describe certificate <name> -n <namespace>    # Certificate details
 kubectl logs -n <namespace> <pod-name>                # Pod logs
-kubectl logs -n platform-automation deploy/openclaw -f # OpenClaw logs
 ```
