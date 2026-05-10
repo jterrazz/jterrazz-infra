@@ -1,4 +1,13 @@
 ---
+# Telemetry hostPath PVs and PVCs.
+#
+# Rendered by Ansible at deploy-time so nodeAffinity binds to whichever
+# k8s node we're actually running on (jterrazz-vps for Hetzner,
+# jterrazz-infra for OrbStack). Single-node k3s — the affinity is more
+# of a safety belt than a scheduling lever, but having it set correctly
+# avoids "1 node(s) didn't match PersistentVolume's node affinity"
+# scheduling failures when the node name differs from the Hetzner default.
+
 # Grafana data (dashboards, config)
 apiVersion: v1
 kind: PersistentVolume
@@ -20,7 +29,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - jterrazz-vps
+                - {{ inventory_hostname }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -57,7 +66,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - jterrazz-vps
+                - {{ inventory_hostname }}
 ---
 # PVC name must match Loki StatefulSet volumeClaimTemplate: storage-<release>-0
 apiVersion: v1
@@ -95,7 +104,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - jterrazz-vps
+                - {{ inventory_hostname }}
 ---
 # PVC name must match Tempo StatefulSet volumeClaimTemplate: storage-<release>-0
 apiVersion: v1
@@ -133,7 +142,7 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - jterrazz-vps
+                - {{ inventory_hostname }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

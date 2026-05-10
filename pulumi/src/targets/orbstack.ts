@@ -228,13 +228,19 @@ export class OrbStackVM extends pulumi.dynamic.Resource {
  * Hetzner and OrbStack stacks can coexist in the same tailnet without
  * MagicDNS collisions.
  */
-export function createOrbStackMachine(config: pulumi.Config): MachineOutputs {
-    const machineName = config.get("orbstack:machineName") || "jterrazz-orbstack";
-    const distro = config.get("orbstack:distro") || "ubuntu";
-    const version = config.get("orbstack:version") || "noble";
-    const arch = config.get("orbstack:arch") || "arm64";
+export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
+    // `new Config("orbstack")` reads from the `orbstack:` namespace in the
+    // stack config (e.g. Pulumi.local.yaml). The project-namespaced Config
+    // passed in by index.ts can't see those keys without the explicit
+    // namespace, so we re-scope here. Keeping the parameter so the
+    // dispatcher signature stays uniform across targets.
+    const config = new pulumi.Config("orbstack");
+    const machineName = config.get("machineName") || "jterrazz-orbstack";
+    const distro = config.get("distro") || "ubuntu";
+    const version = config.get("version") || "noble";
+    const arch = config.get("arch") || "arm64";
     const dataPathOnMac =
-        config.get("orbstack:dataPath") || path.join(os.homedir(), ".jterrazz-infra", "data");
+        config.get("dataPath") || path.join(os.homedir(), ".jterrazz-infra", "data");
 
     const vm = new OrbStackVM(machineName, {
         name: machineName,

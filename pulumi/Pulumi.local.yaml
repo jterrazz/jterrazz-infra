@@ -1,2 +1,3 @@
 config:
   jterrazz-infra:target: orbstack
+  orbstack:machineName: jterrazz-infra

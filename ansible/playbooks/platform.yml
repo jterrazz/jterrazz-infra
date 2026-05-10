@@ -429,6 +429,22 @@
       changed_when: "'created' in telemetry_ns_result.stdout"
       failed_when: telemetry_ns_result.rc != 0 and 'already exists' not in telemetry_ns_result.stderr
 
+    # PV nodeAffinity must reference the actual node name (jterrazz-vps on
+    # Hetzner, jterrazz-infra on OrbStack). Render the template under
+    # platform/ where the rest of the telemetry stack lives, so the
+    # `kubectl apply -k` discovery (if ever used) still finds it.
+    - name: Ensure telemetry manifest dir exists
+      ansible.builtin.file:
+        path: "{{ manifest_dest }}/kubernetes/platform/telemetry"
+        state: directory
+        mode: "0755"
+
+    - name: Template telemetry storage manifests with node name
+      ansible.builtin.template:
+        src: "{{ templates_dir }}/kubernetes/telemetry-storage.yaml.j2"
+        dest: "{{ manifest_dest }}/kubernetes/platform/telemetry/storage.yaml"
+        mode: "0644"
+
     - name: Apply telemetry storage manifests
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/telemetry/storage.yaml
       environment:
@@ -551,19 +567,12 @@
       changed_when: true
 
     # 5. n8n workflow automation
-    - name: Install n8n via Helm
-      ansible.builtin.command: >
-        helm upgrade --install n8n community-charts/n8n
-        --namespace platform-automation
-        --version 1.16.29
-        --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
-        --wait
-        --timeout 5m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: n8n_result
-      changed_when: "'has been upgraded' in n8n_result.stdout or 'has been installed' in n8n_result.stdout"
-
+    # Platform resources (PV+PVC) must land before the app helm install,
+    # otherwise `helm install n8n --wait` blocks on a pod that can't
+    # schedule because its PVC doesn't exist yet. The wait-for-PVC
+    # deadlock doesn't surface on Hetzner only because the PV is already
+    # there from a previous run — on a fresh cluster (OrbStack) the
+    # ordering matters.
     - name: Deploy n8n platform resources
       ansible.builtin.command: >
         helm upgrade --install n8n-platform {{ platform_chart }}
@@ -579,19 +588,21 @@
       register: n8n_platform_result
       changed_when: "'has been upgraded' in n8n_platform_result.stdout or 'has been installed' in n8n_platform_result.stdout"
 
-    # 6. Portainer cluster dashboard
-    - name: Install Portainer via Helm
+    - name: Install n8n via Helm
       ansible.builtin.command: >
-        helm upgrade --install portainer portainer/portainer
-        --namespace platform-management
-        --values {{ manifest_dest }}/kubernetes/platform/portainer/helm.yaml
+        helm upgrade --install n8n community-charts/n8n
+        --namespace platform-automation
+        --version 1.16.29
+        --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
         --wait
         --timeout 5m
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: portainer_result
-      changed_when: "'has been upgraded' in portainer_result.stdout or 'has been installed' in portainer_result.stdout"
+      register: n8n_result
+      changed_when: "'has been upgraded' in n8n_result.stdout or 'has been installed' in n8n_result.stdout"
 
+    # 6. Portainer cluster dashboard
+    # Same PV-before-app ordering as n8n above.
     - name: Deploy Portainer platform resources
       ansible.builtin.command: >
         helm upgrade --install portainer-platform {{ platform_chart }}
@@ -606,6 +617,18 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: portainer_platform_result
       changed_when: "'has been upgraded' in portainer_platform_result.stdout or 'has been installed' in portainer_platform_result.stdout"
+
+    - name: Install Portainer via Helm
+      ansible.builtin.command: >
+        helm upgrade --install portainer portainer/portainer
+        --namespace platform-management
+        --values {{ manifest_dest }}/kubernetes/platform/portainer/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: portainer_result
+      changed_when: "'has been upgraded' in portainer_result.stdout or 'has been installed' in portainer_result.stdout"
 
     - name: Wait for Portainer to be ready
       ansible.builtin.command: kubectl rollout status deployment/portainer -n platform-management --timeout=60s
