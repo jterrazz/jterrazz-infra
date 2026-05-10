@@ -25,7 +25,7 @@ Three manual steps in the Cloudflare Zero Trust dashboard + Infisical:
 
 ### 2. Add the token to Infisical
 
-- https://eu.infisical.com → project `jterrazz` → env `prod` → path `/infrastructure-apps`
+- https://eu.infisical.com → project `jterrazz` → env `prod` → path `/infrastructure`
 - Add a secret: key `CLOUDFLARE_TUNNEL_TOKEN`, value = the token from step 1
 
 ### 3. Configure the catch-all public-hostname rule
