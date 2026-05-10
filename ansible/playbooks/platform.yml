@@ -92,11 +92,9 @@
     # Public traffic now enters via the Cloudflare tunnel, not the host's IP.
     # The tunnel token is a base64-encoded JSON {a:<account>, t:<tunnel>, s:<secret>};
     # we decode it locally to extract the tunnel ID and build the hostname
-    # `<tunnel>.cfargotunnel.com`. This becomes `infrastructure.publicIp` for the
-    # platform/app charts, which feeds the external-dns target annotation. The
-    # variable name "publicIp" is kept for backwards compat with the existing
-    # chart helpers and downstream consumers (jterrazz-actions); it's now a
-    # CNAME target rather than an IPv4.
+    # `<tunnel>.cfargotunnel.com`. This becomes `infrastructure.publicTarget`
+    # for the platform/app charts, which feeds the external-dns CNAME target
+    # annotation on public IngressRoutes.
 
     - name: Decode Cloudflare tunnel token
       ansible.builtin.set_fact:
@@ -516,7 +514,7 @@
         helm upgrade --install grafana-platform {{ platform_chart }}
         --namespace platform-telemetry
         --values {{ manifest_dest }}/kubernetes/platform/grafana/platform.yaml
-        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
+        --set infrastructure.publicTarget={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
@@ -568,7 +566,7 @@
         helm upgrade --install n8n-platform {{ platform_chart }}
         --namespace platform-automation
         --values {{ manifest_dest }}/kubernetes/platform/n8n/platform.yaml
-        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
+        --set infrastructure.publicTarget={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
@@ -596,7 +594,7 @@
         helm upgrade --install portainer-platform {{ platform_chart }}
         --namespace platform-management
         --values {{ manifest_dest }}/kubernetes/platform/portainer/platform.yaml
-        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
+        --set infrastructure.publicTarget={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait

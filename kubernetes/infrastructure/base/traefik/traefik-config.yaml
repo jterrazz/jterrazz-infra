@@ -9,13 +9,22 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    # Traefik no longer fronts public traffic directly. Cloudflared (in
-    # platform-networking) terminates the Cloudflare tunnel and forwards
-    # to the cluster-internal Traefik service. ClusterIP keeps the DNS name
-    # `traefik.kube-system.svc.cluster.local` resolvable but stops k3s
-    # from binding host ports 80/443 via klipper-lb.
+    # Traefik stays as a LoadBalancer so k3s' klipper-lb binds host ports
+    # 80/443 — Tailscale clients reach private services (registry, n8n,
+    # portainer, grafana) directly via the host's Tailscale IP.
+    #
+    # loadBalancerSourceRanges restricts klipper-lb to the Tailscale CGNAT
+    # range. UFW alone is insufficient here because klipper-lb DNATs
+    # traffic in the PREROUTING chain before UFW's INPUT filter sees it,
+    # so a plain `ufw deny 443` does nothing. Setting the source range at
+    # the Service level makes klipper-lb itself reject public traffic.
+    #
+    # Public traffic enters through cloudflared instead and hits Traefik
+    # over its cluster-internal ClusterIP, not the host ports.
     service:
-      type: ClusterIP
+      type: LoadBalancer
+      loadBalancerSourceRanges:
+        - 100.64.0.0/10        # Tailscale CGNAT range
 
     # Global middlewares on websecure entrypoint
     ports:

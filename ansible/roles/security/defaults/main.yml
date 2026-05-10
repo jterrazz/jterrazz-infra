@@ -22,12 +22,14 @@ security_ssh_tailscale_only: false
 
 # Base firewall rules.
 #
-# Public 80/443 are intentionally absent: Cloudflared establishes an outbound
-# tunnel to Cloudflare's edge and is the only way HTTP traffic enters the
-# cluster. The Traefik service is ClusterIP-only, so klipper-lb doesn't bind
-# host ports either — these UFW rules would be moot, and keeping them around
-# would invite accidental re-exposure if someone reverts Traefik to LoadBalancer.
+# 80/443 are open ONLY from Tailscale, not public. Cloudflared establishes
+# an outbound tunnel and is the only path for public HTTP traffic — it hits
+# Traefik via the cluster-internal ClusterIP. Tailscale clients hit Traefik
+# directly on the host's Tailscale IP, which is how private services like
+# the Docker registry, Portainer, n8n, and Grafana stay reachable.
 security_ufw_rules:
+  - { port: "80", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "HTTP (Tailscale only)" }
+  - { port: "443", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "HTTPS (Tailscale only)" }
   - { port: "6443", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "K8s API (Tailscale)" }
   - { port: "6443", proto: "tcp", rule: "allow", from: "10.0.0.0/8", comment: "K8s API (Private)" }
   - { port: "6443", proto: "tcp", rule: "allow", from: "172.16.0.0/12", comment: "K8s API (Private)" }
