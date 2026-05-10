@@ -6,6 +6,7 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@pulumi/cloudflare": "^5.49.1",
     "@pulumi/hcloud": "^1.31.0",
     "@pulumi/pulumi": "^3.217.0",
     "@pulumi/tls": "^5.2.3"

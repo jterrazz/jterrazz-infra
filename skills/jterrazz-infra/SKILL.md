@@ -14,7 +14,7 @@ Single-node K3s cluster on Hetzner VPS. CI-driven deploys via Helm.
 - **Cluster**: K3s on Hetzner VPS
 - **Ingress**: Traefik IngressRoutes
 - **TLS**: cert-manager + Let's Encrypt
-- **DNS**: external-dns + Cloudflare
+- **DNS**: Pulumi-managed Cloudflare records (private CNAMEs in pulumi/src/dns.ts) + cloudflared auto-DNS for public tunnel hostnames
 - **Secrets**: Infisical
 - **Monitoring**: Grafana + Loki + Tempo + Prometheus + OTel Collector
 - **Registry**: Private Docker registry at `registry.jterrazz.com`

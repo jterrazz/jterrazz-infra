@@ -3,7 +3,8 @@
 ## Project Overview
 - K3s single-node cluster on Hetzner VPS (46.224.186.190)
 - SSH: `root@<ip>` with Ed25519 key from Pulumi output `sshPrivateKey`
-- Stack: Traefik, cert-manager, external-dns, Grafana, Loki, Tempo, Prometheus, OTel Collector, n8n, Infisical, Portainer, Docker registry
+- Stack: Traefik, cert-manager, Grafana, Loki, Tempo, Prometheus, OTel Collector, n8n, Infisical, Portainer, Docker registry
+- DNS: private CNAMEs managed by Pulumi (`pulumi/src/dns.ts`); public CNAMEs auto-created by cloudflared when hostnames are added in Cloudflare Zero Trust tunnel UI
 - **No GitOps controller** — CI-driven deploys via `helm upgrade --install`
 - App chart published to `oci://registry.jterrazz.com/charts/app`
 
@@ -16,8 +17,9 @@
 - **gateway-intelligence** (`jterrazz/gateway-intelligence`): namespace `prod-gateway-intelligence`
 
 ## Managed Domains
-- `jterrazz.com`, `spwn.sh`, `clawrr.com`, `clawssify.com`, `sig.news` — all in cert-manager dnsZones + external-dns domainFilters
-- Adding a new domain requires: cert-manager `issuers.yaml` (both prod+staging), external-dns `helm.yaml`, and Cloudflare API token with Zone:Read + DNS:Edit for that zone
+- `jterrazz.com`, `spwn.sh`, `clawrr.com`, `clawssify.com`, `sig.news` — all in cert-manager dnsZones
+- Adding a new public domain: cert-manager `issuers.yaml` (both prod+staging) + add a Public Hostname in the cloudflared tunnel (Cloudflare Zero Trust UI), which auto-creates the CNAME
+- Adding a new private (Tailscale) hostname: add to `PRIVATE_HOSTS` in `pulumi/src/dns.ts`, run `pulumi up --stack production`
 - Cloudflare SSL mode must be **Full (Strict)** for all domains
 
 ## Key Patterns

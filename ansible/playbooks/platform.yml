@@ -211,7 +211,6 @@
       ansible.builtin.command: "helm repo add {{ item.name }} {{ item.url }}"
       loop:
         - { name: jetstack, url: "https://charts.jetstack.io" }
-        - { name: external-dns, url: "https://kubernetes-sigs.github.io/external-dns" }
         - { name: community-charts, url: "https://community-charts.github.io/helm-charts" }
         - name: infisical
           url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
@@ -378,19 +377,10 @@
       register: issuers_result
       changed_when: "'created' in issuers_result.stdout or 'configured' in issuers_result.stdout"
 
-    # 2. external-dns
-    - name: Install external-dns via Helm
-      ansible.builtin.command: >
-        helm upgrade --install external-dns external-dns/external-dns
-        --namespace platform-networking
-        --version 1.20.0
-        --values {{ manifest_dest }}/kubernetes/platform/external-dns/helm.yaml
-        --wait
-        --timeout 5m
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      register: externaldns_result
-      changed_when: "'has been upgraded' in externaldns_result.stdout or 'has been installed' in externaldns_result.stdout"
+    # external-dns has been removed — Pulumi now manages the Cloudflare
+    # DNS records for the cluster's private services (see pulumi/src/dns.ts).
+    # Public hostnames are auto-created by cloudflared when added to the
+    # tunnel's Public Hostnames in the Zero Trust dashboard.
 
     # 3. Infisical secrets operator
     - name: Install Infisical secrets operator via Helm
@@ -752,7 +742,6 @@
 
           Services deployed:
             - cert-manager v1.19.3
-            - external-dns v1.20.0
             - infisical v0.10.25
             - grafana + loki + tempo + prometheus + otel-collector
             - n8n v1.16.29
