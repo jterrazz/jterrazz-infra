@@ -23,10 +23,9 @@ metadata:
   name: {{ $appName }}
   annotations:
     {{- if $ingress.public }}
-    # Public: route through Cloudflare tunnel (publicTarget), legacy
-    # publicIp value is honoured for older deploys still passing the old key.
+    # Public: route through Cloudflare tunnel via publicTarget.
     external-dns.alpha.kubernetes.io/hostname: {{ $ingress.host }}
-    external-dns.alpha.kubernetes.io/target: {{ (.Values.infrastructure.publicTarget | default .Values.infrastructure.publicIp) | quote }}
+    external-dns.alpha.kubernetes.io/target: {{ .Values.infrastructure.publicTarget | quote }}
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
     {{- else }}
     # Private: use Tailscale hostname (not proxied)

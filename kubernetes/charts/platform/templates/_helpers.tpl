@@ -10,6 +10,6 @@
 {{- if .Values.private -}}
 {{- .Values.infrastructure.tailscaleHostname -}}
 {{- else -}}
-{{- .Values.infrastructure.publicTarget | default .Values.infrastructure.publicIp -}}
+{{- .Values.infrastructure.publicTarget -}}
 {{- end -}}
 {{- end -}}

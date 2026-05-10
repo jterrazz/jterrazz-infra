@@ -34,12 +34,8 @@ registry:
 # Infrastructure settings (injected by CI via --set).
 #
 # publicTarget is the hostname/IP that public IngressRoutes resolve to via
-# external-dns. Historically this was the VPS public IPv4; with the
-# cloudflared migration it's the tunnel hostname
-# (<tunnel-id>.cfargotunnel.com). The legacy `publicIp` key is kept as a
-# fallback so an older deploy that still passes --set infrastructure.publicIp
-# keeps working through the chart transition.
+# external-dns. With the cloudflared migration it's the tunnel hostname
+# (<tunnel-id>.cfargotunnel.com).
 infrastructure:
   publicTarget: ""
-  publicIp: ""           # deprecated: fallback for publicTarget
   tailscaleHostname: ""

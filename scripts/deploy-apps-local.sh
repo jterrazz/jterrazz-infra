@@ -109,7 +109,13 @@ deploy_app() {
 
     local manifest_local
     manifest_local=$(mktemp -t "app-manifest-${image_name}-XXXXX.yaml")
-    trap 'rm -f "$manifest_local"' RETURN
+    # RETURN traps are NOT function-scoped by default in bash (would need
+    # `set -o functrace`/`-T`). So this trap also fires when main()
+    # returns — at which point manifest_local is out of scope and `set -u`
+    # complains. The `:-` default makes the eval a no-op outside the
+    # function's scope; the actual cleanup still works when the trap
+    # fires immediately at deploy_app's return.
+    trap 'rm -f "${manifest_local:-}"' RETURN
     fetch_app_manifest "$repo" "$manifest_local"
 
     # Copy the manifest into the VM. /tmp inside the VM is fine for
@@ -131,7 +137,7 @@ deploy_app() {
             KUBECONFIG=/etc/rancher/k3s/k3s.yaml \
             helm upgrade --install '$release' \
                 oci://registry.jterrazz.com/charts/app \
-                --version 1.11.0 \
+                --version 1.12.0 \
                 -f '$vm_manifest' \
                 --set environment='$env' \
                 --set spec.image='$image' \

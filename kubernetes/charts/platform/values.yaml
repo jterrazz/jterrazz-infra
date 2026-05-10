@@ -14,10 +14,7 @@ storage: {}
 #
 # publicTarget is the hostname/IP that public IngressRoutes resolve to via
 # external-dns. Post-cloudflared this is the tunnel CNAME, not a host IP.
-# The legacy `publicIp` key is kept as a fallback to avoid breakage during
-# the chart transition.
 infrastructure:
   tailscaleHostname: ""
   publicTarget: ""
-  publicIp: ""           # deprecated: fallback for publicTarget
   nodeName: ""
