@@ -381,7 +381,20 @@
       register: infisical_helm_result
       changed_when: "'has been upgraded' in infisical_helm_result.stdout or 'has been installed' in infisical_helm_result.stdout"
 
-    # 4. Grafana telemetry stack (Grafana + Loki + Tempo + Prometheus + OTel Collector)
+    # 4. Cloudflared (Cloudflare Tunnel) — public traffic ingress without
+    # exposing port 443 on the host. Depends on the InfisicalSecret CRD
+    # (installed in step 3) since the tunnel token is synced from Infisical
+    # at /infrastructure-apps env=prod key=CLOUDFLARE_TUNNEL_TOKEN. See
+    # kubernetes/platform/cloudflared/README.md for the one-time tunnel
+    # creation in the Cloudflare Zero Trust dashboard.
+    - name: Apply cloudflared deployment
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/cloudflared/deployment.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: cloudflared_result
+      changed_when: "'created' in cloudflared_result.stdout or 'configured' in cloudflared_result.stdout"
+
+    # 5. Grafana telemetry stack (Grafana + Loki + Tempo + Prometheus + OTel Collector)
 
     - name: Create platform-telemetry namespace
       ansible.builtin.command: kubectl create namespace platform-telemetry

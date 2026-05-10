@@ -1,0 +1,122 @@
+# Cloudflared (Cloudflare Tunnel) — Phase 1 deployment.
+#
+# Goal: provide a public ingress path that doesn't require an open public IP
+# on the host. Cloudflared establishes outbound QUIC connections to the
+# Cloudflare edge; public traffic for our domains is routed through the
+# tunnel and into the cluster's existing Traefik service. No change to
+# IngressRoutes, certs, or DNS topology in this phase — the tunnel sits
+# dormant until the user CNAMEs a hostname onto it.
+#
+# Routing model: the tunnel is set up as "remote-managed" (token-based) and
+# the public-hostname rule is configured once in the Cloudflare Zero Trust
+# dashboard as a wildcard catch-all to Traefik. Each domain's switchover is
+# then just a DNS change (A → CNAME tunnel-id.cfargotunnel.com), with no
+# touch to this manifest.
+#
+# Deploy prerequisites (one-time, manual — see README.md in this dir):
+#   1. Create the tunnel in Cloudflare Zero Trust dashboard.
+#   2. Add CLOUDFLARE_TUNNEL_TOKEN to Infisical /infrastructure-apps prod.
+#   3. Configure the catch-all public-hostname rule in the dashboard.
+---
+# InfisicalSecret syncs the connection token from Infisical into a regular
+# k8s Secret that the Deployment consumes. resyncInterval=60s so a token
+# rotation propagates within a minute.
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: cloudflared-infisical
+  namespace: platform-networking
+spec:
+  hostAPI: https://eu.infisical.com
+  resyncInterval: 60
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: jterrazz
+        envSlug: prod
+        secretsPath: /infrastructure-apps
+      credentialsRef:
+        secretName: infisical-credentials
+        secretNamespace: platform-secrets
+  managedSecretReference:
+    secretName: cloudflared-token
+    secretNamespace: platform-networking
+    secretType: Opaque
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: platform-networking
+  labels:
+    app.kubernetes.io/name: cloudflared
+    app.kubernetes.io/component: tunnel
+spec:
+  # Single replica for Phase 1 — cloudflared maintains 4 redundant edge
+  # connections per replica anyway, and we're validating the path before
+  # adding HA. Bump to 2 once we trust the topology.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloudflared
+  strategy:
+    # RollingUpdate with 0 minAvailable would briefly take the tunnel down
+    # during upgrades; Recreate is fine here since edge connections are
+    # transient and Cloudflare gracefully fails over to the new replica.
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloudflared
+        app.kubernetes.io/component: tunnel
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.3.0
+          args:
+            - tunnel
+            - --no-autoupdate
+            # Expose Prometheus metrics on :2000 so we can scrape later
+            # without redeploying.
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-token
+                  key: CLOUDFLARE_TUNNEL_TOKEN
+          ports:
+            - name: metrics
+              containerPort: 2000
+              protocol: TCP
+          # `cloudflared ready` returns 200 when at least one edge connection
+          # is established. Used as both liveness and readiness so a stuck
+          # process gets restarted.
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
