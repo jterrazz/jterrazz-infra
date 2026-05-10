@@ -121,9 +121,12 @@ deploy_app() {
     while IFS='|' read -r release image env; do
         [ -z "$release" ] && continue
         echo "  --> $release ($image, env=$env)"
-        # No --wait: we apply all releases first, then poll readiness in
-        # one pass at the end. Helm waits per-release are serially
-        # blocking and ImagePullBackOff-style failures eat 5min each.
+        # `</dev/null` on orb stops the remote shell from consuming the
+        # outer `while read` loop's stdin (read had returned line 1; if we
+        # don't redirect, orb's underlying ssh pulls lines 2+ off the pipe
+        # and the loop only iterates once).
+        # No --wait: helm waits per-release are serially blocking and
+        # ImagePullBackOff-style failures eat 5min each.
         orb -m "$VM" -u root sh -c "
             KUBECONFIG=/etc/rancher/k3s/k3s.yaml \
             helm upgrade --install '$release' \
@@ -138,7 +141,7 @@ deploy_app() {
                 --set infrastructure.tailscaleHostname='$ORB_TAILSCALE_HOSTNAME' \
                 -n '$release' \
                 --create-namespace 2>&1 | tail -3
-        "
+        " </dev/null
     done < <(hetzner_releases_for "$image_name")
 }
 
