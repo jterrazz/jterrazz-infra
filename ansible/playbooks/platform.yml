@@ -38,6 +38,9 @@
     # Base infrastructure
     # ========================================
 
+    # Generous retry budget — fresh k3s clusters (and especially the first
+    # OrbStack VM with no image cache) need several minutes for Traefik's
+    # Helm-install Job to pull images and complete. 240 × 2s = 8min ceiling.
     - name: Wait for Traefik to be ready
       ansible.builtin.shell:
         cmd: |
@@ -47,7 +50,7 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: traefik_wait
-      retries: 60
+      retries: 240
       delay: 2
       until: traefik_wait.rc == 0
       changed_when: false

@@ -1,54 +1,33 @@
 import * as pulumi from "@pulumi/pulumi";
-import * as hcloud from "@pulumi/hcloud";
-import * as tls from "@pulumi/tls";
+import { createHetznerMachine } from "./targets/hetzner";
+import { createOrbStackMachine } from "./targets/orbstack";
+import { Target } from "./targets/types";
 
+/**
+ * Top-level dispatcher. Stack config picks the target:
+ *   pulumi config set target hetzner   # production VPS
+ *   pulumi config set target orbstack  # local OrbStack VM
+ *
+ * Defaults to hetzner so the historical `production` stack stays the same
+ * on `pulumi up` without re-configuring. The `local` stack opts into
+ * orbstack via Pulumi.local.yaml.
+ *
+ * Outputs are unified across targets (see targets/types.ts) so Ansible
+ * and downstream tooling stay target-agnostic.
+ */
 const config = new pulumi.Config();
+const target = (config.get("target") || "hetzner") as Target;
 
-// Configuration with defaults
-const serverType = config.get("serverType") || "cax21";
-const location = config.get("location") || "nbg1";
-const image = config.get("image") || "ubuntu-24.04";
+const machine =
+    target === "orbstack" ? createOrbStackMachine(config) : createHetznerMachine(config);
 
-// Generate SSH key pair (stored encrypted in Pulumi state)
-const sshKeyPair = new tls.PrivateKey("main", {
-  algorithm: "ED25519",
-});
+// Unified outputs consumed by Ansible (via `pulumi stack output`) and
+// jterrazz-actions (via Infisical-synced KUBECONFIG_BASE64 etc.).
+export const sshHost = machine.sshHost;
+export const sshPrivateKey = machine.sshPrivateKey;
+export const tailscaleHostname = machine.tailscaleHostname;
+export const serverStatus = machine.status;
+export const serverName = machine.name;
 
-// Register SSH key with Hetzner
-const sshKey = new hcloud.SshKey("main", {
-  name: "jterrazz-infra",
-  publicKey: sshKeyPair.publicKeyOpenssh,
-});
-
-// Cloud-init to setup SSH key and packages
-const cloudInit = pulumi.interpolate`#cloud-config
-package_update: true
-packages:
-  - curl
-  - wget
-
-ssh_authorized_keys:
-  - ${sshKeyPair.publicKeyOpenssh}
-`;
-
-// VPS Server
-const server = new hcloud.Server("main", {
-  name: "jterrazz-vps",
-  serverType: serverType,
-  location: location,
-  image: image,
-  sshKeys: [sshKey.name],
-  userData: cloudInit,
-  labels: {
-    environment: "production",
-    managed_by: "pulumi",
-  },
-});
-
-// Outputs
-export const serverIp = server.ipv4Address;
-export const serverName = server.name;
-export const serverStatus = server.status;
-
-// SSH private key (secret - for Ansible to use)
-export const sshPrivateKey = pulumi.secret(sshKeyPair.privateKeyOpenssh);
+// Backwards-compat alias — older callers read `serverIp`.
+export const serverIp = machine.sshHost;

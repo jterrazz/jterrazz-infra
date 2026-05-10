@@ -40,7 +40,46 @@
           - python3-yaml
           - python3-kubernetes
           - iptables
+          # OrbStack VMs ship without sshd (host-side ProxyCommand handles
+          # SSH instead). The security role expects `sshd -t` to be present
+          # to validate its config; install it so the same hardening applies
+          # to OrbStack VMs as to Hetzner VPSs. Has no effect on hosts that
+          # already ship it.
+          - openssh-server
         state: present
+
+    # Ubuntu's openssh-server package creates /run/sshd lazily on service
+    # start, so a fresh install that hasn't started the service yet fails
+    # `sshd -t` validation later in the security role. Starting + enabling
+    # the unit here makes the role's idempotent reconfigure work on
+    # bare-metal-like setups (OrbStack) and is a no-op on Hetzner where
+    # sshd is already up.
+    - name: Ensure ssh service is started and enabled
+      ansible.builtin.systemd:
+        name: ssh
+        state: started
+        enabled: true
+
+    # OrbStack's lightweight kernel doesn't expose /dev/kmsg, which kubelet
+    # opens at startup; k3s crashes immediately with "open /dev/kmsg: no
+    # such file or directory". Symlinking it to /dev/console makes kubelet
+    # happy — kmsg writes end up on console (which is fine for a dev VM).
+    # systemd-tmpfiles recreates the symlink on every boot.
+    - name: Ensure /dev/kmsg exists on OrbStack VMs
+      when: deployment_target | default('hetzner') == 'orbstack'
+      block:
+        - name: Persist /dev/kmsg symlink via tmpfiles.d
+          ansible.builtin.copy:
+            dest: /etc/tmpfiles.d/orbstack-kmsg.conf
+            content: "L /dev/kmsg - - - - /dev/console\n"
+            mode: "0644"
+
+        - name: Create /dev/kmsg now
+          ansible.builtin.file:
+            src: /dev/console
+            dest: /dev/kmsg
+            state: link
+            force: true
 
     - name: Set timezone
       community.general.timezone:
