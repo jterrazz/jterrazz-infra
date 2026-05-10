@@ -2,8 +2,32 @@
 # Storage Setup
 # Creates directories for Kubernetes persistent volumes
 
-# Base directory for all k8s storage
+# On OrbStack, /var/lib/k8s-data is a symlink to a Mac folder mounted via
+# OrbStack's auto file-share (/mnt/mac/...). This keeps the on-disk path
+# identical to Hetzner so k8s manifests (hostPath PVs etc.) don't need to
+# branch on target, while the data lives on the Mac and survives
+# `pulumi destroy` of the VM.
+- name: Link /var/lib/k8s-data to the Mac bind dir on OrbStack
+  when: deployment_target | default('hetzner') == 'orbstack'
+  block:
+    - name: Resolve Mac bind dir
+      ansible.builtin.set_fact:
+        # OrbStack mounts the Mac user's home at /mnt/mac/Users/<user>.
+        # The data folder is created by the Pulumi OrbStack provider before
+        # the VM is started, so this path is always present here.
+        orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infra/data"
+
+    - name: Replace /var/lib/k8s-data with a symlink to the Mac dir
+      ansible.builtin.file:
+        src: "{{ orbstack_data_dir }}"
+        dest: /var/lib/k8s-data
+        state: link
+        force: true
+
+# Base directory for all k8s storage. Skipped on OrbStack because the
+# symlink above already makes /var/lib/k8s-data resolve to a real path.
 - name: Create base storage directory
+  when: deployment_target | default('hetzner') != 'orbstack'
   ansible.builtin.file:
     path: /var/lib/k8s-data
     state: directory

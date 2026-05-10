@@ -60,13 +60,23 @@
         state: started
         enabled: true
 
-    # OrbStack's lightweight kernel doesn't expose /dev/kmsg, which kubelet
-    # opens at startup; k3s crashes immediately with "open /dev/kmsg: no
-    # such file or directory". Symlinking it to /dev/console makes kubelet
-    # happy — kmsg writes end up on console (which is fine for a dev VM).
-    # systemd-tmpfiles recreates the symlink on every boot.
-    - name: Ensure /dev/kmsg exists on OrbStack VMs
+    # OrbStack VMs in isolated mode (and some other lightweight setups)
+    # don't expose /dev/kmsg, which kubelet opens at startup; without it
+    # k3s crashloops with "open /dev/kmsg: no such file or directory".
+    # Non-isolated OrbStack VMs do have it as a normal character device,
+    # so we only create the symlink-to-/dev/console fallback when kmsg is
+    # actually missing. The systemd-tmpfiles entry recreates the symlink
+    # on reboot if needed.
+    - name: Stat /dev/kmsg
+      ansible.builtin.stat:
+        path: /dev/kmsg
+      register: kmsg_dev
       when: deployment_target | default('hetzner') == 'orbstack'
+
+    - name: Backfill /dev/kmsg when the kernel doesn't expose it
+      when:
+        - deployment_target | default('hetzner') == 'orbstack'
+        - not kmsg_dev.stat.exists | default(true)
       block:
         - name: Persist /dev/kmsg symlink via tmpfiles.d
           ansible.builtin.copy:

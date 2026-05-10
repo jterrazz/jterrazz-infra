@@ -13,10 +13,12 @@ import { MachineOutputs } from "./types";
  * No first-party OrbStack provider exists for Pulumi, so we wrap the
  * `orbctl` CLI with a custom dynamic resource. Three operations matter:
  *
- *  - **Create** calls `orbctl create --isolated --mount …`. Isolated mode
- *    is required because `--mount` is only honoured for isolated machines;
- *    the trade-off (no `/mnt/mac` auto-mount) is fine — we explicitly
- *    bind-mount the data directory we care about.
+ *  - **Create** calls `orbctl create`. The VM is intentionally NOT
+ *    isolated: isolation drops CAP_SYS_ADMIN inside the VM, which breaks
+ *    kubelet's tmpfs `noswap` mount for projected service-account tokens
+ *    (k8s ≥1.31). The downside of non-isolated mode is that OrbStack
+ *    auto-mounts the Mac filesystem at `/mnt/mac`; we use that exact
+ *    behaviour for data persistence (see the bindMounts comment below).
  *  - **Read** calls `orbctl info <name> --format json` to refresh state.
  *  - **Delete** calls `orbctl delete --force <name>`.
  *
@@ -25,6 +27,13 @@ import { MachineOutputs } from "./types";
  * OrbStack VM, and re-running create is cheap (~20s).
  */
 
+/**
+ * Logical bind mount declaration. Because OrbStack `--mount` requires
+ * isolated mode (which breaks kubelet), we don't pass these to orbctl;
+ * instead the create step ensures the source dir exists on the Mac, and
+ * Ansible's storage role symlinks the VM-side path to
+ * `/mnt/mac/<source>` so the VM sees the Mac folder at `destination`.
+ */
 export interface BindMount {
     /** Absolute path on the Mac. */
     source: string;
@@ -112,19 +121,20 @@ const orbStackVMProvider: pulumi.dynamic.ResourceProvider = {
     async create(inputs: OrbCreateInputs): Promise<pulumi.dynamic.CreateResult> {
         // Build the argv ourselves rather than `orbctl create … | sh` so a
         // malformed input fails loudly rather than silently mangling args.
+        // Note: no --isolated flag. Isolated VMs lose CAP_SYS_ADMIN, which
+        // breaks kubelet (tmpfs noswap mounts, swapoff, etc.). The price is
+        // that OrbStack auto-mounts the whole Mac home at /mnt/mac/...; we
+        // turn that into a feature by having Ansible symlink the bindMount
+        // destinations into /mnt/mac/<source>.
         const args = ["create"];
         if (inputs.arch) args.push("-a", inputs.arch);
         if (inputs.user) args.push("-u", inputs.user);
-        if (inputs.bindMounts && inputs.bindMounts.length > 0) {
-            args.push("--isolated");
-            for (const m of inputs.bindMounts) {
-                // Validate sources exist on the Mac. `orbctl create` happily
-                // creates a phantom mount otherwise and the VM boots fine
-                // but the path is empty — a confusing failure mode.
-                if (!fs.existsSync(m.source)) {
-                    fs.mkdirSync(m.source, { recursive: true });
-                }
-                args.push("--mount", `${m.source}:${m.destination}`);
+        // Ensure Mac-side source dirs exist; otherwise the symlink target
+        // (resolved Ansible-side) would dangle and k8s hostPath mounts would
+        // fail with confusing errors at first pod schedule.
+        for (const m of inputs.bindMounts ?? []) {
+            if (!fs.existsSync(m.source)) {
+                fs.mkdirSync(m.source, { recursive: true });
             }
         }
         const image = inputs.version ? `${inputs.distro}:${inputs.version}` : inputs.distro;
