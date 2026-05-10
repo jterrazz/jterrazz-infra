@@ -1,10 +1,45 @@
 ---
 # Tailscale Installation and Configuration
 
+# OrbStack's Ubuntu image ships with systemd-resolved masked. Without a
+# stub resolver, Tailscale falls back to writing /etc/resolv.conf
+# directly with `nameserver 100.100.100.100`, and that resolver does not
+# chase CNAMEs from a public zone (jterrazz.com) into the tailnet zone
+# (*.ts.net). The deploy then fails at "helm registry login
+# registry.jterrazz.com" because the CNAME → tailnet hostname chain is
+# not followed. Hetzner's stock image already has resolved running, so
+# the symlink + restart below are no-ops there.
+- name: Ensure systemd-resolved is enabled (needed for CNAME chasing into tailnet)
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    masked: false
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Point /etc/resolv.conf at systemd-resolved stub
+  ansible.builtin.file:
+    src: /run/systemd/resolve/stub-resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+  register: resolv_conf_link
+
 - name: Check if Tailscale is installed
   ansible.builtin.stat:
     path: /usr/bin/tailscale
   register: tailscale_binary
+
+# Only needed when tailscaled was already running with a stale resolv.conf
+# (the fresh-install branch below starts the daemon AFTER the symlink is
+# in place, so it picks up resolved on its own).
+- name: Restart tailscaled to pick up systemd-resolved integration
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: restarted
+  when:
+    - resolv_conf_link.changed
+    - tailscale_binary.stat.exists
 
 - name: Install Tailscale
   when: not tailscale_binary.stat.exists

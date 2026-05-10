@@ -82,7 +82,7 @@ jobs:
 
       - name: Wait for SSH
         run: |
-          SERVER_IP="${{ steps.pulumi.outputs.serverIp }}"
+          SERVER_IP="${{ steps.pulumi.outputs.sshHost }}"
           echo "Waiting for SSH on $SERVER_IP..."
           for i in {1..30}; do
             if ssh -o ConnectTimeout=5 -i ~/.ssh/id_ed25519 root@$SERVER_IP "echo ready" 2>/dev/null; then
@@ -100,12 +100,13 @@ jobs:
         run: |
           ansible-playbook playbooks/site.yml \
             -i inventories/production/hosts.yml \
-            -e "ansible_host=${{ steps.pulumi.outputs.serverIp }}" \
+            -e "ansible_host=${{ steps.pulumi.outputs.sshHost }}" \
             -e "ansible_ssh_private_key_file=~/.ssh/id_ed25519" \
             -e "environment_type=production" \
             -e "tailscale_oauth_client_id=${{ env.TAILSCALE_OAUTH_CLIENT_ID }}" \
             -e "tailscale_oauth_client_secret=${{ env.TAILSCALE_OAUTH_CLIENT_SECRET }}" \
             -e "cloudflare_api_token=${{ env.CLOUDFLARE_API_TOKEN }}" \
+            -e "cloudflare_tunnel_token=${{ env.CLOUDFLARE_TUNNEL_TOKEN }}" \
             -e "registry_password=${{ env.DOCKER_REGISTRY_PASSWORD }}" \
             -e "portainer_password=${{ env.PORTAINER_ADMIN_PASSWORD }}" \
             -e "n8n_encryption_key=${{ env.N8N_ENCRYPTION_KEY }}" \
@@ -129,7 +130,7 @@ jobs:
           # Run deployment summary script
           chmod +x scripts/ci/deployment-summary.sh
           scripts/ci/deployment-summary.sh \
-            "${{ steps.pulumi.outputs.serverIp }}" \
+            "${{ steps.pulumi.outputs.sshHost }}" \
             "~/.ssh/id_ed25519" \
             "${{ github.sha }}" \
             "${{ job.status }}" \

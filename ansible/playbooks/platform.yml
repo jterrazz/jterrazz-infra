@@ -15,6 +15,12 @@
     platform_chart: "{{ manifest_dest }}/kubernetes/charts/platform"
     portainer_admin_password: "{{ portainer_password | default('changeme-on-first-login') }}"
     grafana_admin_password: "{{ grafana_password | default('changeme-on-first-login') }}"
+    # Tailscale IP of the cluster that owns the public DNS records for
+    # the self-hosted services (registry / n8n / portainer / grafana /
+    # gateway). Both clusters point their CoreDNS overrides here so they
+    # share a single source of truth for the OCI registry. Production
+    # (Hetzner) is the active-DNS cluster; flip when promoting OrbStack.
+    primary_cluster_tailscale_ip: "100.109.91.57"
 
   tasks:
     # ========================================
@@ -88,6 +94,50 @@
     - name: Set infrastructure facts
       ansible.builtin.set_fact:
         tailscale_dns_hostname: "{{ (tailscale_status_result.stdout | from_json).Self.DNSName | regex_replace('\\.$', '') }}"
+
+    # ========================================
+    # CoreDNS split-DNS for self-hosted hostnames
+    # ========================================
+    # Cluster pods that need to reach the self-hosted services
+    # (notably containerd pulling images from registry.jterrazz.com) hit
+    # a CNAME chain in public DNS that points into *.ts.net. CoreDNS does
+    # not chase CNAMEs across upstream zones, so without an override the
+    # response stops at the CNAME and the pull returns NXDOMAIN.
+    #
+    # We resolve this by adding a `jterrazz.com` server block via the
+    # k3s-supported `coredns-custom` ConfigMap. The hosts plugin maps the
+    # five private hostnames to the production cluster's tailnet IP
+    # (Hetzner is the source of truth for the OCI registry). Anything
+    # else under jterrazz.com falls through to public DNS so the
+    # cloudflared-fronted public apps (sig.news, spwn.sh, etc.) still
+    # resolve normally.
+
+    - name: Apply CoreDNS custom config for private hostnames
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_remote }}"
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: coredns-custom
+            namespace: kube-system
+          data:
+            private-hosts.server: |
+              jterrazz.com:53 {
+                hosts {
+                  {{ primary_cluster_tailscale_ip }} registry.jterrazz.com n8n.jterrazz.com portainer.jterrazz.com grafana.jterrazz.com gateway.jterrazz.com
+                  fallthrough
+                }
+                forward . 1.1.1.1 9.9.9.9
+              }
+      register: coredns_custom_apply
+
+    - name: Restart CoreDNS so it picks up the custom config
+      ansible.builtin.command: kubectl -n kube-system rollout restart deploy/coredns
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: coredns_custom_apply.changed
+      when: coredns_custom_apply.changed
 
     # ========================================
     # Cloudflare tunnel hostname

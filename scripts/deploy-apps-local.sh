@@ -5,7 +5,7 @@
 # Actions — useful when bringing the OrbStack target into prod-parity
 # without flipping every app's CI to point at it.
 #
-# Each release is helm-installed from the same OCI chart (app v1.11.0)
+# Each release is helm-installed from the same OCI chart (app v1.12.0)
 # the production stack uses. Image tags are read live from each
 # corresponding Hetzner release so OrbStack lands on the same versions.
 #
@@ -158,6 +158,17 @@ main() {
     echo "    OrbStack Tailscale:   $ORB_TAILSCALE_HOSTNAME"
     echo
 
+    # On a fresh cluster the webhook flaps in the first minute (no CA cert
+    # in the secret yet, then a brief endpointslice gap on rollout). Helm
+    # installs that hit that window fail with "no endpoints available for
+    # cert-manager-webhook". Wait for the webhook deployment to be stably
+    # Available before kicking off the install loop.
+    echo "==> Waiting for cert-manager-webhook to be ready"
+    orb -m "$VM" -u root sh -c '
+        KUBECONFIG=/etc/rancher/k3s/k3s.yaml \
+        kubectl rollout status -n platform-networking deploy/cert-manager-webhook --timeout=180s
+    '
+
     echo "==> Logging in to the OCI registry inside the VM"
     orb -m "$VM" -u root sh -c "
         echo '$REGISTRY_PASSWORD' | helm registry login registry.jterrazz.com \
@@ -167,6 +178,37 @@ main() {
     for repo in "${APP_REPOS[@]}"; do
         deploy_app "$repo"
     done
+
+    # Helm tracks the first attempt's status; failed releases stay
+    # `failed` even after we retry the install at the helm-upgrade layer.
+    # Wipe them and re-run deploy_app so the second pass starts clean.
+    local failed_releases
+    failed_releases=$(orb -m "$VM" -u root sh -c \
+        'KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm list -A -q -f "failed"' </dev/null)
+    if [ -n "$failed_releases" ]; then
+        echo
+        echo "==> Retrying releases that failed on first pass: $failed_releases"
+        while read -r release; do
+            [ -z "$release" ] && continue
+            orb -m "$VM" -u root sh -c "
+                KUBECONFIG=/etc/rancher/k3s/k3s.yaml helm uninstall '$release' -n '$release';
+                KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl delete ns '$release' --ignore-not-found
+            " </dev/null
+        done <<<"$failed_releases"
+
+        # Determine which repos own the failed releases and redeploy them.
+        local retry_repos=()
+        for repo in "${APP_REPOS[@]}"; do
+            local img="${repo##*/}"
+            [ "$repo" = "clawrr/web-landing" ] && img="clawrr-web-landing"
+            if grep -q "$img" <<<"$failed_releases"; then
+                retry_repos+=("$repo")
+            fi
+        done
+        for repo in "${retry_repos[@]}"; do
+            deploy_app "$repo"
+        done
+    fi
 
     echo
     echo "==> Done. Releases on OrbStack:"

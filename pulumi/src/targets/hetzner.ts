@@ -57,13 +57,12 @@ ssh_authorized_keys:
     return {
         sshHost: server.ipv4Address,
         sshPrivateKey: pulumi.secret(sshKeyPair.privateKeyOpenssh),
-        // Tailscale hostname — keeps the historical `jterrazz-vps` name
-        // because external-dns has been populating CNAMEs (n8n, portainer,
-        // grafana, registry) pointing at `jterrazz-vps.tail77a797.ts.net`
-        // for months. Renaming would invalidate those records until the
-        // next reconcile and re-issue tailnet host lookups for clients.
-        // OrbStack's identity is `jterrazz-orbstack`, so the tailnet still
-        // has a clean per-target identity.
+        // Tailscale hostname — historical `jterrazz-vps`. Pulumi's DNS
+        // module (pulumi/src/dns.ts) consumes this to point the private
+        // service CNAMEs at the active machine; renaming would force a
+        // re-issue of every tailnet host lookup, so we keep it.
+        // OrbStack's identity is `jterrazz-infra`, so the tailnet has a
+        // distinct identity per target.
         tailscaleHostname: pulumi.output("jterrazz-vps"),
         status: server.status,
         name: server.name,

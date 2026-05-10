@@ -1,81 +1,95 @@
 # Cloudflared
 
 Cloudflare Tunnel runtime that brings public traffic into the cluster
-without exposing port 443 on the host. Phase 1 of the cloudflared
-migration — the tunnel is deployed but DNS still points at the public IP
-until you start switching domains.
+without exposing any host port. Cloudflared maintains an outbound QUIC
+connection to the Cloudflare edge; traffic for any of our public
+hostnames flows back through that tunnel and lands on the cluster-
+internal Traefik service.
 
 ## How it routes
 
-Cloudflare → Cloudflared (this Deployment) → Traefik (cluster-internal).
-Traefik continues to do per-hostname routing exactly as today; cloudflared
-just forwards everything it receives to `traefik.kube-system.svc.cluster.local:443`.
+```
+client ──https──► Cloudflare edge ──QUIC tunnel──► this Deployment
+                                                       │
+                                                       ▼
+                                  traefik.kube-system.svc.cluster.local:443
+                                                       │
+                                                       ▼
+                                            IngressRoute → app
+```
 
-## One-time setup (before deploying)
+Per-hostname routing is configured in Cloudflare's Zero Trust UI under
+the tunnel's "Public Hostname" tab — adding a hostname there creates the
+DNS CNAME automatically. The tunnel forwards everything to Traefik with
+`No TLS Verify: ON` (internal traffic, no need to validate the cluster's
+self-signed serving cert).
 
-Three manual steps in the Cloudflare Zero Trust dashboard + Infisical:
+## One-time setup
+
+Done once per tunnel; recorded here for reference and recovery.
 
 ### 1. Create the tunnel
 
-- Cloudflare dashboard → Zero Trust → Networks → Tunnels → **Create a tunnel**
-- Connector type: **Cloudflared**
-- Name: `jterrazz-prod`
-- Save → on the next screen Cloudflare shows a token (long string starting with `eyJ…`).
-  Copy it.
+Cloudflare → Zero Trust → Networks → Tunnels → Create a tunnel.
+Connector type **Cloudflared**, name `jterrazz-infra`. On the next
+screen Cloudflare shows a connection token (starts with `eyJ…`).
 
-### 2. Add the token to Infisical
+### 2. Store the token in Infisical
 
-- https://eu.infisical.com → project `jterrazz` → env `prod` → path `/infrastructure`
-- Add a secret: key `CLOUDFLARE_TUNNEL_TOKEN`, value = the token from step 1
+`https://eu.infisical.com` → project `jterrazz` → env `prod` → path
+`/infrastructure` → add secret `CLOUDFLARE_TUNNEL_TOKEN` with that
+value. Ansible decodes the token at deploy time to derive the tunnel
+hostname (`<tunnel-id>.cfargotunnel.com`) used as the DNS target for
+public records.
 
-### 3. Configure the catch-all public-hostname rule
+### 3. Public Hostname per zone
 
-In the same tunnel detail page in Cloudflare:
+In the tunnel detail page, "Public Hostname" tab → Add for each apex
+zone you route through this tunnel (`jterrazz.com`, `clawrr.com`,
+`clawssify.com`, `sig.news`, `spwn.sh`).
 
-- Tab **Public Hostname** → **Add a public hostname**
-- Subdomain: leave empty
-- Domain: `jterrazz.com`  *(any zone you control; this is just the wildcard root)*
-- Service type: `HTTPS`
+- Subdomain: empty
+- Service type: HTTPS
 - URL: `traefik.kube-system.svc.cluster.local:443`
 - Additional application settings → TLS → **No TLS Verify: ON**
-- Save.
-
-Repeat for each apex zone you'll route through the tunnel (`clawrr.com`,
-`clawssify.com`, `sig.news`, `spwn.sh`). Each entry lets the tunnel accept
-traffic for `*.zone` and forwards it to Traefik's internal service.
 
 ## Deploy
 
-After steps 1–3 above, the next `ansible-playbook` run of `platform.yml`
-applies the manifest. For a targeted apply without re-running the whole
-playbook:
+`platform.yml` applies this manifest automatically. For a targeted
+apply from the cluster host:
 
 ```bash
-kubectl apply -f kubernetes/platform/cloudflared/deployment.yaml
+kubectl apply -f /tmp/k8s-manifests/kubernetes/platform/cloudflared/deployment.yaml
 ```
-
-(Run from the cluster host or with a kubeconfig pointing at it.)
 
 ## Verify
 
 ```bash
 # Pod healthy?
-kubectl get pods -n platform-networking -l app.kubernetes.io/name=cloudflared
+kubectl get pod -n platform-networking -l app.kubernetes.io/name=cloudflared
 
 # Connected to Cloudflare edge?
-kubectl logs -n platform-networking deploy/cloudflared --tail=30 | grep -E "Registered|edge"
+kubectl logs -n platform-networking deploy/cloudflared --tail=30 | grep -E 'Registered|edge'
 
 # Token synced from Infisical?
-kubectl get secret cloudflared-token -n platform-networking -o jsonpath='{.data.CLOUDFLARE_TUNNEL_TOKEN}' | base64 -d | head -c 20
-echo
+kubectl get secret cloudflared-token -n platform-networking \
+  -o jsonpath='{.data.CLOUDFLARE_TUNNEL_TOKEN}' | base64 -d | head -c 20; echo
+
+# Live traffic counter
+POD_IP=$(kubectl get pod -n platform-networking -l app.kubernetes.io/name=cloudflared -o jsonpath='{.items[0].status.podIP}')
+curl -s "http://$POD_IP:2000/metrics" | grep '^cloudflared_tunnel_total_requests '
 ```
 
-In the Cloudflare dashboard the tunnel should show **HEALTHY** within ~30s.
+The Cloudflare dashboard shows the tunnel as **HEALTHY** within ~30s of
+pod start.
 
-## Phase 2 (later, separate PR)
+## Swapping between Hetzner and OrbStack
 
-Once the tunnel is healthy, switch domains one at a time by changing their
-DNS records in Cloudflare from `A 46.224.186.190` to
-`CNAME <tunnel-id>.cfargotunnel.com`. The tunnel-id is shown in the tunnel
-detail page. Domains not yet switched continue to receive traffic the old
-way.
+Both clusters run cloudflared with the same `CLOUDFLARE_TUNNEL_TOKEN`,
+which means both can register as connectors for the same tunnel and
+Cloudflare load-balances between them. To send traffic to only one:
+
+```bash
+# On the cluster that should NOT serve:
+kubectl scale -n platform-networking deploy/cloudflared --replicas=0
+```

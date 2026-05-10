@@ -235,6 +235,10 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
     // namespace, so we re-scope here. Keeping the parameter so the
     // dispatcher signature stays uniform across targets.
     const config = new pulumi.Config("orbstack");
+    // Default name keeps the OrbStack VM distinct in `orbctl list` even if
+    // someone forgets to set `orbstack:machineName` in their stack config.
+    // Pulumi.local.yaml overrides this to "jterrazz-infra" for the local
+    // stack (its Tailscale identity).
     const machineName = config.get("machineName") || "jterrazz-orbstack";
     const distro = config.get("distro") || "ubuntu";
     const version = config.get("version") || "noble";

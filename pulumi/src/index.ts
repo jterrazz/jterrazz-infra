@@ -42,6 +42,3 @@ export const tailscaleHostname = machine.tailscaleHostname;
 export const serverStatus = machine.status;
 export const serverName = machine.name;
 export const dnsManagedHere = pulumi.output(manageDns);
-
-// Backwards-compat alias — older callers read `serverIp`.
-export const serverIp = machine.sshHost;
