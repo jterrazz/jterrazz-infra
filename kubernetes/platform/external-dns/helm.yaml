@@ -1,3 +1,12 @@
+# external-dns is disabled via a post-helm `kubectl scale --replicas=0` in
+# platform.yml (this chart hardcodes replicas=1 in its template, so the value
+# can't be set here). Reason: after the cloudflared migration, public
+# IngressRoutes need an `external-dns.alpha.kubernetes.io/target` annotation
+# pointing at the tunnel hostname (<tunnel-id>.cfargotunnel.com) — otherwise
+# external-dns falls back to the node's public IP and tries to overwrite the
+# CNAMEs we set manually for the tunnel. DNS is managed by hand until that
+# annotation work is done.
+
 provider:
   name: cloudflare
 
@@ -26,6 +35,13 @@ sources:
 # Add ownership label to managed records
 txtOwnerId: "jterrazz-k8s"
 txtPrefix: "_external-dns."
+
+# Traefik discovery is slow when many hub.traefik.io CRDs are present
+# (k3s ships ~24 Hub CRDs we don't use). The default 1-minute timeout on
+# the initial CRD sync causes external-dns to crashloop at startup, so we
+# bump the request timeout to give it room to finish discovery.
+extraArgs:
+  - "--request-timeout=5m"
 
 resources:
   requests:

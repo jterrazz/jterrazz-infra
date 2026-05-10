@@ -25,12 +25,14 @@
       ansible.builtin.assert:
         that:
           - cloudflare_api_token is defined and cloudflare_api_token | length > 0
+          - cloudflare_tunnel_token is defined and cloudflare_tunnel_token | length > 0
           - infisical_client_id is defined and infisical_client_id | length > 0
           - infisical_client_secret is defined and infisical_client_secret | length > 0
           - registry_password is defined and registry_password | length > 0
         fail_msg: >
-          Missing required secrets. Ensure cloudflare_api_token, infisical_client_id,
-          infisical_client_secret, and registry_password are passed as extra vars.
+          Missing required secrets. Ensure cloudflare_api_token, cloudflare_tunnel_token,
+          infisical_client_id, infisical_client_secret, and registry_password are passed
+          as extra vars.
 
     # ========================================
     # Base infrastructure
@@ -83,6 +85,28 @@
     - name: Set infrastructure facts
       ansible.builtin.set_fact:
         tailscale_dns_hostname: "{{ (tailscale_status_result.stdout | from_json).Self.DNSName | regex_replace('\\.$', '') }}"
+
+    # ========================================
+    # Cloudflare tunnel hostname
+    # ========================================
+    # Public traffic now enters via the Cloudflare tunnel, not the host's IP.
+    # The tunnel token is a base64-encoded JSON {a:<account>, t:<tunnel>, s:<secret>};
+    # we decode it locally to extract the tunnel ID and build the hostname
+    # `<tunnel>.cfargotunnel.com`. This becomes `infrastructure.publicIp` for the
+    # platform/app charts, which feeds the external-dns target annotation. The
+    # variable name "publicIp" is kept for backwards compat with the existing
+    # chart helpers and downstream consumers (jterrazz-actions); it's now a
+    # CNAME target rather than an IPv4.
+
+    - name: Decode Cloudflare tunnel token
+      ansible.builtin.set_fact:
+        cloudflare_tunnel_id: "{{ (cloudflare_tunnel_token | b64decode | from_json).t }}"
+      when: cloudflare_tunnel_token is defined and cloudflare_tunnel_token | length > 0
+
+    - name: Set Cloudflare tunnel hostname
+      ansible.builtin.set_fact:
+        cloudflare_tunnel_hostname: "{{ cloudflare_tunnel_id }}.cfargotunnel.com"
+      when: cloudflare_tunnel_id is defined
 
     # ========================================
     # Registry setup
@@ -492,7 +516,7 @@
         helm upgrade --install grafana-platform {{ platform_chart }}
         --namespace platform-telemetry
         --values {{ manifest_dest }}/kubernetes/platform/grafana/platform.yaml
-        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
@@ -544,7 +568,7 @@
         helm upgrade --install n8n-platform {{ platform_chart }}
         --namespace platform-automation
         --values {{ manifest_dest }}/kubernetes/platform/n8n/platform.yaml
-        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait
@@ -572,7 +596,7 @@
         helm upgrade --install portainer-platform {{ platform_chart }}
         --namespace platform-management
         --values {{ manifest_dest }}/kubernetes/platform/portainer/platform.yaml
-        --set infrastructure.publicIp={{ server_ip }}
+        --set infrastructure.publicIp={{ cloudflare_tunnel_hostname }}
         --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
         --set infrastructure.nodeName={{ inventory_hostname }}
         --wait

@@ -9,6 +9,14 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
+    # Traefik no longer fronts public traffic directly. Cloudflared (in
+    # platform-networking) terminates the Cloudflare tunnel and forwards
+    # to the cluster-internal Traefik service. ClusterIP keeps the DNS name
+    # `traefik.kube-system.svc.cluster.local` resolvable but stops k3s
+    # from binding host ports 80/443 via klipper-lb.
+    service:
+      type: ClusterIP
+
     # Global middlewares on websecure entrypoint
     ports:
       websecure:
