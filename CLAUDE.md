@@ -52,7 +52,7 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - **spwn-web** (`jterrazz/spwn-web`): Next.js at `spwn.sh`
 - **signews-web** (`jterrazz/signews-web`): Next.js at `sig.news`
 - **signews-api** (`jterrazz/signews-api`): 3 envs (prod/next/staging) at `signews{,-next,-staging}.jterrazz.com/api`
-- **clawssify-web-landing** (`jterrazz/clawssify-web-landing`): at `clawssify.com`
+- **clawssify-web** (`jterrazz/clawssify-web`): at `clawssify.com`
 - **clawrr-web-landing** (`clawrr/web-landing`): at `clawrr.com`
 - **gateway-intelligence** (`jterrazz/gateway-intelligence`): private at `gateway.jterrazz.com`
 
