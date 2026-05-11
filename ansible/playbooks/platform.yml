@@ -18,9 +18,10 @@
     # Tailscale IP of the cluster that owns the public DNS records for
     # the self-hosted services (registry / n8n / portainer / grafana /
     # gateway). Both clusters point their CoreDNS overrides here so they
-    # share a single source of truth for the OCI registry. Production
-    # (Hetzner) is the active-DNS cluster; flip when promoting OrbStack.
-    primary_cluster_tailscale_ip: "100.109.91.57"
+    # share a single source of truth for the OCI registry. OrbStack is
+    # the active-DNS cluster post-migration; flip back to 100.109.91.57
+    # to promote Hetzner.
+    primary_cluster_tailscale_ip: "100.80.167.125"
 
   tasks:
     # ========================================

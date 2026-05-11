@@ -22,7 +22,7 @@ section "Triggering App Deployments"
 
 for repo in "${REPOS[@]}"; do
   info "Triggering deploy for $repo..."
-  if gh workflow run deploy.yaml --repo "$repo"; then
+  if gh workflow run "Build and Deploy" --repo "$repo"; then
     success "Triggered $repo"
   else
     warn "Failed to trigger $repo (workflow may not exist yet)"

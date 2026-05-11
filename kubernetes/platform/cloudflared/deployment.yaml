@@ -73,12 +73,30 @@ spec:
         app.kubernetes.io/name: cloudflared
         app.kubernetes.io/component: tunnel
     spec:
+      # hostNetwork so cloudflared dials the Cloudflare edge through the
+      # host's network stack rather than CNI. The CNI bridge on OrbStack
+      # mangles outbound TCP/7844 to Cloudflare in a way that yields
+      # `connect: connection refused` for cloudflared specifically
+      # (curl from the same pod IP connects fine; only cloudflared's
+      # tunnel handshake gets RSTed at the edge). Bypassing CNI is the
+      # simplest fix. Harmless on Hetzner since cloudflared has no
+      # listening ports — it's an outbound-only QUIC/HTTP2 client.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.3.0
           args:
             - tunnel
             - --no-autoupdate
+            # OrbStack's NAT eats outbound UDP/443 so cloudflared can't
+            # establish a QUIC connection to the Cloudflare edge (every
+            # dial times out with "no recent network activity"). Forcing
+            # HTTP/2 falls back to TCP/443 which traverses the NAT fine.
+            # No-op on Hetzner (UDP works there, but HTTP/2 is similar
+            # cost-wise so we keep both clusters on the same protocol).
+            - --protocol
+            - http2
             # Expose Prometheus metrics on :2000 so we can scrape later
             # without redeploying.
             - --metrics

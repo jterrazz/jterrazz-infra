@@ -17,6 +17,28 @@
     state: started
     daemon_reload: true
 
+# OrbStack's DHCP hands out a bogus DNS server (0.250.250.200) that
+# silently drops queries; without overriding it, resolved tries the
+# bogus IP first and CoreDNS upstream forwarding times out for any
+# name that isn't in the tailnet. Force a working public resolver as
+# the global default. No-op on Hetzner (where DHCP already returns
+# valid DNS) since we keep eth0's link DNS as a fallback.
+- name: Configure systemd-resolved global DNS overrides
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/upstream.conf
+    mode: "0644"
+    content: |
+      [Resolve]
+      DNS=1.1.1.1 9.9.9.9
+      FallbackDNS=1.0.0.1 8.8.8.8
+  register: resolved_conf
+
+- name: Restart systemd-resolved when DNS config changed
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  when: resolved_conf.changed
+
 - name: Point /etc/resolv.conf at systemd-resolved stub
   ansible.builtin.file:
     src: /run/systemd/resolve/stub-resolv.conf
