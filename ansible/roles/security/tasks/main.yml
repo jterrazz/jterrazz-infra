@@ -169,15 +169,15 @@
 
 # Audit Logging — relies on the kernel audit subsystem (CAP_AUDIT_*).
 # The OrbStack hypervisor restricts these caps, so auditd refuses to
-# start. The whole audit branch is gated on `deployment_target !=
-# orbstack` so it's effectively skipped today; kept for the day this
-# ever runs against a non-OrbStack host again.
+# start inside an OrbStack VM. We skip auditd there since the local
+# dev target isn't an audit-compliance target anyway; on Hetzner (and
+# any other real host) the role still configures audit rules normally.
 - name: Enable auditd
   ansible.builtin.systemd:
     name: auditd
     enabled: true
     state: started
-  when: deployment_target != 'orbstack'
+  when: deployment_target | default('hetzner') != 'orbstack'
 
 - name: Configure audit rules
   ansible.builtin.copy:
@@ -191,4 +191,4 @@
       -w /etc/sudoers -p wa -k sudoers
       -w /etc/ssh/sshd_config -p wa -k sshd
   notify: Restart auditd
-  when: deployment_target != 'orbstack'
+  when: deployment_target | default('hetzner') != 'orbstack'

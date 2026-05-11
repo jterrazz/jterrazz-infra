@@ -3,28 +3,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-
-/**
- * Outputs the machine resource exposes to the rest of the pipeline.
- * Ansible reads sshHost/sshPrivateKey from Pulumi state; deploy.sh and
- * dns.ts read tailscaleHostname.
- */
-export interface MachineOutputs {
-    /** Hostname Ansible feeds into `ansible_host`. For OrbStack this is
-     *  the VM name reached through the OrbStack SSH proxy. */
-    sshHost: pulumi.Output<string>;
-    /** The OrbStack-managed SSH private key file's contents; marked
-     *  secret so Ansible can consume it without leaking into Pulumi
-     *  preview/up output. */
-    sshPrivateKey: pulumi.Output<string>;
-    /** Hostname the VM registers with Tailscale (= the Cloudflare CNAME
-     *  target for private hostnames managed by `pulumi/src/dns.ts`). */
-    tailscaleHostname: pulumi.Output<string>;
-    /** Free-form status string surfaced via `pulumi stack output`. */
-    status: pulumi.Output<string>;
-    /** Cosmetic logical name (matches the orbctl VM name). */
-    name: pulumi.Output<string>;
-}
+import { MachineOutputs } from "./types";
 
 /**
  * OrbStack-hosted Linux VM running the same k3s + platform stack the
@@ -241,9 +220,10 @@ export class OrbStackVM extends pulumi.dynamic.Resource {
     }
 }
 
-/** Build the cluster machine outputs. Reads its config from the
- *  `orbstack:` namespace in the stack config (see Pulumi.local.yaml). */
-export function createMachine(): MachineOutputs {
+/** Build OrbStack-backed `MachineOutputs`. Reads its config from the
+ *  `orbstack:` namespace in the stack config (see Pulumi.local.yaml).
+ *  Consumed by `index.ts` when `target=orbstack`. */
+export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
     const config = new pulumi.Config("orbstack");
     // Default name keeps the VM distinct in `orbctl list` even if someone
     // forgets to set `orbstack:machineName`. Pulumi.local.yaml overrides

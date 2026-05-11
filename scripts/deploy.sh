@@ -1,20 +1,29 @@
 #!/bin/bash
-# Provision the cluster machine via Pulumi and configure it with Ansible.
+# Provision a target via Pulumi and configure it with Ansible.
 #
-# Single stack: jterrazz/local — the OrbStack VM hosting the k3s cluster
-# on the dev Mac. Previously there was a `production` Hetzner stack too;
-# it was retired (see git log around commit b29f250) and Pulumi state
-# fully torn down.
+# Dual-mode — pick which stack is "production" by passing it as the
+# first arg:
+#
+#   production  →  Hetzner VPS  (Pulumi stack `jterrazz/production`,
+#                                Ansible inventory `production`)
+#   local       →  OrbStack VM  (Pulumi stack `jterrazz/local`,
+#                                Ansible inventory `local`)
+#
+# Both stacks run the same `site.yml` playbook and end up with an
+# identical k3s + platform stack. The active-DNS cluster (the one whose
+# Tailscale hostname the private CNAMEs point at) is whichever stack
+# has `manageDns: true` set on it. Default: hetzner.
 #
 # Secrets used by Ansible (Cloudflare API token, Tailscale OAuth, etc.)
-# are pulled live from Infisical /jterrazz-infra env=prod using the
-# universal-auth credentials in .env. Nothing sensitive lives on disk
+# are pulled live from Infisical `/jterrazz-infra` env=prod using the
+# universal-auth credentials in `.env`. Nothing sensitive lives on disk
 # beyond the temp extra-vars file (0600, deleted on exit).
 #
 # Usage:
-#   ./scripts/deploy.sh             # full: pulumi up + site.yml
-#   ./scripts/deploy.sh --skip-up   # ansible only, assume VM exists
-#   ./scripts/deploy.sh --destroy   # tear down the stack
+#   ./scripts/deploy.sh production         # full: pulumi up + site.yml
+#   ./scripts/deploy.sh local
+#   ./scripts/deploy.sh local --skip-up    # ansible only, assume VM exists
+#   ./scripts/deploy.sh local --destroy    # tear down the stack
 
 set -euo pipefail
 
@@ -25,10 +34,17 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck disable=SC1091
 set -a; source "$PROJECT_DIR/.env"; set +a
 
-flag="${1:-}"
+target="${1:-}"
+flag="${2:-}"
 
-STACK="jterrazz/local"
-INVENTORY="$PROJECT_DIR/ansible/inventories/local/hosts.yml"
+case "$target" in
+    production|local) ;;
+    "") echo "Usage: $0 <production|local> [--skip-up | --destroy]" >&2; exit 1 ;;
+    *) echo "Unknown target: $target" >&2; exit 1 ;;
+esac
+
+STACK="jterrazz/$target"
+INVENTORY="$PROJECT_DIR/ansible/inventories/$target/hosts.yml"
 [ -f "$INVENTORY" ] || { echo "Missing inventory: $INVENTORY" >&2; exit 1; }
 
 pulumi_up() {
@@ -102,20 +118,39 @@ PY
     echo "$out"
 }
 
+# Pull the SSH private key out of Pulumi state and pass it to Ansible so
+# the production inventory (which doesn't hardcode a key path) can
+# connect to a freshly provisioned VPS. OrbStack uses its own SSH proxy,
+# so this only applies when target=production.
+extra_args_for_target() {
+    if [ "$target" = "production" ]; then
+        local key_file ip
+        key_file=$(mktemp -t jterrazz-infra-ssh-XXXXXX.key)
+        chmod 600 "$key_file"
+        (cd "$PROJECT_DIR/pulumi" && pulumi stack output sshPrivateKey --show-secrets --stack "$STACK") > "$key_file"
+        ip=$(cd "$PROJECT_DIR/pulumi" && pulumi stack output sshHost --stack "$STACK")
+        echo "-e ansible_host=$ip -e ansible_ssh_private_key_file=$key_file"
+    fi
+}
+
 run_ansible() {
     # Not `local` because the EXIT trap fires after the function frame
     # is gone; with `set -u` a local would read as unbound and abort
     # cleanup. Script-scope means the trap can still see the path.
     secrets_file=$(fetch_secrets_file)
+    local extra_args
+    extra_args=$(extra_args_for_target)
     trap 'rm -f "${secrets_file:-}"' EXIT
 
     # ansible.cfg uses a relative roles_path; run from ansible/ so it
     # resolves correctly. The extra-vars file path is absolute.
     cd "$PROJECT_DIR/ansible"
-    echo "==> ansible-playbook site.yml"
+    echo "==> ansible-playbook site.yml (target=$target, inventory=$target)"
+    # shellcheck disable=SC2086
     ansible-playbook playbooks/site.yml \
         -i "$INVENTORY" \
-        -e "@$secrets_file"
+        -e "@$secrets_file" \
+        $extra_args
 }
 
 case "$flag" in
@@ -131,7 +166,7 @@ case "$flag" in
         ;;
     *)
         echo "Unknown flag: $flag" >&2
-        echo "Usage: $0 [--skip-up | --destroy]" >&2
+        echo "Usage: $0 <production|local> [--skip-up | --destroy]" >&2
         exit 1
         ;;
 esac

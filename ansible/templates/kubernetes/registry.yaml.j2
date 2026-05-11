@@ -14,6 +14,36 @@ stringData:
   htpasswd: "{{ registry_htpasswd }}"
 
 ---
+# Bind the registry to a hostPath PV at /var/lib/k8s-data/registry/ —
+# same pattern as every other platform service. Critical on OrbStack:
+# without this the PVC binds to the default local-path provisioner
+# under /var/lib/rancher/k3s/storage/... which gets wiped on
+# `pulumi destroy && pulumi up` (registry blobs lost). The hostPath
+# version follows the Mac-side symlink for free.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: registry-data
+  labels:
+    app: registry
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/registry
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ inventory_hostname }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -25,7 +55,8 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: local-path
+  storageClassName: manual
+  volumeName: registry-data
 
 ---
 apiVersion: apps/v1

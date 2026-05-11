@@ -2,14 +2,22 @@
 
 ## Project Overview
 
-Single-node k3s cluster running on an OrbStack VM on the dev Mac.
-Pulumi stack: `jterrazz/local` — the only live stack. (A Hetzner cax21
-stack `jterrazz/production` existed historically and was destroyed in
-May 2026; the migration trail is around git commit `b29f250`.)
+Single-node k3s cluster, **dual-mode** — interchangeably deployable on
+either of two Pulumi stacks:
 
-The cluster is configured by `ansible/playbooks/site.yml` (base →
-security → networking → storage → kubernetes → platform) and runs the
-Helm charts in `kubernetes/charts/`.
+- **`jterrazz/production`** — Hetzner cax21 VPS in nbg1, live production
+  with a real public IPv4
+- **`jterrazz/local`** — OrbStack VM on the dev Mac, used today as the
+  active prod (cheaper, faster iteration, no monthly bill)
+
+Both run the exact same Ansible playbook (`site.yml`) and Helm charts.
+`pulumi/src/targets/{hetzner.ts,orbstack.ts}` are the only files that
+differ between them; everything downstream (Ansible roles, the app
+chart, the platform chart) is target-agnostic.
+
+The active production today is **OrbStack** (May 2026 swap). Hetzner is
+fully supported as an alternative — if you ever want it back, `pulumi
+stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 
 ## Stack
 
@@ -27,13 +35,15 @@ Helm charts in `kubernetes/charts/`.
   Public Hostname feature in the Zero Trust UI auto-creates the CNAME
   to `<tunnel-id>.cfargotunnel.com`.
 - **Private hostnames** (n8n, portainer, grafana, registry, gateway) —
-  Pulumi-managed in `pulumi/src/dns.ts`, CNAMEd to the cluster's
-  Tailscale FQDN (`jterrazz-infra.tail77a797.ts.net`).
-- **In-cluster lookups** for those same private hostnames are
-  short-circuited by a CoreDNS `coredns-custom` ConfigMap to the
-  cluster's own tailnet IP. The public CNAME chain stops at `*.ts.net`
-  which CoreDNS can't chase; the override keeps registry pulls + helm
-  pushes on the local Traefik. Defined in `ansible/playbooks/platform.yml`.
+  Pulumi-managed in `pulumi/src/dns.ts`, CNAMEd to the active cluster's
+  Tailscale FQDN. Only the stack with `manageDns=true` owns the records
+  (production by default; flipped to local for the active swap).
+- **In-cluster lookups** for the same private hostnames are
+  short-circuited by a CoreDNS `coredns-custom` ConfigMap (in
+  `ansible/playbooks/platform.yml`) to the cluster's own tailnet IP.
+  The public CNAME chain stops at `*.ts.net` which CoreDNS can't chase
+  through public DNS, so without this override registry pulls + helm
+  pushes NXDOMAIN.
 - TLS — cert-manager via Let's Encrypt DNS-01 using the
   `CLOUDFLARE_API_TOKEN` secret.
 
@@ -63,7 +73,8 @@ Helm charts in `kubernetes/charts/`.
 - Platform services installed via Helm in `ansible/playbooks/platform.yml`.
 - Shared platform chart (`kubernetes/charts/platform/`) generates
   Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
-- App chart at `kubernetes/charts/app/`, published to OCI registry.
+- App chart at `kubernetes/charts/app/`, published to OCI registry
+  (currently 1.13.0).
 - Per-service config split: `helm.yaml` (upstream chart values) +
   `platform.yaml` (ingress / cert / storage).
 - PVCs use `storageClassName: manual` with hostPath PVs, bound via
@@ -73,7 +84,7 @@ Helm charts in `kubernetes/charts/`.
 - Telemetry PVs (Grafana / Prometheus / Loki / Tempo) have
   `nodeAffinity` matching the actual node name, injected by Ansible
   via `templates/kubernetes/telemetry-storage.yaml.j2`.
-- `/var/lib/k8s-data` on the VM is a symlink to
+- On OrbStack, `/var/lib/k8s-data` is a symlink to
   `/mnt/mac/Users/<user>/.jterrazz-infra/data` so the data survives
   `pulumi destroy && pulumi up`.
 
@@ -132,9 +143,10 @@ targets. This is the universal CI interface regardless of toolchain.
 
 ## Connection Details
 
-- Pulumi stack: `jterrazz/local`. `PULUMI_ACCESS_TOKEN` required.
+- Pulumi stacks: `jterrazz/production` (Hetzner), `jterrazz/local` (OrbStack). `PULUMI_ACCESS_TOKEN` required.
 - **Pulumi commands must run from `pulumi/`** (not repo root).
 - OrbStack VM reachable via the OrbStack SSH proxy: `ssh root@jterrazz-infra@orb`.
+- Hetzner (when up): `ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)`.
 
 `.env` (gitignored, in repo root):
 
@@ -145,19 +157,26 @@ INFISICAL_CLIENT_SECRET
 CLOUDFLARE_TUNNEL_TOKEN   # only if you'll modify the tunnel locally; otherwise sourced from Infisical at deploy time
 ```
 
+The Hetzner API token is stored as a Pulumi-encrypted stack config
+(`hcloud:token` on `jterrazz/production`), not in `.env` or GitHub
+secrets. `pulumi config set --secret hcloud:token <new>` from `pulumi/`
+to rotate.
+
 ## Common Operations
 
 ### Run a fresh deploy
 
 ```bash
-make deploy        # pulumi up + ansible site.yml
+make deploy-local  # OrbStack (default for now)
+make deploy        # Hetzner
 make apps          # trigger every app's CI to (re)deploy
 ```
 
 ### SSH to the cluster
 
 ```bash
-ssh root@jterrazz-infra@orb
+ssh root@jterrazz-infra@orb                                                       # OrbStack
+ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
 ```
 
 ### Restart cert-manager (after k3s churn)
@@ -184,13 +203,38 @@ kubectl get ingressroute -n prod-<app>
 gh workflow run "Build and Deploy" -R jterrazz/<app>
 ```
 
+### Swap Hetzner ↔ OrbStack
+
+```bash
+cd pulumi
+pulumi config set manageDns false --stack production
+pulumi config set manageDns true  --stack local
+pulumi up --stack production    # removes DNS records
+pulumi up --stack local         # creates them pointing at OrbStack
+# Then scale Hetzner cloudflared to 0 (and OrbStack to 1) to flip
+# public traffic. Apps need to be re-pushed if you want fresh images
+# on the new cluster's registry — `make apps`.
+```
+
+### Bring a torn-down stack back
+
+```bash
+cd pulumi
+pulumi stack init jterrazz/production
+pulumi config set target hetzner
+pulumi config set --secret hcloud:token <token>
+pulumi config set --secret cloudflare:apiToken <token>
+pulumi up
+```
+
 ## Gotchas
 
 - **OrbStack DHCP DNS**: the VM's default DHCP server hands out a bogus
   resolver (`0.250.250.200`) that silently drops queries. The
-  `tailscale` Ansible role writes `/etc/systemd/resolved.conf.d/upstream.conf`
-  to override with `1.1.1.1` + `9.9.9.9`. If you ever see CoreDNS
-  forwarding to a `0.250.x.x` IP, this file is missing.
+  `tailscale` Ansible role writes
+  `/etc/systemd/resolved.conf.d/upstream.conf` to override with
+  `1.1.1.1` + `9.9.9.9`. If you ever see CoreDNS forwarding to a
+  `0.250.x.x` IP, this file is missing.
 - **cloudflared on OrbStack**: must run with `hostNetwork: true`
   (`kubernetes/platform/cloudflared/deployment.yaml`). The CNI bridge
   mangles outbound TCP/7844 to Cloudflare's edge and the tunnel
@@ -219,8 +263,11 @@ gh workflow run "Build and Deploy" -R jterrazz/<app>
   hostname was unceremoniously destroyed (no `tailscale logout`), the
   new VM joins as `<hostname>-2` and MagicDNS no longer resolves the
   canonical name. Rename via the Tailscale API
-  (`POST /api/v2/device/<id>/name {"name":"jterrazz-infra"}`) — there's
-  a `gh tail77a797` admin link.
+  (`POST /api/v2/device/<id>/name {"name":"jterrazz-infra"}`).
+- **`tag` field on legacy apps**: apps without `tag: main` on prod fall
+  into the workflow's legacy branch which deploys "staging" (which
+  doesn't exist for them) and silently leaves prod stale. Always
+  declare `tag` explicitly.
 - **Helm adoption**: annotate existing resources with
   `meta.helm.sh/release-name`, `meta.helm.sh/release-namespace`, and
   label `app.kubernetes.io/managed-by=Helm`.

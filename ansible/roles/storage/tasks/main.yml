@@ -7,7 +7,7 @@
 # directly, so the on-disk path stays stable, but the data lives on the
 # Mac and survives `pulumi destroy` of the VM.
 - name: Link /var/lib/k8s-data to the Mac bind dir on OrbStack
-  when: deployment_target == 'orbstack'
+  when: deployment_target | default('hetzner') == 'orbstack'
   block:
     - name: Resolve Mac bind dir
       ansible.builtin.set_fact:
@@ -26,7 +26,7 @@
 # Base directory for all k8s storage. Skipped on OrbStack because the
 # symlink above already makes /var/lib/k8s-data resolve to a real path.
 - name: Create base storage directory
-  when: deployment_target != 'orbstack'
+  when: deployment_target | default('hetzner') != 'orbstack'
   ansible.builtin.file:
     path: /var/lib/k8s-data
     state: directory

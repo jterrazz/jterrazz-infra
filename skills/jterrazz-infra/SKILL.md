@@ -7,10 +7,13 @@ description: Infrastructure for the @jterrazz ecosystem — defines how all apps
 
 Part of the @jterrazz ecosystem. Defines how all apps deploy.
 
-Single-node k3s cluster on an OrbStack VM on the dev Mac. Pulumi stack
-`jterrazz/local` is the only live stack — a `jterrazz/production`
-Hetzner stack existed historically and was destroyed in May 2026 (see
-the migration trail around git commit `b29f250`).
+Single-node k3s cluster, **dual-mode** — pick which stack you bring up:
+
+- `jterrazz/production` → Hetzner cax21 VPS (live, has a public IPv4)
+- `jterrazz/local`      → OrbStack VM on the dev Mac (no monthly bill)
+
+Same Ansible playbooks and Helm charts on either target. CI-driven app
+deploys via Helm. OrbStack is the current active prod (May 2026 swap).
 
 ## Stack
 
@@ -73,8 +76,13 @@ Managed zones: `jterrazz.com`, `clawrr.com`, `clawssify.com`, `sig.news`, `spwn.
 ## Key commands
 
 ```bash
-# SSH to the cluster (via the OrbStack SSH proxy)
-ssh root@jterrazz-infra@orb
+# Provision + configure the active target
+make deploy-local                    # OrbStack
+make deploy                          # Hetzner
+
+# SSH to the cluster
+ssh root@jterrazz-infra@orb                       # OrbStack
+ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
 
 # Check an app
 kubectl get pods -n prod-{app-name}
@@ -85,14 +93,12 @@ kubectl get certificate -n prod-{app-name}
 kubectl rollout restart -n platform-networking \
   deploy/cert-manager deploy/cert-manager-webhook deploy/cert-manager-cainjector
 
-# Deploy from scratch (provision + configure)
-make deploy
-
 # Trigger every app's CI to (re)deploy (post-rebuild bootstrap)
 make apps
 
-# Tear down the OrbStack VM (data on the Mac stays)
-make destroy
+# Tear down (data on the Mac stays for OrbStack)
+make destroy-local
+./scripts/deploy.sh production --destroy
 ```
 
 ## Never

@@ -3,5 +3,5 @@ runtime:
   name: nodejs
   options:
     typescript: true
-description: OrbStack VM hosting the single-node k3s cluster
+description: Dual-mode k3s cluster infra — Hetzner VPS or OrbStack VM
 main: src/

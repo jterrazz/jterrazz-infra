@@ -83,15 +83,14 @@ curl -s "http://$POD_IP:2000/metrics" | grep '^cloudflared_tunnel_total_requests
 The Cloudflare dashboard shows the tunnel as **HEALTHY** within ~30s of
 pod start.
 
-## Multi-replica notes
+## Swapping between Hetzner and OrbStack
 
-A tunnel can have up to 4 cloudflared connectors registered with the
-same `CLOUDFLARE_TUNNEL_TOKEN`; Cloudflare load-balances between them.
-We run one replica today. If you ever spin up a second cluster pointed
-at the same tunnel and want to stop serving from one, scale the
-unwanted replica to 0:
+Both clusters can run cloudflared with the same `CLOUDFLARE_TUNNEL_TOKEN`
+— a tunnel allows up to 4 connectors and Cloudflare load-balances
+between them. To make only one serve traffic, scale the other to 0:
 
 ```bash
+# On the cluster that should NOT serve:
 kubectl scale -n platform-networking deploy/cloudflared --replicas=0
 ```
 
@@ -102,7 +101,9 @@ bridge on the OrbStack VM mangles outbound TCP/7844 to the Cloudflare
 edge and cloudflared's tunnel handshake gets RSTed (`curl` from the
 same pod IP connects fine — only cloudflared's specific socket flow
 fails). hostNetwork bypasses CNI and traffic goes straight through the
-host's stack.
+host's stack. Harmless on Hetzner.
 
 Also, `--protocol http2` is set to avoid OrbStack's NAT eating
 outbound UDP/443 (QUIC). HTTP/2 over TCP traverses the NAT cleanly.
+Hetzner doesn't need it but we keep both clusters on the same protocol
+for consistency.
