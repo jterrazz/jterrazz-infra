@@ -7,25 +7,26 @@ description: Infrastructure for the @jterrazz ecosystem — defines how all apps
 
 Part of the @jterrazz ecosystem. Defines how all apps deploy.
 
-Single-node K3s cluster, deployable on Hetzner (`stack=production`) or
-a local OrbStack VM (`stack=local`). Same playbooks and Helm charts on
-either target. CI-driven app deploys via Helm.
+Single-node k3s cluster on an OrbStack VM on the dev Mac. Pulumi stack
+`jterrazz/local` is the only live stack — a `jterrazz/production`
+Hetzner stack existed historically and was destroyed in May 2026 (see
+the migration trail around git commit `b29f250`).
 
 ## Stack
 
-- **Cluster**: K3s (single-node, etcd embedded)
+- **Cluster**: k3s (single-node, embedded etcd)
 - **Ingress**: Traefik IngressRoutes
 - **Public traffic**: cloudflared (outbound QUIC tunnel — no host port exposure)
 - **Private access**: Tailscale (SSH + internal services)
 - **TLS**: cert-manager + Let's Encrypt DNS-01 via Cloudflare
 - **DNS**: Pulumi-managed Cloudflare records (private CNAMEs in `pulumi/src/dns.ts`) + cloudflared auto-DNS for public tunnel hostnames
-- **Secrets**: Infisical
+- **Secrets**: Infisical (`/jterrazz-infra` for Ansible, `/jterrazz-ci` for app CI)
 - **Observability**: Grafana + Loki + Tempo + Prometheus + OTel Collector
 - **Registry**: Private Docker registry at `registry.jterrazz.com`
 
 ## Deploying a new app
 
-1. **App repo**: add `Dockerfile`, `.infrastructure/application.yaml`, `Makefile`, CI workflows
+1. **App repo**: add `Dockerfile`, `.infrastructure/application.yaml`, `Makefile`, CI workflows (reuses `jterrazz/jterrazz-actions/.github/workflows/release-docker.yaml`)
 2. **Infra repo (only if new public zone)**: add domain to `kubernetes/platform/cert-manager/issuers.yaml`
 3. **GitHub secrets** on the app repo: `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET`
 4. **Cloudflare** (new public domain): SSL mode Full (Strict); add a Public Hostname in the tunnel UI — it auto-creates the CNAME
@@ -46,13 +47,19 @@ spec:
     path: /
 environments:
   prod:
-    tag: main
+    tag: main           # deploy on every main push (image: latest)
     replicas: 1
     ingress:
       host: {domain}
       path: /
       public: true
 ```
+
+`tag` strategies:
+
+- `tag: main` → deploys on `main` push, image `latest`
+- `tag: next` → deploys on `v*` tag push, image is that tag
+- `tag: v1.2.3` (pinned) → deploys only on `workflow_dispatch`
 
 ## Namespace convention
 
@@ -66,26 +73,26 @@ Managed zones: `jterrazz.com`, `clawrr.com`, `clawssify.com`, `sig.news`, `spwn.
 ## Key commands
 
 ```bash
-# SSH to Hetzner (key from Pulumi state)
-ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)
-
-# SSH to OrbStack VM (via OrbStack proxy)
-ssh -F ~/.orbstack/ssh/config root@jterrazz-infra@orb
+# SSH to the cluster (via the OrbStack SSH proxy)
+ssh root@jterrazz-infra@orb
 
 # Check an app
 kubectl get pods -n prod-{app-name}
 kubectl get ingressroute -n prod-{app-name}
+kubectl get certificate -n prod-{app-name}
 
-# Restart cert-manager after disruption
+# Restart cert-manager after k3s churn
 kubectl rollout restart -n platform-networking \
   deploy/cert-manager deploy/cert-manager-webhook deploy/cert-manager-cainjector
 
 # Deploy from scratch (provision + configure)
-./scripts/deploy.sh production    # Hetzner
-./scripts/deploy.sh local         # OrbStack
+make deploy
 
-# Mirror Hetzner's app releases onto OrbStack
-./scripts/deploy-apps-local.sh
+# Trigger every app's CI to (re)deploy (post-rebuild bootstrap)
+make apps
+
+# Tear down the OrbStack VM (data on the Mac stays)
+make destroy
 ```
 
 ## Never

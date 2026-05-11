@@ -42,18 +42,15 @@
           - iptables
           # OrbStack VMs ship without sshd (host-side ProxyCommand handles
           # SSH instead). The security role expects `sshd -t` to be present
-          # to validate its config; install it so the same hardening applies
-          # to OrbStack VMs as to Hetzner VPSs. Has no effect on hosts that
-          # already ship it.
+          # to validate its config; install it so hardening can run.
           - openssh-server
         state: present
 
     # Ubuntu's openssh-server package creates /run/sshd lazily on service
     # start, so a fresh install that hasn't started the service yet fails
     # `sshd -t` validation later in the security role. Starting + enabling
-    # the unit here makes the role's idempotent reconfigure work on
-    # bare-metal-like setups (OrbStack) and is a no-op on Hetzner where
-    # sshd is already up.
+    # the unit here makes the role's idempotent reconfigure work even on
+    # the very first deploy.
     - name: Ensure ssh service is started and enabled
       ansible.builtin.systemd:
         name: ssh
@@ -71,11 +68,11 @@
       ansible.builtin.stat:
         path: /dev/kmsg
       register: kmsg_dev
-      when: deployment_target | default('hetzner') == 'orbstack'
+      when: deployment_target == 'orbstack'
 
     - name: Backfill /dev/kmsg when the kernel doesn't expose it
       when:
-        - deployment_target | default('hetzner') == 'orbstack'
+        - deployment_target == 'orbstack'
         - not kmsg_dev.stat.exists | default(true)
       block:
         - name: Persist /dev/kmsg symlink via tmpfiles.d

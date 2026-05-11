@@ -4,10 +4,9 @@ import * as cloudflare from "@pulumi/cloudflare";
 /**
  * Cloudflare-side DNS for the cluster's private services.
  *
- * Replaces the in-cluster external-dns controller: every CNAME we used to
- * have external-dns reconcile is declared here, statically, and Pulumi
- * updates it when the active target's Tailscale hostname changes (e.g.
- * Hetzner → OrbStack swap).
+ * Replaces an in-cluster external-dns controller: every private CNAME
+ * is declared here, statically, and Pulumi updates it when the
+ * machine's Tailscale hostname changes.
  *
  * Public records (apex CNAMEs to the Cloudflare tunnel) are intentionally
  * NOT in here — they're managed by cloudflared's Public-Hostname feature
@@ -24,9 +23,9 @@ import * as cloudflare from "@pulumi/cloudflare";
 // are stable identifiers; if it ever moves we'd see a 404 at apply time.
 const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 
-// Tailscale tailnet suffix. Same for every node in our tailnet — the part
-// that varies is the hostname (jterrazz-vps vs jterrazz-infra), which is
-// passed in from the active target's MachineOutputs.
+// Tailscale tailnet suffix. Stable across the tailnet — the only
+// variable is the cluster's hostname (= `jterrazz-infra` today),
+// passed in from machine.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
 /**

@@ -5,11 +5,3 @@
 {{- define "platform.host" -}}
 {{- required "host is required" .Values.host -}}
 {{- end -}}
-
-{{- define "platform.dnsTarget" -}}
-{{- if .Values.private -}}
-{{- .Values.infrastructure.tailscaleHostname -}}
-{{- else -}}
-{{- .Values.infrastructure.publicTarget -}}
-{{- end -}}
-{{- end -}}

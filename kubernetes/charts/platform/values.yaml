@@ -11,10 +11,8 @@ storage: {}
 #   size: 1Gi
 
 # Infrastructure settings (injected by Ansible at deploy time).
-#
-# publicTarget is the hostname/IP that public IngressRoutes resolve to via
-# external-dns. Post-cloudflared this is the tunnel CNAME, not a host IP.
+# nodeName is the k8s node name used as the hostPath PV's nodeAffinity
+# match (single-node k3s, safety belt against accidental schedule on a
+# renamed node).
 infrastructure:
-  tailscaleHostname: ""
-  publicTarget: ""
   nodeName: ""

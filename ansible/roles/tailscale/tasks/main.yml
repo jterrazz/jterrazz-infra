@@ -3,12 +3,10 @@
 
 # OrbStack's Ubuntu image ships with systemd-resolved masked. Without a
 # stub resolver, Tailscale falls back to writing /etc/resolv.conf
-# directly with `nameserver 100.100.100.100`, and that resolver does not
-# chase CNAMEs from a public zone (jterrazz.com) into the tailnet zone
-# (*.ts.net). The deploy then fails at "helm registry login
-# registry.jterrazz.com" because the CNAME → tailnet hostname chain is
-# not followed. Hetzner's stock image already has resolved running, so
-# the symlink + restart below are no-ops there.
+# directly with `nameserver 100.100.100.100`, and that resolver does
+# not chase CNAMEs from a public zone (jterrazz.com) into the tailnet
+# zone (*.ts.net). The deploy then fails at "helm registry login
+# registry.jterrazz.com" because the CNAME chain is not followed.
 - name: Ensure systemd-resolved is enabled (needed for CNAME chasing into tailnet)
   ansible.builtin.systemd:
     name: systemd-resolved
@@ -21,8 +19,7 @@
 # silently drops queries; without overriding it, resolved tries the
 # bogus IP first and CoreDNS upstream forwarding times out for any
 # name that isn't in the tailnet. Force a working public resolver as
-# the global default. No-op on Hetzner (where DHCP already returns
-# valid DNS) since we keep eth0's link DNS as a fallback.
+# the global default.
 - name: Configure systemd-resolved global DNS overrides
   ansible.builtin.copy:
     dest: /etc/systemd/resolved.conf.d/upstream.conf

@@ -3,5 +3,5 @@ runtime:
   name: nodejs
   options:
     typescript: true
-description: Hetzner VPS for k3s Kubernetes cluster
+description: OrbStack VM hosting the single-node k3s cluster
 main: src/

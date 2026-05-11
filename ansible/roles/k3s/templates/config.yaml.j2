@@ -7,10 +7,8 @@ node-ip: {{ k3s_node_ip }}
 node-external-ip: {{ k3s_node_ip }}
 https-listen-port: 6443
 
-# Cluster
-{% if environment_type | default('production') != 'local' %}
+# Cluster — single-node k3s always initializes the embedded etcd.
 cluster-init: true
-{% endif %}
 token: {{ k3s_cluster_token }}
 
 # Storage
@@ -44,10 +42,9 @@ disable:
 # Kubelet
 # resolv-conf must point at the uplink resolv.conf (with real upstream
 # DNS servers), not /etc/resolv.conf which on systemd-resolved hosts is
-# the 127.0.0.53 stub. Without this, kubelet hands the stub to pods that
-# inherit host DNS (CoreDNS uses dnsPolicy: Default), CoreDNS forwards
-# back into itself, and the loop plugin fatals on startup. The path is
-# stable on Ubuntu (Hetzner + OrbStack).
+# the 127.0.0.53 stub. Without this, kubelet hands the stub to pods
+# that inherit host DNS (CoreDNS uses dnsPolicy: Default), CoreDNS
+# forwards back into itself, and the loop plugin fatals on startup.
 kubelet-arg:
   - "max-pods=250"
   - "resolv-conf=/run/systemd/resolve/resolv.conf"

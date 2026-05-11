@@ -100,9 +100,6 @@ kind: IngressRoute
 metadata:
   name: registry
   namespace: platform-registry
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: registry.jterrazz.com
-    external-dns.alpha.kubernetes.io/target: "{{ tailscale_ip }}"
 spec:
   entryPoints:
     - websecure

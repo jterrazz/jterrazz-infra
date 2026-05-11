@@ -3,15 +3,34 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { MachineOutputs } from "./types";
 
 /**
- * OrbStack target — provisions a local Linux VM that exposes the same
- * Ansible/k3s contract as the Hetzner VPS, but runs on the dev machine
- * via OrbStack.
- *
- * No first-party OrbStack provider exists for Pulumi, so we wrap the
- * `orbctl` CLI with a custom dynamic resource. Three operations matter:
+ * Outputs the machine resource exposes to the rest of the pipeline.
+ * Ansible reads sshHost/sshPrivateKey from Pulumi state; deploy.sh and
+ * dns.ts read tailscaleHostname.
+ */
+export interface MachineOutputs {
+    /** Hostname Ansible feeds into `ansible_host`. For OrbStack this is
+     *  the VM name reached through the OrbStack SSH proxy. */
+    sshHost: pulumi.Output<string>;
+    /** The OrbStack-managed SSH private key file's contents; marked
+     *  secret so Ansible can consume it without leaking into Pulumi
+     *  preview/up output. */
+    sshPrivateKey: pulumi.Output<string>;
+    /** Hostname the VM registers with Tailscale (= the Cloudflare CNAME
+     *  target for private hostnames managed by `pulumi/src/dns.ts`). */
+    tailscaleHostname: pulumi.Output<string>;
+    /** Free-form status string surfaced via `pulumi stack output`. */
+    status: pulumi.Output<string>;
+    /** Cosmetic logical name (matches the orbctl VM name). */
+    name: pulumi.Output<string>;
+}
+
+/**
+ * OrbStack-hosted Linux VM running the same k3s + platform stack the
+ * cluster has always run. No first-party OrbStack provider exists for
+ * Pulumi, so we wrap the `orbctl` CLI with a custom dynamic resource.
+ * Three operations matter:
  *
  *  - **Create** calls `orbctl create`. The VM is intentionally NOT
  *    isolated: isolation drops CAP_SYS_ADMIN inside the VM, which breaks
@@ -44,13 +63,13 @@ export interface BindMount {
 export interface OrbStackVMArgs {
     /** Machine name shown in `orbctl list`. Also the Ansible `inventory_hostname`. */
     name: pulumi.Input<string>;
-    /** Linux distro (alpine | ubuntu | debian | …). Match Hetzner where possible for parity. */
+    /** Linux distro (alpine | ubuntu | debian | …). */
     distro: pulumi.Input<string>;
     /** Optional distro version (e.g. "noble" for Ubuntu 24.04). */
     version?: pulumi.Input<string>;
     /** Architecture (arm64 | amd64). Defaults to host arch. */
     arch?: pulumi.Input<string>;
-    /** Default user inside the VM. `orbctl` defaults to the macOS user; we use `root` for Ansible parity with Hetzner. */
+    /** Default user inside the VM. `orbctl` defaults to the macOS user; we use `root` for Ansible. */
     user?: pulumi.Input<string>;
     /** Host folders to mount into the VM. */
     bindMounts?: pulumi.Input<pulumi.Input<BindMount>[]>;
@@ -222,23 +241,13 @@ export class OrbStackVM extends pulumi.dynamic.Resource {
     }
 }
 
-/**
- * Build an OrbStack-backed `MachineOutputs`. Consumed by index.ts when
- * `target=orbstack`. The Tailscale hostname is fixed per-target so the
- * Hetzner and OrbStack stacks can coexist in the same tailnet without
- * MagicDNS collisions.
- */
-export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
-    // `new Config("orbstack")` reads from the `orbstack:` namespace in the
-    // stack config (e.g. Pulumi.local.yaml). The project-namespaced Config
-    // passed in by index.ts can't see those keys without the explicit
-    // namespace, so we re-scope here. Keeping the parameter so the
-    // dispatcher signature stays uniform across targets.
+/** Build the cluster machine outputs. Reads its config from the
+ *  `orbstack:` namespace in the stack config (see Pulumi.local.yaml). */
+export function createMachine(): MachineOutputs {
     const config = new pulumi.Config("orbstack");
-    // Default name keeps the OrbStack VM distinct in `orbctl list` even if
-    // someone forgets to set `orbstack:machineName` in their stack config.
-    // Pulumi.local.yaml overrides this to "jterrazz-infra" for the local
-    // stack (its Tailscale identity).
+    // Default name keeps the VM distinct in `orbctl list` even if someone
+    // forgets to set `orbstack:machineName`. Pulumi.local.yaml overrides
+    // this to "jterrazz-infra" — the canonical Tailscale identity.
     const machineName = config.get("machineName") || "jterrazz-orbstack";
     const distro = config.get("distro") || "ubuntu";
     const version = config.get("version") || "noble";
@@ -253,10 +262,9 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
         arch,
         user: "root",
         bindMounts: [
-            // Hetzner's k3s storage lives at /var/lib/k8s-data; mirroring
-            // the path means none of Ansible's storage role nor the k8s
-            // hostPath PVs need to know whether they're running on Hetzner
-            // or OrbStack.
+            // k3s storage lives at /var/lib/k8s-data; Ansible's storage
+            // role symlinks it to /mnt/mac/<dataPath> so data survives
+            // `pulumi destroy && pulumi up` (VM goes, Mac dir stays).
             { source: dataPathOnMac, destination: "/var/lib/k8s-data" },
         ],
     });
@@ -264,8 +272,6 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
     return {
         sshHost: vm.name,
         sshPrivateKey: pulumi.secret(vm.sshKeyPath.apply((p) => fs.readFileSync(p, "utf8"))),
-        // Hostname the VM advertises to Tailscale. Distinct from `name` so
-        // the tailnet keeps a clean identity per machine.
         tailscaleHostname: pulumi.output(machineName),
         status: vm.state,
         name: vm.name,

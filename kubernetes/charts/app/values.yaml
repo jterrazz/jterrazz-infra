@@ -31,11 +31,10 @@ registry:
   username: ""
   password: ""
 
-# Infrastructure settings (injected by CI via --set).
-#
-# publicTarget is the hostname/IP that public IngressRoutes resolve to via
-# external-dns. With the cloudflared migration it's the tunnel hostname
-# (<tunnel-id>.cfargotunnel.com).
+# Infrastructure settings — historically used to drive external-dns
+# annotations. Now external-dns is gone (Pulumi manages private CNAMEs,
+# cloudflared auto-creates public ones), so these are accepted but
+# unused. Kept for back-compat with the jterrazz-actions CI flags.
 infrastructure:
   publicTarget: ""
   tailscaleHostname: ""

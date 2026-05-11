@@ -11,8 +11,8 @@ tempo:
       memory: 256Mi
     limits:
       # Tempo's ingester WAL flush spikes RAM beyond the 512Mi default —
-      # the upstream chart was OOMKilled every few minutes (~3k restarts
-      # over 64 days on Hetzner) which also makes `helm --wait` flake.
+      # the upstream chart OOMKilled every few minutes on a busier
+      # cluster (~3k restarts over 64 days) and made `helm --wait` flake.
       memory: 1Gi
   receivers:
     otlp:
