@@ -36,7 +36,7 @@ APP_REPOS=(
     "clawrr/web-landing"
 )
 
-# Fetch the platform-shared values from Infisical /infrastructure prod.
+# Fetch the platform-shared values from Infisical /jterrazz-infra prod.
 # Returns: REGISTRY_PASSWORD, CLOUDFLARE_TUNNEL_HOSTNAME, exported.
 fetch_platform_values() {
     local jwt
@@ -48,7 +48,7 @@ fetch_platform_values() {
     secrets_json=$(curl -s -G \
         --data-urlencode "workspaceSlug=jterrazz" \
         --data-urlencode "environment=prod" \
-        --data-urlencode "secretPath=/infrastructure" \
+        --data-urlencode "secretPath=/jterrazz-infra" \
         -H "Authorization: Bearer $jwt" \
         "https://eu.infisical.com/api/v3/secrets/raw")
 

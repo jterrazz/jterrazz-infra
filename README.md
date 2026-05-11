@@ -77,7 +77,7 @@ identical K3s + platform stack. Only the underlying machine differs.
 ```
 
 Both scripts pull the required secrets from Infisical
-(`/infrastructure` env=prod) using the universal-auth credentials in
+(`/jterrazz-infra` env=prod) using the universal-auth credentials in
 `.env` and pass them to Ansible as extra vars.
 
 Apps mirror Hetzner → OrbStack via:
@@ -214,18 +214,22 @@ Backup: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`.
 | Secret                    | Infra repo | App repos |
 | ------------------------- | ---------- | --------- |
 | `PULUMI_ACCESS_TOKEN`     | ✓          |           |
-| `HCLOUD_TOKEN`            | ✓          |           |
 | `INFISICAL_CLIENT_ID`     | ✓          | ✓         |
 | `INFISICAL_CLIENT_SECRET` | ✓          | ✓         |
 
+The Hetzner API token lives in the Pulumi stack config as
+`hcloud:token` (encrypted via Pulumi Cloud), not in GitHub secrets.
+Rotate with `pulumi config set --secret hcloud:token <new>` in
+`pulumi/` against the `jterrazz/production` stack.
+
 ### Infisical — project `jterrazz`, env `prod`
 
-* **`/infrastructure`** (consumed by Ansible playbooks): `TAILSCALE_OAUTH_CLIENT_ID`,
+* **`/jterrazz-infra`** (consumed by Ansible playbooks): `TAILSCALE_OAUTH_CLIENT_ID`,
   `TAILSCALE_OAUTH_CLIENT_SECRET`, `CLOUDFLARE_API_TOKEN`,
   `CLOUDFLARE_TUNNEL_TOKEN`, `GITHUB_TOKEN_JTERRAZZ`,
   `GITHUB_TOKEN_CLAWRR`, `DOCKER_REGISTRY_PASSWORD`,
   `PORTAINER_ADMIN_PASSWORD`, `GRAFANA_PASSWORD`, `N8N_ENCRYPTION_KEY`
-* **`/infrastructure-apps`** (consumed by app CI workflows):
+* **`/jterrazz-ci`** (consumed by app CI workflows):
   `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD`,
   `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`,
   `KUBECONFIG_BASE64`
@@ -234,7 +238,6 @@ Backup: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`.
 
 ```
 PULUMI_ACCESS_TOKEN=…
-HCLOUD_TOKEN=…
 INFISICAL_CLIENT_ID=…
 INFISICAL_CLIENT_SECRET=…
 CLOUDFLARE_TUNNEL_TOKEN=…   # tunnel-token shortcut, also stored in Infisical

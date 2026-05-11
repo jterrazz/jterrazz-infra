@@ -15,7 +15,7 @@
 #
 # Deploy prerequisites (one-time, manual — see README.md in this dir):
 #   1. Create the tunnel in Cloudflare Zero Trust dashboard.
-#   2. Add CLOUDFLARE_TUNNEL_TOKEN to Infisical /infrastructure prod.
+#   2. Add CLOUDFLARE_TUNNEL_TOKEN to Infisical /jterrazz-infra prod.
 #   3. Configure the catch-all public-hostname rule in the dashboard.
 ---
 # InfisicalSecret syncs the connection token from Infisical into a regular
@@ -34,10 +34,10 @@ spec:
       secretsScope:
         projectSlug: jterrazz
         envSlug: prod
-        # /infrastructure is the platform-services path (sibling to
+        # /jterrazz-infra is the platform-services path (sibling to
         # CLOUDFLARE_API_TOKEN, TAILSCALE_OAUTH_*, etc.). Apps deployed by CI
-        # use /infrastructure-apps; cloudflared is platform, not an app.
-        secretsPath: /infrastructure
+        # use /jterrazz-ci; cloudflared is platform, not an app.
+        secretsPath: /jterrazz-infra
       credentialsRef:
         secretName: infisical-credentials
         secretNamespace: platform-secrets

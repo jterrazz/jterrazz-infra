@@ -132,11 +132,15 @@ targets. This is the universal CI interface regardless of toolchain.
 
 ```
 PULUMI_ACCESS_TOKEN
-HCLOUD_TOKEN
 INFISICAL_CLIENT_ID
 INFISICAL_CLIENT_SECRET
 CLOUDFLARE_TUNNEL_TOKEN   # only required if you'll modify the tunnel locally; otherwise sourced from Infisical at deploy time
 ```
+
+The Hetzner API token is stored as a Pulumi-encrypted stack config
+(`hcloud:token` on `jterrazz/production`), not in `.env` or GitHub
+secrets. `pulumi config set --secret hcloud:token <new>` from `pulumi/`
+to rotate.
 
 ## Common Operations
 

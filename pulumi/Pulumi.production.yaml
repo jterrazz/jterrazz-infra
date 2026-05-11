@@ -4,3 +4,5 @@ config:
   jterrazz-infra:image: ubuntu-24.04
   cloudflare:apiToken:
     secure: AAABADHx4IKoYE3/BcWm1EX/DKYVLjmbOjVkiOYjwxMt0qLBLeWIHGRO+6JbMjd8wJJTqn8JWOwogQhO7mH7pKV0OP53liPo
+  hcloud:token:
+    secure: AAABAKOV+HPZeBQPbsIExaX20rGMUizxc/WSIFG33VwWHK4J6uD6K/ZEMXzkMboAmM6zx9AbYD7/xJtdX0kqPd9o2FnL4j/SnoYXWVpv5tyyb+mqfNmNYCs1e2Wr90uz

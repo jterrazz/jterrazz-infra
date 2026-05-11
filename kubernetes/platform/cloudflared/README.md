@@ -37,7 +37,7 @@ screen Cloudflare shows a connection token (starts with `eyJ…`).
 ### 2. Store the token in Infisical
 
 `https://eu.infisical.com` → project `jterrazz` → env `prod` → path
-`/infrastructure` → add secret `CLOUDFLARE_TUNNEL_TOKEN` with that
+`/jterrazz-infra` → add secret `CLOUDFLARE_TUNNEL_TOKEN` with that
 value. Ansible decodes the token at deploy time to derive the tunnel
 hostname (`<tunnel-id>.cfargotunnel.com`) used as the DNS target for
 public records.

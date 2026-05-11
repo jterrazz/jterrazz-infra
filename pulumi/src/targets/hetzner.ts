@@ -18,6 +18,19 @@ export function createHetznerMachine(config: pulumi.Config): MachineOutputs {
     const location = config.get("location") || "nbg1";
     const image = config.get("image") || "ubuntu-24.04";
 
+    // API token from the `hcloud:token` Pulumi-encrypted stack config.
+    // We construct an explicit Provider because the default provider
+    // doesn't auto-inject `hcloud:token` into the schema's `token`
+    // attribute (unlike e.g. `cloudflare:apiToken`), so refresh-time
+    // API calls would fail with a "Missing Hetzner Cloud API token"
+    // error. Storing the token in Pulumi state (vs `.env` + GH secret)
+    // removes one credential from circulation.
+    const hcloudConfig = new pulumi.Config("hcloud");
+    const provider = new hcloud.Provider("hcloud", {
+        token: hcloudConfig.requireSecret("token"),
+    });
+    const providerOpts = { provider };
+
     // Generate an SSH key pair on every `pulumi up`. The private key is
     // stored encrypted in Pulumi state and exported as a secret output for
     // Ansible to consume. Rotation = `pulumi up -t '**main'` then Ansible
@@ -27,7 +40,7 @@ export function createHetznerMachine(config: pulumi.Config): MachineOutputs {
     const sshKey = new hcloud.SshKey("main", {
         name: "jterrazz-infra",
         publicKey: sshKeyPair.publicKeyOpenssh,
-    });
+    }, providerOpts);
 
     // Cloud-init installs the public key for the root user so Ansible can
     // SSH in immediately on first boot, without manual intervention.
@@ -52,7 +65,7 @@ ssh_authorized_keys:
             environment: "production",
             managed_by: "pulumi",
         },
-    });
+    }, providerOpts);
 
     return {
         sshHost: server.ipv4Address,

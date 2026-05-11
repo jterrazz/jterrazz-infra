@@ -8,7 +8,7 @@
 #                  Ansible inventory `local`)
 #
 # Secrets used by Ansible (Cloudflare API token, Tailscale OAuth, etc.)
-# are pulled live from Infisical /infrastructure env=prod using the
+# are pulled live from Infisical /jterrazz-infra env=prod using the
 # universal-auth credentials in .env. Nothing sensitive lives on disk
 # beyond the temp extra-vars file (0600, deleted on exit).
 #
@@ -54,7 +54,7 @@ pulumi_destroy() {
     pulumi destroy --yes --refresh
 }
 
-# Fetch all Ansible-bound secrets from Infisical /infrastructure env=prod.
+# Fetch all Ansible-bound secrets from Infisical /jterrazz-infra env=prod.
 # Returns the path to a temp YAML file. Mapping below decides which
 # Infisical keys become which Ansible vars; if a role needs a new value,
 # add it here and to the role's defaults.
@@ -69,7 +69,7 @@ fetch_secrets_file() {
     secrets_json=$(curl -s -G \
         --data-urlencode "workspaceSlug=jterrazz" \
         --data-urlencode "environment=prod" \
-        --data-urlencode "secretPath=/infrastructure" \
+        --data-urlencode "secretPath=/jterrazz-infra" \
         -H "Authorization: Bearer $jwt" \
         "https://eu.infisical.com/api/v3/secrets/raw")
 

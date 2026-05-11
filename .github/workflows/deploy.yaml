@@ -11,7 +11,6 @@ concurrency:
 
 env:
   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-  HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
 
 jobs:
   validate:
@@ -78,7 +77,7 @@ jobs:
           domain: https://eu.infisical.com
           project-slug: jterrazz
           env-slug: prod
-          secret-path: /infrastructure
+          secret-path: /jterrazz-infra
 
       - name: Wait for SSH
         run: |
