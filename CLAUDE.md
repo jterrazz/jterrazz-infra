@@ -2,7 +2,10 @@
 
 ## Project Overview
 
-Single-node k3s cluster, **dual-mode** — interchangeably deployable on
+Single-node k3s cluster (**SQLite/kine datastore** — no `cluster-init`;
+embedded etcd is intentionally avoided on a single node to save
+~150-300Mi RSS, since the cluster is fully reproducible and app data is
+hostPath on the Mac), **dual-mode** — interchangeably deployable on
 either of two Pulumi stacks:
 
 - **`jterrazz/production`** — Hetzner cax21 VPS in nbg1, live production
@@ -74,7 +77,12 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - Shared platform chart (`kubernetes/charts/platform/`) generates
   Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
 - App chart at `kubernetes/charts/app/`, published to OCI registry
-  (currently 1.13.0).
+  (currently 1.14.1). Injects a default
+  `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request)
+  **only for apps requesting >= 512Mi** (e.g. signews-api), unless the
+  app sets its own `NODE_OPTIONS`. 1.14.0 applied it to all apps, which
+  crash-looped small Next.js services (96MB cap starved SSR boot);
+  1.14.1 added the 512Mi floor.
 - Per-service config split: `helm.yaml` (upstream chart values) +
   `platform.yaml` (ingress / cert / storage).
 - PVCs use `storageClassName: manual` with hostPath PVs, bound via

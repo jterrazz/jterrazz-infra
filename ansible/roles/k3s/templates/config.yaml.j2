@@ -7,8 +7,13 @@ node-ip: {{ k3s_node_ip }}
 node-external-ip: {{ k3s_node_ip }}
 https-listen-port: 6443
 
-# Cluster — single-node k3s always initializes the embedded etcd.
-cluster-init: true
+# Cluster — single-node uses k3s's default SQLite/kine datastore (no
+# `cluster-init`, which would force the heavier embedded etcd: etcd
+# holds the keyspace in RAM + runs its own compaction/snapshotting,
+# ~150-300Mi more RSS for zero benefit on one node). The whole cluster
+# is reproducible via Pulumi+Ansible and app data is hostPath on the
+# Mac, so etcd's auto-snapshots were redundant here. If you ever go
+# multi-node HA, re-add `cluster-init: true`.
 token: {{ k3s_cluster_token }}
 
 # Storage

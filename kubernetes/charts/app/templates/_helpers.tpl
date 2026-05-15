@@ -110,6 +110,30 @@ Memory limit (defaults to 2x memory request)
 {{- end -}}
 
 {{/*
+Node.js V8 old-space cap (MiB) ≈ 75% of the memory *request*, but ONLY
+for apps requesting >= 512Mi. Rationale: without --max-old-space-size
+V8 sizes its heap off the (2x) cgroup limit and drifts toward it — but
+that drift only matters for large apps (e.g. signews-api at 768Mi).
+Small Next.js services (~128Mi) already run lean (~80Mi RSS); deriving
+a cap from their tiny request (96MB) starves SSR boot and crash-loops
+them (regressed spwn.sh once — see git history). So below 512Mi we
+return "" and the caller skips injection, preserving the safe
+uncapped default. Also returns "" for non-Mi/Gi requests.
+*/}}
+{{- define "app.nodeMaxOldSpace" -}}
+{{- $mem := include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") -}}
+{{- $reqMi := 0 -}}
+{{- if hasSuffix "Mi" $mem -}}
+{{- $reqMi = trimSuffix "Mi" $mem | int -}}
+{{- else if hasSuffix "Gi" $mem -}}
+{{- $reqMi = mul (trimSuffix "Gi" $mem | int) 1024 -}}
+{{- end -}}
+{{- if ge $reqMi 512 -}}
+{{- div (mul $reqMi 3) 4 -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Infisical environment - uses secretsEnv override if set, otherwise maps to environment
 */}}
 {{- define "app.infisicalEnv" -}}

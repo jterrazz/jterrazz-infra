@@ -4,6 +4,9 @@ image:
 mode: deployment
 replicaCount: 1
 
+# NOTE: this chart auto-injects GOMEMLIMIT at 80% of resources.limits.memory
+# (→ ~204MiB for the 256Mi limit below), so no manual GOMEMLIMIT is needed.
+
 resources:
   requests:
     cpu: 25m

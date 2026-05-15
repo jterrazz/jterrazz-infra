@@ -21,6 +21,11 @@ loki:
 
 singleBinary:
   replicas: 1
+  # GOMEMLIMIT (soft) under the 512Mi hard limit so the Go GC releases
+  # memory to the OS as RSS climbs, instead of drifting upward.
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: "400MiB"
   persistence:
     storageClass: manual
     size: 10Gi

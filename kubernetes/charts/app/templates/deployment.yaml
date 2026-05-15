@@ -72,6 +72,14 @@ spec:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.platform-telemetry:4318"
             {{- end }}
+            {{- /* Default Node.js heap cap ≈ 75% of the memory request.
+                   Skipped entirely if the app sets its own NODE_OPTIONS.
+                   Harmless on non-Node runtimes (the var is ignored). */}}
+            {{- $nodeHeap := include "app.nodeMaxOldSpace" . }}
+            {{- if and $nodeHeap (not (hasKey $envVars "NODE_OPTIONS")) }}
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size={{ $nodeHeap }}"
+            {{- end }}
             {{- /* Secret environment variables from Infisical */}}
             {{- if $secrets.env }}
             {{- range $secrets.env }}
