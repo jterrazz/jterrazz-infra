@@ -20,6 +20,21 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ .Values.spec.port }}
+    {{- /* Allow traffic from explicitly declared client apps */}}
+    {{- range .Values.spec.networkPolicy.allowedClients }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prod-{{ . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: next-{{ . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: staging-{{ . }}
+      ports:
+        - port: {{ $.Values.spec.port }}
+    {{- end }}
   egress:
     # Allow DNS resolution
     - to:
@@ -56,6 +71,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: prod-{{ . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: next-{{ . }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: staging-{{ . }}
