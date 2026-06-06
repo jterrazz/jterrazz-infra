@@ -53,4 +53,21 @@ export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>
             comment: `Managed by Pulumi (replaces external-dns for ${host}.jterrazz.com)`,
         });
     }
+
+    // Wildcard for the *.internal.jterrazz.com namespace: any new app
+    // exposing a private surface picks its own subdomain
+    // (e.g. signews.internal.jterrazz.com) and resolves through this
+    // record. Saves us from declaring a per-host CNAME for each new app
+    // and from updating Pulumi every time an app gains a private side.
+    // DNS-only (grey cloud) — proxied wildcards need a paid plan, and
+    // Tailscale-routed traffic must skip the Cloudflare edge anyway.
+    new cloudflare.Record("private-wildcard-internal", {
+        zoneId: JTERRAZZ_ZONE_ID,
+        name: "*.internal",
+        type: "CNAME",
+        content: fqdn,
+        proxied: false,
+        ttl: 1,
+        comment: "Managed by Pulumi — wildcard for *.internal.jterrazz.com → tailnet",
+    });
 }
