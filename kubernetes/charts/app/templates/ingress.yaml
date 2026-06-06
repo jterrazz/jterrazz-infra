@@ -41,8 +41,16 @@ spec:
 {{- $isPublic := $entry.public }}
 {{- $path := $entry.path | default "/" }}
 {{- $hasPath := ne $path "/" }}
+{{- /* stripPrefix defaults to TRUE (legacy /api behaviour: backend
+       routes are mounted at /<resource> without the /api prefix). Apps
+       that mount routes at the literal path (e.g. an MCP server
+       registered at /mcp) set stripPrefix: false to keep the prefix
+       visible to the backend. */ -}}
+{{- $stripPrefix := true }}
+{{- if hasKey $entry "stripPrefix" }}{{- $stripPrefix = $entry.stripPrefix }}{{- end }}
+{{- $emitStripPrefix := and $hasPath $stripPrefix }}
 {{- $routeName := printf "%s-%d" $appName $idx }}
-{{- if $hasPath }}
+{{- if $emitStripPrefix }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -68,13 +76,13 @@ spec:
   routes:
     - match: Host(`{{ $entry.host }}`){{ if $hasPath }} && PathPrefix(`{{ $path }}`){{ end }}
       kind: Rule
-      {{- if or (not $isPublic) $hasPath }}
+      {{- if or (not $isPublic) $emitStripPrefix }}
       middlewares:
         {{- if not $isPublic }}
         - name: private-access
           namespace: platform-networking
         {{- end }}
-        {{- if $hasPath }}
+        {{- if $emitStripPrefix }}
         - name: {{ $routeName }}-strip-prefix
         {{- end }}
       {{- end }}
