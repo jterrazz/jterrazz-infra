@@ -10,12 +10,13 @@ name: Deploy Platform
 # `make deploy-local`; this workflow only handles incremental updates.
 #
 # Auth: the deploy keypair lives split — public half in
-# ansible/group_vars/all.yml (security_ci_deploy_pubkey) so the security
-# role can install it in root's authorized_keys, private half as the
-# CI_DEPLOY_SSH_PRIVATE GitHub Action secret on this repo. To rotate:
-# regen the keypair, paste the new pub into group_vars/all.yml, set the
-# new priv via `gh secret set CI_DEPLOY_SSH_PRIVATE -R jterrazz/jterrazz-infra`,
-# then `make deploy-local` to roll the pubkey onto the VM.
+# ansible/roles/security/defaults/main.yml (security_ci_deploy_pubkey)
+# so the security role installs it in root's authorized_keys, private
+# half as the CI_DEPLOY_SSH_PRIVATE GitHub Action secret on this repo.
+# To rotate: regen the keypair, paste the new pub into the security
+# role default, set the new priv via `gh secret set CI_DEPLOY_SSH_PRIVATE
+# -R jterrazz/jterrazz-infra`, then `make deploy-local` to roll the
+# pubkey onto the VM.
 
 on:
   push:

@@ -27,8 +27,8 @@
 
 # CI deploy key — the `deploy-platform.yaml` workflow uses this to ssh
 # in over Tailscale and run ansible-playbook. Idempotent (won't dupe
-# the key on re-runs). Empty pubkey = skip (e.g. when running ad-hoc
-# without Infisical-backed extra-vars).
+# the key on re-runs). Pubkey lives in defaults/main.yml; setting it
+# empty in extra-vars skips the install.
 - name: Install CI deploy public key in root's authorized_keys
   ansible.posix.authorized_key:
     user: root
