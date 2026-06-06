@@ -398,7 +398,7 @@
       ansible.builtin.command: >
         helm upgrade --install cert-manager jetstack/cert-manager
         --namespace platform-networking
-        --version v1.19.3
+        --version v1.20.2
         --values {{ manifest_dest }}/kubernetes/platform/cert-manager/helm.yaml
         --wait
         --timeout 5m
@@ -431,7 +431,7 @@
       ansible.builtin.command: >
         helm upgrade --install infisical infisical/secrets-operator
         --namespace platform-secrets
-        --version 0.10.25
+        --version 0.11.0
         --values {{ manifest_dest }}/kubernetes/platform/infisical/helm.yaml
         --wait
         --timeout 5m
@@ -529,7 +529,7 @@
       ansible.builtin.command: >
         helm upgrade --install otel-collector open-telemetry/opentelemetry-collector
         --namespace platform-telemetry
-        --version 0.146.1
+        --version 0.158.1
         --values {{ manifest_dest }}/kubernetes/platform/otel-collector/helm.yaml
         --wait
         --timeout 5m
@@ -624,7 +624,7 @@
       ansible.builtin.command: >
         helm upgrade --install n8n community-charts/n8n
         --namespace platform-automation
-        --version 1.16.29
+        --version 1.17.1
         --values {{ manifest_dest }}/kubernetes/platform/n8n/helm.yaml
         --wait
         --timeout 5m
