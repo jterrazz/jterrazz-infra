@@ -164,17 +164,45 @@ Get secrets config - merge base spec.secrets with environment secrets override
 {{- end -}}
 
 {{/*
-Get ingress config - merge base spec.ingress with environment ingress override
+Get ingress list for the current environment.
+
+Apps declare `ingress` as a LIST of surface entries, each with
+{ host, path?, public? }. The env's list fully replaces a spec-level
+list (no per-entry merge — keep manifests explicit). Returns YAML so
+the template can consume via fromYamlArray.
+
+  ingress:
+    - host: signews.jterrazz.com         # public
+      path: /api
+      public: true
+    - host: signews.internal.jterrazz.com# private — tailnet only
+      path: /
+      public: false
 */}}
-{{- define "app.ingressConfig" -}}
+{{- define "app.ingressList" -}}
 {{- $env := .Values.environment -}}
-{{- $baseIngress := .Values.spec.ingress | default dict -}}
 {{- $envConfig := dict -}}
 {{- if hasKey .Values.environments $env -}}
 {{- $envConfig = index .Values.environments $env -}}
 {{- end -}}
-{{- $envIngress := $envConfig.ingress | default dict -}}
-{{- merge $envIngress $baseIngress | toYaml -}}
+{{- $list := list -}}
+{{- if hasKey $envConfig "ingress" -}}
+{{- $list = $envConfig.ingress -}}
+{{- else if .Values.spec.ingress -}}
+{{- $list = .Values.spec.ingress -}}
+{{- end -}}
+{{- if not (kindIs "slice" $list) -}}
+{{- fail "ingress must be a list of { host, path?, public? } entries. The single-object form was removed in chart 1.17.0 — migrate to a one-element list." -}}
+{{- end -}}
+{{- $list | toYaml -}}
+{{- end -}}
+
+{{/*
+Slug a hostname for use in resource names: dots → dashes, lowercase.
+signews.jterrazz.com → signews-jterrazz-com
+*/}}
+{{- define "app.hostSlug" -}}
+{{- . | lower | replace "." "-" -}}
 {{- end -}}
 
 {{/*

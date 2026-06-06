@@ -1,62 +1,87 @@
 {{- if eq (include "app.envExists" .) "true" -}}
-{{- $ingress := fromYaml (include "app.ingressConfig" .) -}}
-{{- if $ingress.host -}}
 {{- $appName := include "app.name" . -}}
-{{- $hasPath := and $ingress.path (ne $ingress.path "/") -}}
+{{- $ingressList := fromYamlArray (include "app.ingressList" .) -}}
+
+{{- /* One Certificate per unique host — multiple ingress entries on the
+       same host share the same TLS secret. Names derive from the host
+       slug so kubectl get certificate is readable. */ -}}
+{{- $hosts := dict -}}
+{{- range $entry := $ingressList -}}
+  {{- if $entry.host -}}
+    {{- $_ := set $hosts $entry.host true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- range $host, $_ := $hosts }}
+{{- $hostSlug := include "app.hostSlug" $host }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $appName }}-{{ $hostSlug }}-tls
+  labels:
+    {{- include "app.labels" $ | nindent 4 }}
+spec:
+  secretName: {{ $appName }}-{{ $hostSlug }}-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ $host }}
+{{- end }}
+
+{{- /* One IngressRoute per entry (+ a strip-prefix middleware when the
+       path isn't /). Resource name = {app}-{idx} to stay unique even if
+       two entries share host or path. */ -}}
+{{- range $idx, $entry := $ingressList }}
+{{- if not (hasKey $entry "public") }}
+  {{- fail (printf "ingress entry %d for %s is missing the required `public: true|false` field — declare network visibility explicitly" $idx $appName) }}
+{{- end }}
+{{- $hostSlug := include "app.hostSlug" $entry.host }}
+{{- $isPublic := $entry.public }}
+{{- $path := $entry.path | default "/" }}
+{{- $hasPath := ne $path "/" }}
+{{- $routeName := printf "%s-%d" $appName $idx }}
 {{- if $hasPath }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: {{ $appName }}-strip-prefix
+  name: {{ $routeName }}-strip-prefix
   labels:
-    {{- include "app.labels" . | nindent 4 }}
+    {{- include "app.labels" $ | nindent 4 }}
 spec:
   stripPrefix:
     prefixes:
-      - {{ $ingress.path }}
+      - {{ $path }}
 {{- end }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: {{ $appName }}
+  name: {{ $routeName }}
   labels:
-    {{- include "app.labels" . | nindent 4 }}
+    {{- include "app.labels" $ | nindent 4 }}
 spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ $ingress.host }}`){{ if $hasPath }} && PathPrefix(`{{ $ingress.path }}`){{ end }}
+    - match: Host(`{{ $entry.host }}`){{ if $hasPath }} && PathPrefix(`{{ $path }}`){{ end }}
       kind: Rule
-      {{- if or (not $ingress.public) $hasPath }}
+      {{- if or (not $isPublic) $hasPath }}
       middlewares:
-        {{- if not $ingress.public }}
+        {{- if not $isPublic }}
         - name: private-access
           namespace: platform-networking
         {{- end }}
         {{- if $hasPath }}
-        - name: {{ $appName }}-strip-prefix
+        - name: {{ $routeName }}-strip-prefix
         {{- end }}
       {{- end }}
       services:
         - name: {{ $appName }}
           port: 80
   tls:
-    secretName: {{ $appName }}-tls
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: {{ $appName }}-tls
-  labels:
-    {{- include "app.labels" . | nindent 4 }}
-spec:
-  secretName: {{ $appName }}-tls
-  issuerRef:
-    name: letsencrypt-production
-    kind: ClusterIssuer
-  dnsNames:
-    - {{ $ingress.host }}
+    secretName: {{ $appName }}-{{ $hostSlug }}-tls
 {{- end }}
 {{- end }}
