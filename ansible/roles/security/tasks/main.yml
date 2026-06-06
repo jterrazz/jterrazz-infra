@@ -25,6 +25,18 @@
     validate: "sshd -t -f %s"
   notify: Restart SSH
 
+# CI deploy key — the `deploy-platform.yaml` workflow uses this to ssh
+# in over Tailscale and run ansible-playbook. Idempotent (won't dupe
+# the key on re-runs). Empty pubkey = skip (e.g. when running ad-hoc
+# without Infisical-backed extra-vars).
+- name: Install CI deploy public key in root's authorized_keys
+  ansible.posix.authorized_key:
+    user: root
+    key: "{{ security_ci_deploy_pubkey }}"
+    state: present
+    comment: "ci-deploy (jterrazz-infra GHA)"
+  when: security_ci_deploy_pubkey | length > 0
+
 # UFW Firewall
 # IPv6 is disabled in UFW — the cluster doesn't bind any IPv6 listeners
 # and the extra rules would just be dead config.

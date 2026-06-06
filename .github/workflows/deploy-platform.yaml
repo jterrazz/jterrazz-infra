@@ -1,0 +1,147 @@
+name: Deploy Platform
+
+# Runs ansible-playbook against the OrbStack VM over Tailscale to apply
+# platform-layer changes (cert-manager, otel-collector, n8n, etc.) and
+# any infra manifests under kubernetes/platform or kubernetes/infrastructure.
+#
+# Pulumi is deliberately NOT in scope here — `pulumi up --stack local`
+# requires orbctl on the dev Mac and the VM not yet existing, neither of
+# which a GHA runner can satisfy. Provisioning stays on the laptop via
+# `make deploy-local`; this workflow only handles incremental updates.
+#
+# One-time setup (laptop) before this can pass:
+#   1. ssh-keygen -t ed25519 -f /tmp/ci-deploy -N ''
+#   2. Add to Infisical /jterrazz-infra env=prod:
+#        CI_DEPLOY_SSH_PUBLIC  = <contents of /tmp/ci-deploy.pub>
+#        CI_DEPLOY_SSH_PRIVATE = <contents of /tmp/ci-deploy>
+#   3. make deploy-local   (installs the pubkey on the VM)
+# After that, every push to main touching ansible/** or kubernetes/platform/**
+# rolls forward automatically.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ansible/playbooks/platform.yml'
+      - 'kubernetes/platform/**'
+      - 'kubernetes/infrastructure/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-platform
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Apply platform via Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fetch CI secrets (Tailscale OAuth, docker registry creds) + join
+      # the tailnet as tag:ci. After this step the runner can reach the
+      # OrbStack VM at jterrazz-infra.tail77a797.ts.net.
+      - name: Setup infrastructure
+        uses: jterrazz/jterrazz-actions/actions/infra-connect@main
+        with:
+          infisical-client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+
+      # Fetch the platform-layer secrets ansible needs (Cloudflare, n8n
+      # encryption key, etc.) from a different Infisical path than CI.
+      - name: Fetch platform secrets from Infisical
+        uses: Infisical/secrets-action@v1.0.9
+        with:
+          method: universal
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: https://eu.infisical.com
+          project-slug: jterrazz
+          env-slug: prod
+          secret-path: /jterrazz-infra
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ansible + collections
+        working-directory: ansible
+        run: |
+          pip install ansible
+          ansible-galaxy collection install -r requirements.yml
+
+      # Materialise the deploy private key in a 0600 tempfile so ansible
+      # can consume it without it ever touching the workspace.
+      - name: Write SSH deploy key
+        run: |
+          if [ -z "${CI_DEPLOY_SSH_PRIVATE:-}" ]; then
+            echo "::error::CI_DEPLOY_SSH_PRIVATE missing from Infisical /jterrazz-infra. See workflow header for one-time setup steps."
+            exit 1
+          fi
+          KEY_FILE="$(mktemp -t ci-deploy-XXXXXX.key)"
+          chmod 600 "$KEY_FILE"
+          printf '%s\n' "$CI_DEPLOY_SSH_PRIVATE" > "$KEY_FILE"
+          echo "CI_DEPLOY_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
+
+      # Generate the same extra-vars file shape that scripts/deploy.sh
+      # produces locally, so the playbook gets exactly the variables its
+      # roles + platform.yml expect. Mapping mirrors fetch_secrets_file()
+      # in deploy.sh — keep them in sync if you add a new role secret.
+      - name: Build extra-vars file
+        env:
+          INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+          INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+        run: |
+          EXTRA="$(mktemp -t platform-vars-XXXXXX.yml)"
+          chmod 600 "$EXTRA"
+          python3 - "$EXTRA" <<'PY'
+          import os, sys, json
+          mapping = {
+              "CLOUDFLARE_API_TOKEN":          "cloudflare_api_token",
+              "CLOUDFLARE_TUNNEL_TOKEN":       "cloudflare_tunnel_token",
+              "TAILSCALE_OAUTH_CLIENT_ID":     "tailscale_oauth_client_id",
+              "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale_oauth_client_secret",
+              "DOCKER_REGISTRY_PASSWORD":      "registry_password",
+              "PORTAINER_ADMIN_PASSWORD":      "portainer_password",
+              "GRAFANA_PASSWORD":              "grafana_password",
+              "N8N_ENCRYPTION_KEY":            "n8n_encryption_key",
+              "CI_DEPLOY_SSH_PUBLIC":          "security_ci_deploy_pubkey",
+          }
+          out = {}
+          missing = []
+          for env_key, ansible_var in mapping.items():
+              val = os.environ.get(env_key)
+              if val is None:
+                  missing.append(env_key)
+                  continue
+              out[ansible_var] = val
+          out["infisical_client_id"]     = os.environ["INFISICAL_CLIENT_ID"]
+          out["infisical_client_secret"] = os.environ["INFISICAL_CLIENT_SECRET"]
+          if missing:
+              print(f"::error::Missing Infisical secrets at /jterrazz-infra: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
+          with open(sys.argv[1], "w") as f:
+              for k, v in out.items():
+                  v = v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+                  f.write(f'{k}: "{v}"\n')
+          PY
+          echo "EXTRA_VARS_FILE=$EXTRA" >> "$GITHUB_ENV"
+
+      # Scope: platform.yml only (Helm-managed services + manifests).
+      # Skips base/security/networking/storage/k3s because those roles
+      # can restart sshd or tailscaled and would kill the runner's SSH
+      # session mid-run. Use `make deploy-local` from the laptop when
+      # you need to apply changes outside the platform layer.
+      - name: Run ansible-playbook (platform layer only)
+        working-directory: ansible
+        run: |
+          ansible-playbook playbooks/platform.yml \
+            -i inventories/ci/hosts.yml \
+            -e "@$EXTRA_VARS_FILE" \
+            -e ansible_ssh_private_key_file=$CI_DEPLOY_KEY_FILE
+
+      - name: Wipe temp secrets
+        if: always()
+        run: |
+          rm -f "${CI_DEPLOY_KEY_FILE:-}" "${EXTRA_VARS_FILE:-}" || true

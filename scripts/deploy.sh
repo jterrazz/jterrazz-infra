@@ -98,6 +98,7 @@ mapping = {
     "PORTAINER_ADMIN_PASSWORD":      "portainer_password",
     "GRAFANA_PASSWORD":              "grafana_password",
     "N8N_ENCRYPTION_KEY":            "n8n_encryption_key",
+    "CI_DEPLOY_SSH_PUBLIC":          "security_ci_deploy_pubkey",
 }
 out = {}
 for s in data.get("secrets", []):

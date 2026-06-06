@@ -20,6 +20,12 @@ security_ufw_default_forward: "deny"
 # Lock SSH to Tailscale only (set to true after Tailscale is confirmed working)
 security_ssh_tailscale_only: false
 
+# CI deploy public key — installed in root's authorized_keys so the
+# `deploy-platform.yaml` workflow (running on a GHA runner that joins
+# Tailscale as tag:ci) can ssh in and run ansible. Empty string = skip.
+# Populated by scripts/deploy.sh from Infisical CI_DEPLOY_SSH_PUBLIC.
+security_ci_deploy_pubkey: ""
+
 # Base firewall rules.
 #
 # 80/443 are open ONLY from Tailscale, not public. Cloudflared establishes
