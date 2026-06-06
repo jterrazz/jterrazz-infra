@@ -16,3 +16,12 @@ storage_base_path: "/var/lib/k8s-data"
 
 # Security
 skip_security: false
+
+# CI deploy public key — installed in root's authorized_keys by the
+# security role so the deploy-platform.yaml GHA workflow can ssh into
+# the OrbStack VM over Tailscale. Public half is committed here (it's
+# not a secret); the matching private key is stored as a GitHub Action
+# secret (CI_DEPLOY_SSH_PRIVATE) on jterrazz/jterrazz-infra. Rotate by
+# regenerating the keypair, replacing both halves, and running
+# `make deploy-local` once.
+security_ci_deploy_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPCsf2boqXrePRFuhL3KfJjpabJ0bjAeNqpTLl7GREf ci-deploy@jterrazz-infra"

@@ -9,14 +9,13 @@ name: Deploy Platform
 # which a GHA runner can satisfy. Provisioning stays on the laptop via
 # `make deploy-local`; this workflow only handles incremental updates.
 #
-# One-time setup (laptop) before this can pass:
-#   1. ssh-keygen -t ed25519 -f /tmp/ci-deploy -N ''
-#   2. Add to Infisical /jterrazz-infra env=prod:
-#        CI_DEPLOY_SSH_PUBLIC  = <contents of /tmp/ci-deploy.pub>
-#        CI_DEPLOY_SSH_PRIVATE = <contents of /tmp/ci-deploy>
-#   3. make deploy-local   (installs the pubkey on the VM)
-# After that, every push to main touching ansible/** or kubernetes/platform/**
-# rolls forward automatically.
+# Auth: the deploy keypair lives split — public half in
+# ansible/group_vars/all.yml (security_ci_deploy_pubkey) so the security
+# role can install it in root's authorized_keys, private half as the
+# CI_DEPLOY_SSH_PRIVATE GitHub Action secret on this repo. To rotate:
+# regen the keypair, paste the new pub into group_vars/all.yml, set the
+# new priv via `gh secret set CI_DEPLOY_SSH_PRIVATE -R jterrazz/jterrazz-infra`,
+# then `make deploy-local` to roll the pubkey onto the VM.
 
 on:
   push:
@@ -74,9 +73,11 @@ jobs:
       # Materialise the deploy private key in a 0600 tempfile so ansible
       # can consume it without it ever touching the workspace.
       - name: Write SSH deploy key
+        env:
+          CI_DEPLOY_SSH_PRIVATE: ${{ secrets.CI_DEPLOY_SSH_PRIVATE }}
         run: |
           if [ -z "${CI_DEPLOY_SSH_PRIVATE:-}" ]; then
-            echo "::error::CI_DEPLOY_SSH_PRIVATE missing from Infisical /jterrazz-infra. See workflow header for one-time setup steps."
+            echo "::error::CI_DEPLOY_SSH_PRIVATE missing — set via: gh secret set CI_DEPLOY_SSH_PRIVATE -R jterrazz/jterrazz-infra < /tmp/ci-deploy"
             exit 1
           fi
           KEY_FILE="$(mktemp -t ci-deploy-XXXXXX.key)"
@@ -106,7 +107,6 @@ jobs:
               "PORTAINER_ADMIN_PASSWORD":      "portainer_password",
               "GRAFANA_PASSWORD":              "grafana_password",
               "N8N_ENCRYPTION_KEY":            "n8n_encryption_key",
-              "CI_DEPLOY_SSH_PUBLIC":          "security_ci_deploy_pubkey",
           }
           out = {}
           missing = []
