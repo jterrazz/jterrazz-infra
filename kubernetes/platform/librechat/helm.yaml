@@ -136,11 +136,10 @@ librechat:
           - "claude-opus-4-8"
           - "claude-sonnet-4-6"
           - "claude-haiku-4-5-20251001"
-    # Default "agent": Opus 4.8 with Claude's native web search + artifacts.
-    # `prioritize: true` + the spec's `default: true` make it the preselected
-    # experience on launch. enforce:false keeps the raw model menu reachable.
-    # `executeCode` is intentionally NOT set yet — it needs a code-interpreter
-    # backend (see notes); add it once that's deployed.
+    # The single agent: Opus 4.8 with Claude's native web search + artifacts.
+    # enforce:false keeps the raw model menu reachable as a fallback (useful
+    # until the web_search multi-turn bug is validated; flip to true to lock
+    # the UI to just this agent). `executeCode` not set — needs a code backend.
     modelSpecs:
       enforce: false
       prioritize: true
@@ -152,14 +151,6 @@ librechat:
           preset:
             endpoint: "anthropic"
             model: "claude-opus-4-8"
-            web_search: true
-          artifacts: "default"
-        - name: "sonnet-web"
-          label: "Sonnet 4.6 — Web Search"
-          description: "Sonnet 4.6 with native web search (lighter / faster)."
-          preset:
-            endpoint: "anthropic"
-            model: "claude-sonnet-4-6"
             web_search: true
           artifacts: "default"
     interface:
