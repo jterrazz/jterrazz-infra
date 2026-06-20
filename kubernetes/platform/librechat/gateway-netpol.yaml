@@ -1,0 +1,31 @@
+# Additive NetworkPolicy that lets LibreChat (platform-ai) reach the gateway.
+#
+# gateway-intelligence is an app-chart workload; its generated NetworkPolicy
+# only allows ingress from kube-system (Traefik) and prod/next/staging-<client>
+# namespaces (allowedClients), and the chart can't express a platform
+# namespace. NetworkPolicies are additive, so this extra policy in the
+# gateway's namespace grants platform-ai access to pod port 8317 without
+# touching the gateway chart.
+#
+# Lives here (not in the gateway repo) because it exists solely for LibreChat;
+# apply it alongside the LibreChat deploy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-librechat
+  namespace: prod-gateway-intelligence
+spec:
+  podSelector:
+    matchLabels:
+      app: gateway-intelligence
+      environment: prod
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-ai
+      ports:
+        - port: 8317
+          protocol: TCP

@@ -1,0 +1,166 @@
+# Values for the official LibreChat chart
+#   oci://ghcr.io/danny-avila/librechat-chart/librechat  (pinned in platform.yml)
+#
+# Datastore strategy: the chart's bundled MongoDB/Redis subcharts pull from
+# the deprecated Bitnami repo (broken since 2025-09). We disable ALL bundled
+# datastores and run a standalone mongo:7 (see mongodb.yaml) on a `manual`
+# hostPath PVC — that survives a cluster repave, the default `local-path` SC
+# does not.
+
+replicaCount: 1
+
+# Pin to the chart's appVersion default (v0.8.7-rc1) by leaving tag empty.
+# Bump deliberately — set an explicit tag here once a stable release is cut.
+image:
+  registry: registry.librechat.ai
+  repository: danny-avila/librechat
+  tag: ""
+
+# IngressRoute (platform.yaml) targets a Service literally named `librechat`,
+# so override the chart's fullname to match.
+fullnameOverride: librechat
+
+service:
+  type: ClusterIP
+  port: 3080
+  targetPort: 3080
+
+# Persist user uploads + generated images (see uploads.yaml). Same PVC mounted
+# at both LibreChat asset dirs via subPath. Without this they're lost on every
+# pod restart (imageVolume stays off; this manual hostPath PVC is repave-safe).
+volumes:
+  - name: uploads
+    persistentVolumeClaim:
+      claimName: librechat-uploads
+volumeMounts:
+  - name: uploads
+    mountPath: /app/uploads
+    subPath: uploads
+  - name: uploads
+    mountPath: /app/client/public/images
+    subPath: images
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+# Map ANTHROPIC_API_KEY <- the existing GATEWAY_API_KEY (same gateway key),
+# so the native `anthropic` endpoint authenticates without a second Infisical
+# entry. The anthropic endpoint is what unlocks Claude's server-side web_search.
+global:
+  librechat:
+    env:
+      - name: ANTHROPIC_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: librechat-credentials-env
+            key: GATEWAY_API_KEY
+
+# --- Bundled datastores: OFF (see header) ---
+mongodb:
+  enabled: false
+redis:
+  enabled: false
+meilisearch:
+  enabled: false
+librechat-rag-api:
+  enabled: false
+
+librechat:
+  # Pulls CREDS_KEY, CREDS_IV, JWT_SECRET, JWT_REFRESH_SECRET and
+  # GATEWAY_API_KEY into the pod env (synced from Infisical /librechat by
+  # secret.yaml). GATEWAY_API_KEY must be one of the gateway's API_KEYS.
+  # NOTE: the chart wires envFrom to a secret literally named
+  # `librechat-credentials-env` regardless of this value, so secret.yaml MUST
+  # create that exact name. We set it here too for clarity / to stop the chart
+  # generating its own.
+  existingSecretName: librechat-credentials-env
+
+  # No persistent upload volume in v1 — keeps it simple. Uploaded images live
+  # in the container fs and are lost on restart. Give it a manual hostPath PVC
+  # when we go public (don't rely on local-path: lost on repave).
+  imageVolume:
+    enabled: false
+
+  configEnv:
+    HOST: "0.0.0.0"
+    MONGO_URI: "mongodb://librechat-mongodb:27017/LibreChat"
+    # Private phase: no open registration. Flip ALLOW_REGISTRATION to "true"
+    # (and reconsider the private-access middleware) when going public.
+    ALLOW_REGISTRATION: "false"
+    ALLOW_EMAIL_LOGIN: "true"
+    ALLOW_SOCIAL_LOGIN: "false"
+    # Meilisearch disabled -> turn off conversation search.
+    SEARCH: "false"
+    # Point the native `anthropic` endpoint at the gateway's Anthropic-format
+    # /v1/messages API. The Anthropic SDK appends `/v1/messages`, so this is the
+    # bare host (no /v1). This is what enables Claude's server-side web_search.
+    ANTHROPIC_REVERSE_PROXY: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local"
+
+  # librechat.yaml — wires the single custom endpoint: our AI gateway.
+  # We hit the gateway's in-cluster Service directly (not gateway.jterrazz.com):
+  # that hostname resolves to the node's own tailnet IP and a pod can't
+  # hairpin to the node's ServiceLB (connection times out). The gateway's
+  # NetworkPolicy doesn't list platform-ai, so gateway-netpol.yaml adds an
+  # additive ingress rule for it. Service port is 80 -> pod 8317.
+  configYamlContent: |
+    version: 1.2.8
+    cache: true
+    endpoints:
+      custom:
+        - name: "Gateway Intelligence"
+          apiKey: "${GATEWAY_API_KEY}"
+          baseURL: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1"
+          models:
+            # Curated to Anthropic's top tier only (latest Opus/Sonnet/Haiku).
+            # fetch:false -> the menu shows exactly this list; default[0] is
+            # the pre-selected model.
+            default:
+              - "claude-opus-4-8"
+              - "claude-sonnet-4-6"
+              - "claude-haiku-4-5-20251001"
+            fetch: false
+          titleConvo: true
+          titleModel: "current"
+          modelDisplayLabel: "Claude (Gateway)"
+      # Native Anthropic endpoint (baseURL = ANTHROPIC_REVERSE_PROXY -> gateway,
+      # key = ANTHROPIC_API_KEY). Only this endpoint can trigger Claude's
+      # server-side web_search tool.
+      anthropic:
+        titleModel: "current"
+        # Built-in endpoints take a plain array here (not {default,fetch}).
+        models:
+          - "claude-opus-4-8"
+          - "claude-sonnet-4-6"
+          - "claude-haiku-4-5-20251001"
+    # Default "agent": Opus 4.8 with Claude's native web search + artifacts.
+    # `prioritize: true` + the spec's `default: true` make it the preselected
+    # experience on launch. enforce:false keeps the raw model menu reachable.
+    # `executeCode` is intentionally NOT set yet — it needs a code-interpreter
+    # backend (see notes); add it once that's deployed.
+    modelSpecs:
+      enforce: false
+      prioritize: true
+      list:
+        - name: "opus-full"
+          label: "Opus 4.8 — Web + Artifacts"
+          default: true
+          description: "Claude Opus 4.8 with native web search and artifacts."
+          preset:
+            endpoint: "anthropic"
+            model: "claude-opus-4-8"
+            web_search: true
+          artifacts: "default"
+        - name: "sonnet-web"
+          label: "Sonnet 4.6 — Web Search"
+          description: "Sonnet 4.6 with native web search (lighter / faster)."
+          preset:
+            endpoint: "anthropic"
+            model: "claude-sonnet-4-6"
+            web_search: true
+          artifacts: "default"
+    interface:
+      modelSelect: true

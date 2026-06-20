@@ -26,7 +26,7 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 
 - Traefik, cert-manager (Let's Encrypt DNS-01 via Cloudflare), Infisical operator
 - Grafana + Loki + Tempo + Prometheus + OTel Collector
-- n8n, Portainer, private Docker registry
+- n8n, Portainer, LibreChat, private Docker registry
 - **cloudflared** for public traffic (outbound QUIC tunnel)
 - **Tailscale** for SSH and private service access
 - **No GitOps controller** — CI-driven deploys via `helm upgrade --install`
@@ -37,7 +37,7 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - **Public hostnames** (apex domains routed to apps) — cloudflared's
   Public Hostname feature in the Zero Trust UI auto-creates the CNAME
   to `<tunnel-id>.cfargotunnel.com`.
-- **Private hostnames** (n8n, portainer, grafana, registry, gateway) —
+- **Private hostnames** (n8n, portainer, grafana, registry, gateway, chat) —
   Pulumi-managed in `pulumi/src/dns.ts`, CNAMEd to the active cluster's
   Tailscale FQDN. Only the stack with `manageDns=true` owns the records
   (production by default; flipped to local for the active swap).
@@ -58,6 +58,22 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - **clawssify-web** (`jterrazz/clawssify-web`): at `clawssify.com`
 - **clawrr-web-landing** (`clawrr/web-landing`): at `clawrr.com`
 - **gateway-intelligence** (`jterrazz/gateway-intelligence`): private at `gateway.jterrazz.com`
+
+Platform services (installed by `ansible/playbooks/platform.yml`, not the app
+chart): n8n, Portainer, and **LibreChat** — private AI chat UI at
+`chat.jterrazz.com` (`platform-ai` ns). LibreChat talks to the gateway as a
+custom OpenAI endpoint via the gateway's in-cluster Service
+(`http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1`)
+— NOT `gateway.jterrazz.com`, because that resolves to the node's own tailnet
+IP and a pod can't hairpin to the node's ServiceLB. The gateway's app-chart
+NetworkPolicy can't list a platform ns, so `gateway-netpol.yaml` adds an
+additive ingress rule for `platform-ai` → gateway:8317. Its datastore is a
+standalone `mongo:7`
+(`kubernetes/platform/librechat/mongodb.yaml`) — the chart's bundled Bitnami
+mongo subchart is disabled (deprecated upstream + no dynamic StorageClass
+here). Secrets sync from Infisical `/librechat`. Private-only for now
+(`ALLOW_REGISTRATION=false` + `private-access` middleware); going public means
+dropping `private` and relying on LibreChat's own auth.
 
 ## Managed Domains
 

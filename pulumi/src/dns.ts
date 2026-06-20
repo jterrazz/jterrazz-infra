@@ -34,7 +34,7 @@ const TAILNET_DOMAIN = "tail77a797.ts.net";
  * cluster's Tailscale FQDN. The Traefik private-access middleware on the
  * cluster handles the IP allow-list; this layer just keeps DNS honest.
  */
-const PRIVATE_HOSTS = ["n8n", "portainer", "grafana", "registry", "gateway"];
+const PRIVATE_HOSTS = ["n8n", "portainer", "grafana", "registry", "gateway", "chat"];
 
 export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>): void {
     const fqdn = tailscaleHostname.apply((h) => `${h}.${TAILNET_DOMAIN}`);

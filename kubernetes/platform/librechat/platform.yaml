@@ -1,0 +1,18 @@
+# Platform resources for LibreChat (Cert + private IngressRoute + storage).
+# `private: true` attaches the `private-access` middleware (Tailscale-only
+# ipAllowList) — LibreChat is reachable on the tailnet at chat.jterrazz.com
+# and NOT exposed through the Cloudflare tunnel. When we later go public we
+# drop `private` and lean on LibreChat's own auth (registration is disabled
+# below in helm.yaml until then).
+#
+# The `storage` block provisions the hostPath PV/PVC `librechat-data`
+# (/var/lib/k8s-data/librechat). It backs the standalone MongoDB in
+# mongodb.yaml. We use this `manual` hostPath PVC (not the default
+# `local-path` SC) on purpose: /var/lib/k8s-data is the dir that survives a
+# `pulumi destroy` repave; local-path volumes do not.
+name: librechat
+host: chat.jterrazz.com
+port: 3080
+private: true
+storage:
+  size: 3Gi

@@ -120,7 +120,7 @@
             private-hosts.server: |
               jterrazz.com:53 {
                 hosts {
-                  {{ tailscale_ip }} registry.jterrazz.com n8n.jterrazz.com portainer.jterrazz.com grafana.jterrazz.com gateway.jterrazz.com
+                  {{ tailscale_ip }} registry.jterrazz.com n8n.jterrazz.com portainer.jterrazz.com grafana.jterrazz.com gateway.jterrazz.com chat.jterrazz.com
                   fallthrough
                 }
                 forward . 1.1.1.1 9.9.9.9
@@ -354,6 +354,10 @@
           adopt_resource certificate.cert-manager.io portainer-tls platform-management portainer-platform
           adopt_resource ingressroute.traefik.io portainer platform-management portainer-platform
           adopt_resource persistentvolumeclaim portainer-data platform-management portainer-platform
+          # LibreChat
+          adopt_resource certificate.cert-manager.io librechat-tls platform-ai librechat-platform
+          adopt_resource ingressroute.traefik.io librechat platform-ai librechat-platform
+          adopt_resource persistentvolumeclaim librechat-data platform-ai librechat-platform
           echo "done"
         executable: /bin/bash
       environment:
@@ -379,6 +383,7 @@
           }
           adopt_pv n8n-data n8n-platform platform-automation
           adopt_pv portainer-data portainer-platform platform-management
+          adopt_pv librechat-data librechat-platform platform-ai
           echo "done"
         executable: /bin/bash
       environment:
@@ -688,6 +693,89 @@
       changed_when: portainer_init.status == 200
       failed_when: false
       no_log: true
+
+    # 7. LibreChat (private AI chat UI, wired to gateway-intelligence)
+    # Platform resources first (Cert + private IngressRoute + the
+    # `librechat-data` hostPath PVC that backs the standalone MongoDB).
+    - name: Deploy LibreChat platform resources
+      ansible.builtin.command: >
+        helm upgrade --install librechat-platform {{ platform_chart }}
+        --namespace platform-ai
+        --values {{ manifest_dest }}/kubernetes/platform/librechat/platform.yaml
+        --set infrastructure.publicTarget={{ cloudflare_tunnel_hostname }}
+        --set infrastructure.tailscaleHostname={{ tailscale_dns_hostname }}
+        --set infrastructure.nodeName={{ inventory_hostname }}
+        --wait
+        --timeout 2m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_platform_result
+      changed_when: "'has been upgraded' in librechat_platform_result.stdout or 'has been installed' in librechat_platform_result.stdout"
+
+    # Sync LibreChat secrets from Infisical (/librechat) before the app so its
+    # `existingSecretName` resolves on first boot.
+    - name: Apply LibreChat Infisical secret
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/secret.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_secret_apply
+      changed_when: "'created' in librechat_secret_apply.stdout or 'configured' in librechat_secret_apply.stdout"
+
+    - name: Wait for librechat-secrets to be materialized by the Infisical operator
+      ansible.builtin.command: kubectl get secret librechat-secrets -n platform-ai
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_secret_check
+      until: librechat_secret_check.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    # Standalone MongoDB (mongo:7) — replaces the chart's broken Bitnami
+    # subchart. Uses the librechat-data PVC from the platform chart above.
+    - name: Deploy LibreChat MongoDB
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/mongodb.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_mongo_apply
+      changed_when: "'created' in librechat_mongo_apply.stdout or 'configured' in librechat_mongo_apply.stdout"
+
+    - name: Wait for LibreChat MongoDB to be ready
+      ansible.builtin.command: kubectl rollout status deployment/librechat-mongodb -n platform-ai --timeout=120s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+
+    # Persistent storage for user uploads + generated images (the LibreChat pod
+    # mounts this PVC, so it must exist before the helm install below).
+    - name: Deploy LibreChat uploads storage
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/uploads.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_uploads_apply
+      changed_when: "'created' in librechat_uploads_apply.stdout or 'configured' in librechat_uploads_apply.stdout"
+
+    # Additive NetworkPolicy so LibreChat (platform-ai) can reach the gateway
+    # Service — the gateway's own policy doesn't list platform namespaces.
+    - name: Allow LibreChat to reach the gateway
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/gateway-netpol.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_netpol_apply
+      changed_when: "'created' in librechat_netpol_apply.stdout or 'configured' in librechat_netpol_apply.stdout"
+
+    - name: Install LibreChat via Helm
+      ansible.builtin.command: >
+        helm upgrade --install librechat oci://ghcr.io/danny-avila/librechat-chart/librechat
+        --namespace platform-ai
+        --version 2.0.6
+        --values {{ manifest_dest }}/kubernetes/platform/librechat/helm.yaml
+        --wait
+        --timeout 5m
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: librechat_result
+      changed_when: "'has been upgraded' in librechat_result.stdout or 'has been installed' in librechat_result.stdout"
 
     # 10. Apply registry manifests
     - name: Apply registry manifests

@@ -1,0 +1,36 @@
+# Persistent storage for LibreChat user-uploaded files and generated images.
+#
+# Without this, /app/uploads and /app/client/public/images live on the
+# container's ephemeral fs and are lost on every pod restart. This manual
+# hostPath PVC (Retain, under /var/lib/k8s-data -> Mac on OrbStack) keeps
+# them across pod restarts, helm reinstalls, and pulumi-destroy repaves.
+#
+# Mounted via subPath (uploads/, images/) from helm.yaml's volumeMounts.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: librechat-uploads
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/librechat-uploads
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: librechat-uploads
+  namespace: platform-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: librechat-uploads

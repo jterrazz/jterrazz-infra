@@ -1,0 +1,77 @@
+# Standalone MongoDB for LibreChat.
+#
+# Replaces the LibreChat chart's bundled Bitnami mongodb subchart (deprecated
+# 2025-09, broken to pull). Single-node, no auth — it only listens inside the
+# platform-ai namespace and the cluster has no other tenants on this DB. Add
+# auth (and a Secret-injected MONGO_URI) before this is anything but private.
+#
+# Data lives on the manual hostPath PVC `librechat-data` created by the
+# platform chart (platform.yaml). Recreate strategy: never run two writers
+# against one RWO hostPath volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: librechat-mongodb
+  namespace: platform-ai
+  labels:
+    app: librechat-mongodb
+    app.kubernetes.io/part-of: librechat
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: librechat-mongodb
+  template:
+    metadata:
+      labels:
+        app: librechat-mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7
+          args:
+            - "--quiet"
+            - "--wiredTigerCacheSizeGB"
+            - "0.25"
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+          resources:
+            requests:
+              cpu: 25m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: librechat-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: librechat-mongodb
+  namespace: platform-ai
+  labels:
+    app: librechat-mongodb
+    app.kubernetes.io/part-of: librechat
+spec:
+  selector:
+    app: librechat-mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
