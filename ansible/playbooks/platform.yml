@@ -721,8 +721,8 @@
       register: librechat_secret_apply
       changed_when: "'created' in librechat_secret_apply.stdout or 'configured' in librechat_secret_apply.stdout"
 
-    - name: Wait for librechat-secrets to be materialized by the Infisical operator
-      ansible.builtin.command: kubectl get secret librechat-secrets -n platform-ai
+    - name: Wait for librechat-credentials-env to be materialized by the Infisical operator
+      ansible.builtin.command: kubectl get secret librechat-credentials-env -n platform-ai
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: librechat_secret_check
