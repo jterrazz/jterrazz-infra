@@ -75,6 +75,28 @@ here). Secrets sync from Infisical `/librechat`. Private-only for now
 (`ALLOW_REGISTRATION=false` + `private-access` middleware); going public means
 dropping `private` and relying on LibreChat's own auth.
 
+The UI defaults to a single agent — **"Opus 4.8 — Web + Artifacts"** — using the
+native `anthropic` endpoint so Claude's server-side `web_search` works (the
+Agent framework's web_search would be orchestrated/SearXNG instead; not used).
+`ANTHROPIC_API_KEY` is mapped from the existing `GATEWAY_API_KEY` and
+`ANTHROPIC_REVERSE_PROXY` points at the gateway. Persistence: users, login and
+chat history live in `mongo` (PVC `librechat-data`); uploads/generated images
+in PVC `librechat-uploads`. Both are `Retain` hostPath under
+`/var/lib/k8s-data` → the Mac on OrbStack, so they survive pod restarts, helm
+reinstalls and `pulumi destroy` repaves (on Hetzner they'd be node-disk).
+
+### LibreChat: upgrading the default model
+
+There is **no auto-"latest Opus"** (model IDs are opaque; the gateway exposes
+no `-latest` alias). To move the default agent to a newer Opus: bump `model`
+**and** `label`/`description` in the `opus-full` modelSpec in
+`kubernetes/platform/librechat/helm.yaml`, then push to main (CI redeploys).
+It's server-side config, so it applies to **every user automatically** — no
+per-user migration; existing conversations keep their original model, new chats
+use the new default. (If you ever want this centralized across all gateway
+clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
+`gateway-intelligence/config.yaml` — deferred.)
+
 ## Managed Domains
 
 - `jterrazz.com`, `spwn.sh`, `clawrr.com`, `clawssify.com`, `sig.news` — all in cert-manager's `dnsZones`.

@@ -144,13 +144,20 @@ librechat:
       enforce: false
       prioritize: true
       list:
+        # ┌─────────────────────────────────────────────────────────────────┐
+        # │ UPGRADE THE DEFAULT MODEL (new Opus): bump `model` AND `label` +  │
+        # │ `description` below, then push to main — CI redeploys. Applies to │
+        # │ every user automatically; existing conversations keep their       │
+        # │ original model, new chats use the new default. (No gateway alias  │
+        # │ — see CLAUDE.md "LibreChat: upgrading the default model".)        │
+        # └─────────────────────────────────────────────────────────────────┘
         - name: "opus-full"
-          label: "Opus 4.8 — Web + Artifacts"
+          label: "Opus 4.8 — Web + Artifacts"          # bump on new Opus
           default: true
           description: "Claude Opus 4.8 with native web search and artifacts."
           preset:
             endpoint: "anthropic"
-            model: "claude-opus-4-8"
+            model: "claude-opus-4-8"                   # <-- bump on new Opus
             web_search: true
           artifacts: "default"
     interface:
