@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Managed by Ansible (tailscale role). Re-authenticates Tailscale on boot
+# if the daemon came back logged out. A logged-out node can't resolve
+# *.ts.net, which breaks registry.jterrazz.com pulls and ImagePullBackOffs
+# every app pod (Cloudflare then 503s the public hostnames).
+set -euo pipefail
+
+# Wait for tailscaled's socket to be answerable before deciding anything.
+for _ in $(seq 1 30); do
+    if tailscale status --json >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+# Whitespace-tolerant: `tailscale status --json` pretty-prints with a
+# space after the colon, so an unspaced pattern never matches.
+if tailscale status --json | grep -Eq '"BackendState"[[:space:]]*:[[:space:]]*"Running"'; then
+    echo "Tailscale already Running; nothing to do."
+    exit 0
+fi
+
+echo "Tailscale not Running; re-authenticating with OAuth client."
+args=(
+    --client-id="${TS_CLIENT_ID}"
+    --client-secret="${TS_CLIENT_SECRET}"
+    --hostname="{{ tailscale_hostname }}"
+    --advertise-tags="{{ tailscale_tags | join(',') }}"
+{% if tailscale_advertise_routes %}
+    --advertise-routes="{{ tailscale_advertise_routes | join(',') }}"
+{% endif %}
+{% if tailscale_accept_routes %}
+    --accept-routes
+{% endif %}
+{% if tailscale_accept_dns %}
+    --accept-dns
+{% endif %}
+)
+tailscale up "${args[@]}"

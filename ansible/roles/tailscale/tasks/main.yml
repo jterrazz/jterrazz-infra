@@ -90,7 +90,7 @@
   ansible.builtin.shell:
     cmd: |
       set -o pipefail
-      tailscale status --json | grep -q '"BackendState":"Running"'
+      tailscale status --json | grep -Eq '"BackendState"[[:space:]]*:[[:space:]]*"Running"'
     executable: /bin/bash
   register: tailscale_connected
   changed_when: false
@@ -111,6 +111,46 @@
     - tailscale_oauth_client_secret != ""
     - tailscale_connected.rc != 0
   changed_when: true
+
+# Boot-time self-heal: after a host reboot tailscaled can come back
+# "Logged out" (e.g. node-key expiry) and does NOT auto-reconnect. A
+# logged-out node can't resolve *.ts.net, so registry.jterrazz.com pulls
+# NXDOMAIN and every app pod ImagePullBackOffs (Cloudflare then 503s the
+# public hostnames). This oneshot unit re-auths on every boot if needed.
+- name: Set up Tailscale boot-time auto-reauth
+  when:
+    - tailscale_oauth_client_id != ""
+    - tailscale_oauth_client_secret != ""
+  block:
+    - name: Create Tailscale config directory
+      ansible.builtin.file:
+        path: /etc/tailscale
+        state: directory
+        mode: "0700"
+
+    - name: Write Tailscale auto-reauth credentials
+      ansible.builtin.template:
+        src: tailscale-autoauth.env.j2
+        dest: /etc/tailscale/autoauth.env
+        mode: "0600"
+
+    - name: Install Tailscale auto-reauth script
+      ansible.builtin.template:
+        src: tailscale-autoauth.sh.j2
+        dest: /usr/local/bin/tailscale-autoauth.sh
+        mode: "0750"
+
+    - name: Install Tailscale auto-reauth systemd unit
+      ansible.builtin.template:
+        src: tailscale-autoauth.service.j2
+        dest: /etc/systemd/system/tailscale-autoauth.service
+        mode: "0644"
+
+    - name: Enable Tailscale auto-reauth service
+      ansible.builtin.systemd:
+        name: tailscale-autoauth.service
+        enabled: true
+        daemon_reload: true
 
 - name: Get Tailscale IP
   ansible.builtin.command: tailscale ip -4

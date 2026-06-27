@@ -1,0 +1,15 @@
+# Managed by Ansible (tailscale role).
+[Unit]
+Description=Re-authenticate Tailscale on boot if logged out
+Requires=tailscaled.service
+After=tailscaled.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+EnvironmentFile=/etc/tailscale/autoauth.env
+ExecStart=/usr/local/bin/tailscale-autoauth.sh
+
+[Install]
+WantedBy=multi-user.target
