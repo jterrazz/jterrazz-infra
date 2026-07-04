@@ -33,3 +33,7 @@ id_ed25519*
 # Environment
 .env
 .env.local
+
+# Claude Code (local agent state / settings)
+.claude/settings.local.json
+.claude/projects/
