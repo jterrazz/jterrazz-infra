@@ -17,7 +17,7 @@ deploys via Helm. OrbStack is the current active prod (May 2026 swap).
 
 ## Stack
 
-- **Cluster**: k3s (single-node, embedded etcd)
+- **Cluster**: k3s (single-node, SQLite/kine datastore — no embedded etcd)
 - **Ingress**: Traefik IngressRoutes
 - **Public traffic**: cloudflared (outbound QUIC tunnel — no host port exposure)
 - **Private access**: Tailscale (SSH + internal services)

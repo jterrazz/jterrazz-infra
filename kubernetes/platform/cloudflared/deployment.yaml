@@ -7,16 +7,17 @@
 # IngressRoutes, certs, or DNS topology in this phase — the tunnel sits
 # dormant until the user CNAMEs a hostname onto it.
 #
-# Routing model: the tunnel is set up as "remote-managed" (token-based) and
-# the public-hostname rule is configured once in the Cloudflare Zero Trust
-# dashboard as a wildcard catch-all to Traefik. Each domain's switchover is
-# then just a DNS change (A → CNAME tunnel-id.cfargotunnel.com), with no
-# touch to this manifest.
+# Routing model: the tunnel is "remote-managed" (token-based) and routes
+# PER HOSTNAME (not a wildcard) — every public hostname needs its own Public
+# Hostname rule in the Cloudflare Zero Trust dashboard, each pointing at
+# Traefik. Adding one there auto-creates its CNAME
+# (<hostname> → tunnel-id.cfargotunnel.com); a bare CNAME with no matching
+# rule returns a 404 from cloudflared. No touch to this manifest per hostname.
 #
 # Deploy prerequisites (one-time, manual — see README.md in this dir):
 #   1. Create the tunnel in Cloudflare Zero Trust dashboard.
 #   2. Add CLOUDFLARE_TUNNEL_TOKEN to Infisical /jterrazz-infra prod.
-#   3. Configure the catch-all public-hostname rule in the dashboard.
+#   3. Add a Public Hostname rule per hostname routed through the tunnel.
 ---
 # InfisicalSecret syncs the connection token from Infisical into a regular
 # k8s Secret that the Deployment consumes. resyncInterval=60s so a token

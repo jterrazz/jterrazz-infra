@@ -46,7 +46,7 @@ inactive one (or just letting it sit empty).
 
 | Component         | Purpose                                                |
 | ----------------- | ------------------------------------------------------ |
-| **k3s**           | Single-node Kubernetes with embedded etcd              |
+| **k3s**           | Single-node Kubernetes (SQLite/kine datastore)         |
 | **Traefik**       | Ingress controller (LoadBalancer pinned to Tailscale)  |
 | **cloudflared**   | Cloudflare tunnel — public traffic via outbound QUIC   |
 | **Tailscale**     | Private VPN for SSH and internal services              |
@@ -56,6 +56,8 @@ inactive one (or just letting it sit empty).
 | **Grafana stack** | Prometheus + Loki + Tempo + OTel Collector             |
 | **Portainer**     | Cluster dashboard                                      |
 | **n8n**           | Workflow automation                                    |
+| **LibreChat**     | Private AI chat UI (`chat.jterrazz.com`)               |
+| **OpenPanel**     | Self-hosted product analytics                          |
 | **Registry**      | Private Docker registry (Tailscale-only)               |
 
 ## Dual-mode — choose your production
@@ -79,8 +81,8 @@ The `target` config on each stack picks which target file under
 
 **Which one owns DNS?** Only one stack at a time should own the
 Cloudflare CNAMEs for the private services (n8n, portainer, grafana,
-registry, gateway). Whichever stack has `jterrazz-infra:manageDns:
-"true"` creates them. To swap:
+registry, gateway, chat, openpanel). Whichever stack has
+`jterrazz-infra:manageDns: "true"` creates them. To swap:
 
 ```bash
 cd pulumi
@@ -243,7 +245,10 @@ All persistent data lives at `/var/lib/k8s-data/` on the cluster host.
 ├── tempo/                     Traces
 ├── registry/                  Docker registry blobs
 ├── gateway-intelligence-prod/ Gateway app data
-└── signews-api-{env}/         Per-env SQLite database
+├── signews-api-{env}/         Per-env SQLite database
+├── librechat/                 LibreChat MongoDB
+├── librechat-uploads/         LibreChat uploads + generated images
+└── openpanel-{postgres,clickhouse,redis}/  OpenPanel datastores
 ```
 
 Backup: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`

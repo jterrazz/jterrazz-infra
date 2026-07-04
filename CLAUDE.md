@@ -46,7 +46,9 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
   `ansible/playbooks/platform.yml`) to the cluster's own tailnet IP.
   The public CNAME chain stops at `*.ts.net` which CoreDNS can't chase
   through public DNS, so without this override registry pulls + helm
-  pushes NXDOMAIN.
+  pushes NXDOMAIN. (`openpanel` is the one exception — it's mapped to
+  Traefik's ClusterIP instead, so the OpenPanel dashboard's SSR doesn't
+  hairpin; see `kubernetes/platform/openpanel/README.md`.)
 - TLS — cert-manager via Let's Encrypt DNS-01 using the
   `CLOUDFLARE_API_TOKEN` secret.
 
@@ -96,9 +98,13 @@ migrations on boot. **Split exposure**: private dashboard on
 `analytics.jterrazz.com` exposing **only** `/api/track` (cloudflared tunnel →
 Traefik, `stripPrefix /api`). ClickHouse runs upstream's log-to-stdout config
 (issue #324) + a per-query mem cap (#382), no CH/Redis auth (firewalled by
-`netpol.yaml`). Secrets from Infisical `/openpanel`. The public host needs a
-per-hostname Public Hostname entry in the cloudflared Zero Trust dashboard (the
-tunnel is not a true wildcard).
+`netpol.yaml`). Secrets from Infisical `/openpanel`. Two DNS quirks (details in
+the dir's README): the public `analytics` CNAME is Pulumi-managed
+(`dns.ts`) but its **tunnel route** is a per-hostname rule in the Zero Trust
+dashboard (the tunnel isn't a wildcard); and `openpanel.jterrazz.com` resolves
+**in-cluster** to Traefik's ClusterIP, not the node tailnet IP, so the
+dashboard's server-side rendering doesn't hairpin (image 2.2 has no
+`API_URL_SSR` yet).
 
 ### LibreChat: upgrading the default model
 
@@ -130,7 +136,7 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
 - Shared platform chart (`kubernetes/charts/platform/`) generates
   Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
 - App chart at `kubernetes/charts/app/`, published to OCI registry
-  (currently 1.14.1). Injects a default
+  (currently 1.17.1). Injects a default
   `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request)
   **only for apps requesting >= 512Mi** (e.g. signews-api), unless the
   app sets its own `NODE_OPTIONS`. 1.14.0 applied it to all apps, which

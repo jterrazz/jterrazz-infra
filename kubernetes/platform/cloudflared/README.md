@@ -42,16 +42,26 @@ value. Ansible decodes the token at deploy time to derive the tunnel
 hostname (`<tunnel-id>.cfargotunnel.com`) used as the DNS target for
 public records.
 
-### 3. Public Hostname per zone
+### 3. Public Hostname per hostname
 
-In the tunnel detail page, "Public Hostname" tab → Add for each apex
-zone you route through this tunnel (`jterrazz.com`, `clawrr.com`,
-`clawssify.com`, `sig.news`, `spwn.sh`).
+The tunnel routes **per hostname, not by wildcard** — every public hostname
+gets its own Public Hostname rule (apex zones AND subdomains). In the tunnel
+detail page, "Public Hostname" tab → Add one for each:
 
-- Subdomain: empty
+- apex zones: `jterrazz.com`, `clawrr.com`, `clawssify.com`, `sig.news`,
+  `spwn.sh` (Subdomain: empty)
+- subdomains: e.g. `signews.jterrazz.com`, `analytics.jterrazz.com`
+  (Subdomain: the label, e.g. `signews` / `analytics`)
+
+For each:
+
 - Service type: HTTPS
 - URL: `traefik.kube-system.svc.cluster.local:443`
 - Additional application settings → TLS → **No TLS Verify: ON**
+
+Adding the rule auto-creates the CNAME. Exception: `analytics.jterrazz.com`
+(OpenPanel ingest) has its CNAME managed by Pulumi (`dns.ts`), so there only
+the routing rule is added in the dashboard.
 
 ## Deploy
 

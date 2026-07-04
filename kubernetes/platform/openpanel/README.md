@@ -91,10 +91,11 @@ Postgres / Redis only deliberately (Postgres major bumps need a dump/restore,
 not an in-place image swap). Check the OpenPanel self-hosting changelog for the
 matching ClickHouse version.
 
-### Disable public registration (after admin is created)
+### Registration
 
-`apps.yaml` deploys with `ALLOW_REGISTRATION=true` so the first admin can be
-created. Once done, set both occurrences to `"false"` and redeploy. Keep a
+`ALLOW_REGISTRATION` is `"false"` in `apps.yaml` — the admin account exists and
+public signup is closed. To add a user later, flip both occurrences (op-api +
+op-dashboard) to `"true"`, redeploy, invite/sign up, then flip back. Keep a
 password login (OAuth-only + signup-disabled can lock you out — issue #363).
 
 ## Backup & restore
@@ -140,11 +141,15 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
   the documented post-k3s-churn issue. Fix: `kubectl rollout restart -n
   platform-networking deploy/cert-manager deploy/cert-manager-webhook
   deploy/cert-manager-cainjector`, then re-apply `ingress.yaml`.
-- **Public ingest needs a per-hostname tunnel route.** The cloudflared tunnel
-  routes per-hostname (not a wildcard), so `analytics.jterrazz.com` needs a
-  Public Hostname entry in the Zero Trust dashboard (Service: HTTPS →
-  `traefik.kube-system.svc.cluster.local:443`, No TLS Verify ON). A bare CNAME
-  is not enough (returns cloudflared 404).
+- **Public ingest — CNAME and tunnel route are managed separately.** The
+  cloudflared tunnel routes per-hostname (not a wildcard):
+  - CNAME `analytics` → the tunnel is **Pulumi-managed** (`dns.ts`,
+    `PUBLIC_TUNNEL_HOSTS`) — because the DNS-scoped token can create it.
+  - The per-hostname **routing rule** must be added in the Zero Trust
+    dashboard (Service: HTTPS → `traefik.kube-system.svc.cluster.local:443`,
+    No TLS Verify ON) — it needs Tunnel:Edit, which the DNS token lacks.
+  A CNAME with no matching route returns a 404 from cloudflared; a route with
+  no CNAME never resolves. Both are required.
 - **ClickHouse hostPath perms**: the pod runs as uid 101; an init container
   chowns `/var/lib/clickhouse` because hostPath dirs are created root-owned.
 - **Dashboard SSR resolves `openpanel.jterrazz.com` to Traefik's ClusterIP,
