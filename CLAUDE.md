@@ -37,9 +37,9 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - **Public hostnames** (apex domains routed to apps) — cloudflared's
   Public Hostname feature in the Zero Trust UI auto-creates the CNAME
   to `<tunnel-id>.cfargotunnel.com`.
-- **Private hostnames** (n8n, portainer, grafana, registry, gateway, chat) —
-  Pulumi-managed in `pulumi/src/dns.ts`, CNAMEd to the active cluster's
-  Tailscale FQDN. Only the stack with `manageDns=true` owns the records
+- **Private hostnames** (n8n, portainer, grafana, registry, gateway, chat,
+  openpanel) — Pulumi-managed in `pulumi/src/dns.ts`, CNAMEd to the active
+  cluster's Tailscale FQDN. Only the stack with `manageDns=true` owns the records
   (production by default; flipped to local for the active swap).
 - **In-cluster lookups** for the same private hostnames are
   short-circuited by a CoreDNS `coredns-custom` ConfigMap (in
@@ -84,6 +84,21 @@ chat history live in `mongo` (PVC `librechat-data`); uploads/generated images
 in PVC `librechat-uploads`. Both are `Retain` hostPath under
 `/var/lib/k8s-data` → the Mac on OrbStack, so they survive pod restarts, helm
 reinstalls and `pulumi destroy` repaves (on Hetzner they'd be node-disk).
+
+**OpenPanel** — self-hosted product analytics (`platform-analytics` ns),
+raw manifests under `kubernetes/platform/openpanel/` (does not fit the platform
+chart: 3 apps + 3 stateful stores + split ingress). See that dir's `README.md`
+for versions, data paths, upgrade and backup/restore. 6 workloads: Postgres 14
++ Redis 7.2 + ClickHouse 25.10 (hostPath `Retain` PVCs) and op-api / op-worker
+/ op-dashboard (`lindesvard/openpanel-*:2.2`). op-api runs Prisma + ClickHouse
+migrations on boot. **Split exposure**: private dashboard on
+`openpanel.jterrazz.com` (Tailscale, `private-access`), public event ingest on
+`analytics.jterrazz.com` exposing **only** `/api/track` (cloudflared tunnel →
+Traefik, `stripPrefix /api`). ClickHouse runs upstream's log-to-stdout config
+(issue #324) + a per-query mem cap (#382), no CH/Redis auth (firewalled by
+`netpol.yaml`). Secrets from Infisical `/openpanel`. The public host needs a
+per-hostname Public Hostname entry in the cloudflared Zero Trust dashboard (the
+tunnel is not a true wildcard).
 
 ### LibreChat: upgrading the default model
 

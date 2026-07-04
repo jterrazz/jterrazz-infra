@@ -1,0 +1,40 @@
+# Shared non-secret env for the OpenPanel apps (op-api / op-worker /
+# op-dashboard), consumed via envFrom. Mirrors the compose `.env` — every
+# app service gets the same base env; secrets (DB URL, cookie secret) live
+# in the Infisical-synced `openpanel-secrets` Secret instead (secret.yaml).
+#
+# URL model:
+#   DASHBOARD_URL / API_URL  -> the PRIVATE host. The dashboard runs on the
+#     tailnet; its browser-side calls to /api (tRPC, /live) hit the private
+#     IngressRoute. The public ingest host (analytics.jterrazz.com) is NOT
+#     referenced here — it only carries /api/track and is configured
+#     client-side in @jterrazz/analytics.
+#   API_URL_SSR -> in-cluster op-api Service, bypassing the ingress for the
+#     dashboard's server-side rendering.
+#   CLICKHOUSE_URL path segment /openpanel = the DB created by init-db.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openpanel-config
+  namespace: platform-analytics
+data:
+  NODE_ENV: "production"
+  SELF_HOSTED: "true"
+  BATCH_SIZE: "5000"
+  BATCH_INTERVAL: "10000"
+  ALLOW_INVITATION: "true"
+  # ALLOW_REGISTRATION is deliberately kept out of here: it starts "true" for
+  # first-admin creation, then flips to "false". It is set as a per-container
+  # env in apps.yaml so the flip is a one-line, greppable change.
+  REDIS_URL: "redis://op-redis:6379"
+  CLICKHOUSE_URL: "http://op-clickhouse:8123/openpanel"
+  DASHBOARD_URL: "https://openpanel.jterrazz.com"
+  API_URL: "https://openpanel.jterrazz.com/api"
+  API_URL_SSR: "http://op-api:3000"
+  # Browser origins allowed to POST events to /api/track on the public host.
+  # These are the deployed public apps that will embed @jterrazz/analytics.
+  # Add new app origins here (apex; add www./sub as needed).
+  API_CORS_ORIGINS: "https://openpanel.jterrazz.com,https://spwn.sh,https://sig.news,https://clawssify.com,https://clawrr.com"
+  # Postgres bootstrap (non-secret half; password is in the Secret).
+  POSTGRES_USER: "openpanel"
+  POSTGRES_DB: "openpanel"

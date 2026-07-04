@@ -1,0 +1,186 @@
+# ClickHouse for OpenPanel — the event store and the dominant resource user.
+#
+# Config is upstream's self-hosting config verbatim, which is ALSO the fix for
+# issue #324 (ClickHouse pegged at ~140% CPU when logrotate breaks its file log
+# handle): logger -> console (stdout), and every heavy system log table
+# (query_log/trace_log/metric_log/part_log/...) removed. Kubernetes captures
+# stdout, so there is no file log for logrotate to break.
+#
+# users.d adds a per-query max_memory_usage cap (1 GiB) on top of ClickHouse's
+# cgroup-aware server cap, so an accidental heavy "Paths" query (issue #382)
+# fails that query instead of OOM-killing the pod.
+#
+# Runs the default no-auth user (CLICKHOUSE_SKIP_USER_SETUP=1, upstream
+# parity); it is ClusterIP-only and firewalled to this namespace by netpol.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openpanel-clickhouse
+  namespace: platform-analytics
+data:
+  op-config.xml: |
+    <clickhouse>
+        <logger>
+            <level>warning</level>
+            <console>true</console>
+        </logger>
+
+        <keep_alive_timeout>10</keep_alive_timeout>
+
+        <!-- Stop all the unnecessary logging (issue #324 mitigation) -->
+        <query_thread_log remove="remove"/>
+        <query_log remove="remove"/>
+        <text_log remove="remove"/>
+        <trace_log remove="remove"/>
+        <metric_log remove="remove"/>
+        <asynchronous_metric_log remove="remove"/>
+        <session_log remove="remove"/>
+        <part_log remove="remove"/>
+
+        <listen_host>0.0.0.0</listen_host>
+        <interserver_listen_host>0.0.0.0</interserver_listen_host>
+        <interserver_http_host>op-clickhouse</interserver_http_host>
+    </clickhouse>
+  op-user-config.xml: |
+    <clickhouse>
+        <profiles>
+            <default>
+                <log_queries>0</log_queries>
+                <log_query_threads>0</log_query_threads>
+                <!-- Cap a single query at 1 GiB so a runaway "Paths" query
+                     (issue #382) errors instead of OOM-killing the pod. -->
+                <max_memory_usage>1073741824</max_memory_usage>
+            </default>
+        </profiles>
+    </clickhouse>
+  init-db.sh: |
+    #!/bin/bash
+    set -e
+    clickhouse client -n <<-EOSQL
+        CREATE DATABASE IF NOT EXISTS openpanel;
+    EOSQL
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: openpanel-clickhouse
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/openpanel-clickhouse
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openpanel-clickhouse
+  namespace: platform-analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: openpanel-clickhouse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-clickhouse
+  namespace: platform-analytics
+  labels:
+    app: op-clickhouse
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-clickhouse
+  template:
+    metadata:
+      labels:
+        app: op-clickhouse
+    spec:
+      # hostPath dirs are created root-owned; ClickHouse runs as uid 101 and
+      # can't write /var/lib/clickhouse without this chown.
+      initContainers:
+        - name: fix-perms
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:25.10.2.65
+          env:
+            - name: CLICKHOUSE_SKIP_USER_SETUP
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/op-config.xml
+              subPath: op-config.xml
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/op-user-config.xml
+              subPath: op-user-config.xml
+            - name: config
+              mountPath: /docker-entrypoint-initdb.d/init-db.sh
+              subPath: init-db.sh
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1536Mi
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openpanel-clickhouse
+        - name: config
+          configMap:
+            name: openpanel-clickhouse
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-clickhouse
+  namespace: platform-analytics
+  labels:
+    app: op-clickhouse
+spec:
+  selector:
+    app: op-clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: 8123
+    - name: native
+      port: 9000
+      targetPort: 9000

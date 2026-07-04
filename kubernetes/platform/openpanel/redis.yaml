@@ -1,0 +1,104 @@
+# Redis for OpenPanel — this is the BullMQ job queue + event buffer, NOT an
+# evictable cache. Hence `--maxmemory-policy noeviction` (upstream default):
+# never drop queued jobs. `--appendonly yes` adds AOF durability on top of the
+# persisted volume so in-flight events survive a restart.
+#
+# No auth (upstream parity); reachable only inside platform-analytics and
+# locked down by netpol.yaml. Recreate strategy on a manual hostPath PV.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: openpanel-redis
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/openpanel-redis
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openpanel-redis
+  namespace: platform-analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: openpanel-redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-redis
+  namespace: platform-analytics
+  labels:
+    app: op-redis
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-redis
+  template:
+    metadata:
+      labels:
+        app: op-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2.5-alpine
+          args:
+            - "redis-server"
+            - "--maxmemory-policy"
+            - "noeviction"
+            - "--appendonly"
+            - "yes"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openpanel-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-redis
+  namespace: platform-analytics
+  labels:
+    app: op-redis
+spec:
+  selector:
+    app: op-redis
+  ports:
+    - port: 6379
+      targetPort: 6379

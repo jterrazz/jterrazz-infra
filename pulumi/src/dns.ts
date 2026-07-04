@@ -28,13 +28,31 @@ const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 // passed in from machine.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
+// Cloudflare Tunnel hostname. Public hosts CNAME'd here (proxied) reach the
+// in-cluster Traefik via cloudflared. The tunnel's per-hostname routing rule
+// still lives in the Zero Trust dashboard (needs Tunnel:Edit, which the DNS
+// token can't do) — Pulumi owns the CNAME, the dashboard owns the route. The
+// UUID is stable and public (it's the CNAME target), so not a secret.
+const TUNNEL_HOSTNAME = "8f4157bb-f883-424b-8ccd-8332867cf1b2.cfargotunnel.com";
+
 /**
  * Private services whose hostname routes to the cluster via Tailscale.
  * Each one becomes a CNAME from `<host>.jterrazz.com` to the active
  * cluster's Tailscale FQDN. The Traefik private-access middleware on the
  * cluster handles the IP allow-list; this layer just keeps DNS honest.
+ * `openpanel` is the PRIVATE OpenPanel dashboard; its public ingest sibling
+ * `analytics` is a proxied tunnel record in PUBLIC_TUNNEL_HOSTS below.
  */
-const PRIVATE_HOSTS = ["n8n", "portainer", "grafana", "registry", "gateway", "chat"];
+const PRIVATE_HOSTS = ["n8n", "portainer", "grafana", "registry", "gateway", "chat", "openpanel"];
+
+/**
+ * Public services fronted by the Cloudflare tunnel (proxied/orange). Their
+ * matching per-hostname route must also exist in the tunnel's Zero Trust
+ * config. `analytics` is OpenPanel's event-ingest host — only /api/track is
+ * routed by Traefik (see the openpanel-ingest IngressRoute); the dashboard
+ * stays private on `openpanel`.
+ */
+const PUBLIC_TUNNEL_HOSTS = ["analytics"];
 
 export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>): void {
     const fqdn = tailscaleHostname.apply((h) => `${h}.${TAILNET_DOMAIN}`);
@@ -51,6 +69,20 @@ export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>
             proxied: false,
             ttl: 1, // 1 = "Auto" in Cloudflare's API
             comment: `Managed by Pulumi (replaces external-dns for ${host}.jterrazz.com)`,
+        });
+    }
+
+    // Public hosts routed through the Cloudflare tunnel (proxied/orange).
+    for (const host of PUBLIC_TUNNEL_HOSTS) {
+        new cloudflare.Record(`public-${host}`, {
+            zoneId: JTERRAZZ_ZONE_ID,
+            name: host,
+            type: "CNAME",
+            content: TUNNEL_HOSTNAME,
+            // Must be proxied — cfargotunnel.com only resolves at the edge.
+            proxied: true,
+            ttl: 1, // 1 = "Auto"
+            comment: `Managed by Pulumi — ${host}.jterrazz.com → Cloudflare tunnel → Traefik`,
         });
     }
 

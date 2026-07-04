@@ -1,0 +1,12 @@
+# Namespace for the self-hosted OpenPanel product-analytics stack.
+#
+# 6 workloads: PostgreSQL + Redis + ClickHouse (stateful) and
+# op-api / op-worker / op-dashboard (OpenPanel). Private dashboard on
+# openpanel.jterrazz.com (Tailscale), public ingest on
+# analytics.jterrazz.com (cloudflared, /api/track only).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-analytics
+  labels:
+    app.kubernetes.io/part-of: openpanel

@@ -1,0 +1,106 @@
+# Ingress for OpenPanel — the split-exposure crux.
+#
+# PRIVATE host  openpanel.jterrazz.com  (Tailscale, private-access middleware):
+#   /api/*  -> op-api      (dashboard's tRPC + realtime /api/live/*, admin)
+#   /*      -> op-dashboard (the UI)
+#   Admin creation and dashboard browsing happen here. WebSocket upgrade for
+#   /api/live/* is passed through natively by Traefik.
+#
+# PUBLIC host   analytics.jterrazz.com  (cloudflared tunnel, NO private mw):
+#   /api/track  -> op-api ONLY. Nothing else on this host is routed (any other
+#   path 404s at Traefik), so the dashboard/admin/export stay unreachable from
+#   the internet. This is the apiUrl for @jterrazz/analytics. Abuse-guarded by
+#   the shared rate-limit middleware + OpenPanel's per-project clientId/CORS.
+#
+# Both hosts strip the /api prefix before op-api (op-api serves /track, /trpc,
+# /live at root — mirrors the upstream Caddy `handle_path /api*`). Certs are
+# cert-manager DNS-01 on the jterrazz.com zone.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: openpanel-strip-api
+  namespace: platform-analytics
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openpanel-tls
+  namespace: platform-analytics
+spec:
+  secretName: openpanel-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - openpanel.jterrazz.com
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: analytics-tls
+  namespace: platform-analytics
+spec:
+  secretName: analytics-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - analytics.jterrazz.com
+---
+# PRIVATE — dashboard + full API, Tailscale-only.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: openpanel-private
+  namespace: platform-analytics
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    # More specific rule (Host && PathPrefix) auto-outranks the bare Host rule
+    # in Traefik, so /api/* hits op-api and everything else hits the dashboard.
+    - match: Host(`openpanel.jterrazz.com`) && PathPrefix(`/api`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-networking
+        - name: openpanel-strip-api
+      services:
+        - name: op-api
+          port: 3000
+    - match: Host(`openpanel.jterrazz.com`)
+      kind: Rule
+      middlewares:
+        - name: private-access
+          namespace: platform-networking
+      services:
+        - name: op-dashboard
+          port: 3000
+  tls:
+    secretName: openpanel-tls
+---
+# PUBLIC — event ingest only (/api/track), through cloudflared.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: openpanel-ingest
+  namespace: platform-analytics
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`analytics.jterrazz.com`) && PathPrefix(`/api/track`)
+      kind: Rule
+      middlewares:
+        - name: rate-limit
+          namespace: platform-networking
+        - name: openpanel-strip-api
+      services:
+        - name: op-api
+          port: 3000
+  tls:
+    secretName: analytics-tls

@@ -107,6 +107,21 @@
     # cloudflared-fronted public apps (sig.news, spwn.sh, etc.) still
     # resolve normally.
 
+    # OpenPanel's dashboard does server-side rendering that fetches its OWN
+    # public URL (openpanel.jterrazz.com) from inside the pod (image 2.2 has no
+    # API_URL_SSR override yet). Resolving that to the node's tailnet IP would
+    # hairpin through the node ServiceLB and time out (same reason LibreChat
+    # talks to the gateway via its Service). So openpanel.jterrazz.com must
+    # resolve, IN-CLUSTER ONLY, to Traefik's ClusterIP — the browser keeps
+    # using public DNS → node tailnet IP. Look the ClusterIP up at deploy time
+    # so this survives cluster rebuilds (it is dynamic per cluster).
+    - name: Get Traefik ClusterIP (in-cluster target for openpanel.jterrazz.com)
+      ansible.builtin.command: kubectl get svc traefik -n kube-system -o jsonpath='{.spec.clusterIP}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: traefik_cluster_ip
+      changed_when: false
+
     - name: Apply CoreDNS custom config for private hostnames
       kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_remote }}"
@@ -121,6 +136,7 @@
               jterrazz.com:53 {
                 hosts {
                   {{ tailscale_ip }} registry.jterrazz.com n8n.jterrazz.com portainer.jterrazz.com grafana.jterrazz.com gateway.jterrazz.com chat.jterrazz.com
+                  {{ traefik_cluster_ip.stdout }} openpanel.jterrazz.com
                   fallthrough
                 }
                 forward . 1.1.1.1 9.9.9.9
@@ -776,6 +792,87 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       register: librechat_result
       changed_when: "'has been upgraded' in librechat_result.stdout or 'has been installed' in librechat_result.stdout"
+
+    # 8. OpenPanel (self-hosted product analytics)
+    # Private dashboard on openpanel.jterrazz.com (Tailscale); public event
+    # ingest on analytics.jterrazz.com (/api/track only, via cloudflared).
+    # 6 workloads: Postgres + Redis + ClickHouse (stateful, hostPath PVCs) and
+    # op-api / op-worker / op-dashboard. op-api runs the DB migrations on boot.
+    - name: Create OpenPanel namespace and shared config
+      ansible.builtin.command: >
+        kubectl apply
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/namespace.yaml
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/config.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_base_apply
+      changed_when: "'created' in openpanel_base_apply.stdout or 'configured' in openpanel_base_apply.stdout"
+
+    # Sync secrets from Infisical (/openpanel) before the DBs/apps so their
+    # envFrom + POSTGRES_PASSWORD resolve on first boot.
+    - name: Apply OpenPanel Infisical secret
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openpanel/secret.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_secret_apply
+      changed_when: "'created' in openpanel_secret_apply.stdout or 'configured' in openpanel_secret_apply.stdout"
+
+    - name: Wait for openpanel-secrets to be materialized by the Infisical operator
+      ansible.builtin.command: kubectl get secret openpanel-secrets -n platform-analytics
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_secret_check
+      until: openpanel_secret_check.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    # NetworkPolicies first so the unauthenticated datastores are firewalled
+    # to the namespace from the moment they come up.
+    - name: Apply OpenPanel network policies
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openpanel/netpol.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_netpol_apply
+      changed_when: "'created' in openpanel_netpol_apply.stdout or 'configured' in openpanel_netpol_apply.stdout"
+
+    - name: Deploy OpenPanel datastores (Postgres, Redis, ClickHouse)
+      ansible.builtin.command: >
+        kubectl apply
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/postgres.yaml
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/redis.yaml
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/clickhouse.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_db_apply
+      changed_when: "'created' in openpanel_db_apply.stdout or 'configured' in openpanel_db_apply.stdout"
+
+    - name: Wait for OpenPanel datastores to be ready
+      ansible.builtin.command: kubectl rollout status deployment/{{ item }} -n platform-analytics --timeout=180s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      loop:
+        - op-postgres
+        - op-redis
+        - op-clickhouse
+      changed_when: false
+
+    # Apps + ingress. op-api migrates on boot, so give it a longer timeout.
+    - name: Deploy OpenPanel apps and ingress
+      ansible.builtin.command: >
+        kubectl apply
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/apps.yaml
+        -f {{ manifest_dest }}/kubernetes/platform/openpanel/ingress.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: openpanel_apps_apply
+      changed_when: "'created' in openpanel_apps_apply.stdout or 'configured' in openpanel_apps_apply.stdout"
+
+    - name: Wait for OpenPanel op-api to be ready (runs DB migrations on boot)
+      ansible.builtin.command: kubectl rollout status deployment/op-api -n platform-analytics --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
 
     # 10. Apply registry manifests
     - name: Apply registry manifests

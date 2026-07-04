@@ -1,0 +1,58 @@
+# NetworkPolicies for platform-analytics. k3s enforces NetworkPolicy, so this
+# is real isolation, not decoration.
+#
+# Rationale: ClickHouse, Postgres and Redis run without passwords (ClickHouse
+# and Redis by upstream design). Default-deny ingress + a same-namespace allow
+# means only OpenPanel's own pods can reach the datastores; nothing in another
+# namespace can touch an unauthenticated ClickHouse/Redis. Traefik (kube-system)
+# is allowed only to the two HTTP frontends (op-api, op-dashboard) on 3000.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: platform-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: platform-analytics
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-analytics
+---
+# Traefik (kube-system) -> op-api (private API + public /api/track) and
+# op-dashboard, on 3000. op-worker has no ingress and stays same-namespace only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-frontends
+  namespace: platform-analytics
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - op-api
+          - op-dashboard
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 3000
+          protocol: TCP

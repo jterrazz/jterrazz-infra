@@ -1,0 +1,238 @@
+# OpenPanel application workloads: op-api, op-worker, op-dashboard.
+# Images pinned to 2.2 (upstream ships a floating `2`; we pin the minor).
+# All three take the same base env (ConfigMap openpanel-config) + secrets
+# (Secret openpanel-secrets) via envFrom, mirroring the compose env_file.
+#
+# op-api owns DB migrations: on boot it runs `pnpm -r run migrate:deploy`
+# (Prisma/Postgres + ClickHouse code-migrations) then `pnpm start`, exactly
+# like the upstream compose. A generous startupProbe covers first-boot
+# migration time before liveness kicks in.
+#
+# ALLOW_REGISTRATION is "false": the admin account exists, public signup is
+# closed. To add users later, flip both occurrences to "true", redeploy, invite,
+# flip back. Keep a password login — OAuth-only + signup-disabled can lock you
+# out (issue #363).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-api
+  namespace: platform-analytics
+  labels:
+    app: op-api
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-api
+  template:
+    metadata:
+      labels:
+        app: op-api
+    spec:
+      containers:
+        - name: op-api
+          image: lindesvard/openpanel-api:2.2
+          command:
+            - sh
+            - -c
+            - |
+              echo 'Running migrations...'
+              CI=true pnpm -r run migrate:deploy
+              pnpm start
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: openpanel-config
+            - secretRef:
+                name: openpanel-secrets
+          env:
+            - name: ALLOW_REGISTRATION
+              value: "false"
+            # V8 auto-detects a ~256Mi heap ceiling here and aborts (exit 134,
+            # "JS heap out of memory") before reaching the cgroup limit. Pin the
+            # heap under the container limit so it GCs instead of aborting.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=768"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 384Mi
+            limits:
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-api
+  namespace: platform-analytics
+  labels:
+    app: op-api
+spec:
+  selector:
+    app: op-api
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-worker
+  namespace: platform-analytics
+  labels:
+    app: op-worker
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-worker
+  template:
+    metadata:
+      labels:
+        app: op-worker
+    spec:
+      containers:
+        - name: op-worker
+          image: lindesvard/openpanel-worker:2.2
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: openpanel-config
+            - secretRef:
+                name: openpanel-secrets
+          env:
+            # Same V8 heap-ceiling guard as op-api; the worker buffers events.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=512"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          startupProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: 3000
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-worker
+  namespace: platform-analytics
+  labels:
+    app: op-worker
+spec:
+  selector:
+    app: op-worker
+  ports:
+    - port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-dashboard
+  namespace: platform-analytics
+  labels:
+    app: op-dashboard
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-dashboard
+  template:
+    metadata:
+      labels:
+        app: op-dashboard
+    spec:
+      containers:
+        - name: op-dashboard
+          image: lindesvard/openpanel-dashboard:2.2
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: openpanel-config
+            - secretRef:
+                name: openpanel-secrets
+          env:
+            - name: ALLOW_REGISTRATION
+              value: "false"
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: 3000
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: 3000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: 3000
+            periodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-dashboard
+  namespace: platform-analytics
+  labels:
+    app: op-dashboard
+spec:
+  selector:
+    app: op-dashboard
+  ports:
+    - port: 3000
+      targetPort: 3000

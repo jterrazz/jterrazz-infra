@@ -1,0 +1,118 @@
+# PostgreSQL for OpenPanel (relational data: orgs, projects, dashboards,
+# users). Upstream self-hosting pins postgres:14-alpine. Single-node,
+# Recreate strategy — never two writers on one RWO hostPath volume.
+#
+# Data on a manual hostPath PV/PVC (Retain, under /var/lib/k8s-data -> Mac on
+# OrbStack) so it survives pod restarts, redeploys and `pulumi destroy`
+# repaves. Same convention as librechat's mongodb/uploads.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: openpanel-postgres
+spec:
+  capacity:
+    storage: 3Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /var/lib/k8s-data/openpanel-postgres
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openpanel-postgres
+  namespace: platform-analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 3Gi
+  volumeName: openpanel-postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-postgres
+  namespace: platform-analytics
+  labels:
+    app: op-postgres
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-postgres
+  template:
+    metadata:
+      labels:
+        app: op-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:14-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: openpanel-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: openpanel-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: openpanel-secrets
+                  key: POSTGRES_PASSWORD
+            # Keep PGDATA in a subdir so lost+found / hostPath root never
+            # collides with initdb's empty-dir check.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openpanel-postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-postgres
+  namespace: platform-analytics
+  labels:
+    app: op-postgres
+spec:
+  selector:
+    app: op-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
