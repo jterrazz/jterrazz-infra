@@ -35,6 +35,12 @@ jobs:
   deploy:
     name: Apply platform via Ansible
     runs-on: ubuntu-latest
+    # Records a GitHub Deployment under the `production` environment and
+    # auto-updates its status (in_progress → success/failure) as this job
+    # runs, so the repo's Environments/Deployments view stays live. (The old
+    # deploy.yaml did this via `environment:` too; it was lost when that
+    # workflow was retired post-Hetzner-destroy and never re-added here.)
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
