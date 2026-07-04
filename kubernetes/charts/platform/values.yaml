@@ -9,6 +9,9 @@ private: true
 storage: {}
 # storage:
 #   size: 1Gi
+#   # pathSuffix nests the volume under the app dir (1 dir = 1 app), e.g.
+#   # pathSuffix: mongo -> hostPath /var/lib/k8s-data/<name>/mongo
+#   pathSuffix: ""
 
 # Infrastructure settings (injected by Ansible at deploy time).
 # nodeName is the k8s node name used as the hostPath PV's nodeAffinity

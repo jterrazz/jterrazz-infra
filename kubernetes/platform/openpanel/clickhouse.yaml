@@ -72,7 +72,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/openpanel-clickhouse
+    path: /var/lib/k8s-data/openpanel/clickhouse
     type: DirectoryOrCreate
 ---
 apiVersion: v1

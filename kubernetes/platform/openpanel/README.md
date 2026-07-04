@@ -55,9 +55,12 @@ survives pod restarts, `kubectl delete`, helm/redeploys and `pulumi destroy`.
 
 | PVC / PV               | Size  | Path (`/var/lib/k8s-data/...`) |
 |------------------------|-------|--------------------------------|
-| `openpanel-postgres`   | 3Gi   | `openpanel-postgres/pgdata`    |
-| `openpanel-clickhouse` | 10Gi  | `openpanel-clickhouse`         |
-| `openpanel-redis`      | 1Gi   | `openpanel-redis`              |
+| `openpanel-postgres`   | 3Gi   | `openpanel/postgres/pgdata`    |
+| `openpanel-clickhouse` | 10Gi  | `openpanel/clickhouse`         |
+| `openpanel-redis`      | 1Gi   | `openpanel/redis`              |
+
+One directory per app (repo convention): the three datastores nest under
+`openpanel/` even though each has its own PV/PVC.
 
 ## Secrets & config
 
@@ -122,17 +125,17 @@ Native BACKUP to a file inside the data volume, then copy it off the Mac:
 ```bash
 kubectl exec -n platform-analytics deploy/op-clickhouse -- \
   clickhouse-client --query "BACKUP DATABASE openpanel TO File('/var/lib/clickhouse/backups/openpanel-$(date +%F).zip')"
-# The file lands at /var/lib/k8s-data/openpanel-clickhouse/backups/ on the Mac.
+# The file lands at /var/lib/k8s-data/openpanel/clickhouse/backups/ on the Mac.
 # Restore: RESTORE DATABASE openpanel FROM File('...').
 ```
 
 For a cold copy instead: scale `op-clickhouse` to 0, `tar` the
-`openpanel-clickhouse/` dir on the Mac, scale back to 1.
+`openpanel/clickhouse/` dir on the Mac, scale back to 1.
 
 ### Redis
 
 It's a durable BullMQ queue (AOF on), not a source of truth — losing it drops
-only in-flight jobs. `appendonly.aof`/`dump.rdb` live in `openpanel-redis/` on
+only in-flight jobs. `appendonly.aof`/`dump.rdb` live in `openpanel/redis/` on
 the Mac; a file snapshot is sufficient. No scheduled backup needed.
 
 ## Gotchas seen during deploy

@@ -16,3 +16,6 @@ port: 3080
 private: true
 storage:
   size: 3Gi
+  # Nest the MongoDB volume under librechat/ so the on-disk layout is
+  # 1 dir = 1 app (sibling: librechat/uploads from uploads.yaml).
+  pathSuffix: mongo

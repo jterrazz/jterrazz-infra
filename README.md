@@ -228,6 +228,8 @@ build + helm install on the new registry.
 ## Storage
 
 All persistent data lives at `/var/lib/k8s-data/` on the cluster host.
+**Convention: one directory per app** — a multi-component app nests its
+volumes under `<app>/` (e.g. `librechat/mongo`, `openpanel/clickhouse`).
 
 * On **Hetzner**, that's the VPS's local disk — survives reboots, not
   VM destruction.
@@ -246,9 +248,8 @@ All persistent data lives at `/var/lib/k8s-data/` on the cluster host.
 ├── registry/                  Docker registry blobs
 ├── gateway-intelligence-prod/ Gateway app data
 ├── signews-api-{env}/         Per-env SQLite database
-├── librechat/                 LibreChat MongoDB
-├── librechat-uploads/         LibreChat uploads + generated images
-└── openpanel-{postgres,clickhouse,redis}/  OpenPanel datastores
+├── librechat/                 LibreChat — {mongo, uploads}
+└── openpanel/                 OpenPanel — {postgres, clickhouse, redis}
 ```
 
 Backup: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`

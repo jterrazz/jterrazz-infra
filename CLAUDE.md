@@ -146,6 +146,11 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   `platform.yaml` (ingress / cert / storage).
 - PVCs use `storageClassName: manual` with hostPath PVs, bound via
   `volumeName` (not selector).
+- **hostPath layout: one dir per app** under `/var/lib/k8s-data/`. A
+  multi-component app nests its volumes under `<app>/` (e.g.
+  `librechat/{mongo,uploads}`, `openpanel/{postgres,clickhouse,redis}`).
+  Platform-chart volumes get a `storage.pathSuffix` for this; raw
+  manifests just set the nested `hostPath.path`.
 - Traefik **IngressRoutes** (not plain Ingress) for routing.
 - cert-manager Certificates with `letsencrypt-production` ClusterIssuer.
 - Telemetry PVs (Grafana / Prometheus / Loki / Tempo) have

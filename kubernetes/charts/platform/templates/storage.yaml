@@ -15,7 +15,9 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/{{ include "platform.name" . }}
+    # pathSuffix nests a multi-component app's volume under one dir
+    # (e.g. librechat/mongo) so the on-disk convention stays 1 dir = 1 app.
+    path: /var/lib/k8s-data/{{ include "platform.name" . }}{{ with .Values.storage.pathSuffix }}/{{ . }}{{ end }}
 {{- if .Values.storage.hostPathType }}
     type: {{ .Values.storage.hostPathType }}
 {{- end }}

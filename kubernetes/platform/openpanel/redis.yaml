@@ -17,7 +17,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /var/lib/k8s-data/openpanel-redis
+    path: /var/lib/k8s-data/openpanel/redis
     type: DirectoryOrCreate
 ---
 apiVersion: v1
