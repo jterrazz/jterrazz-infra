@@ -99,9 +99,16 @@ spec:
           resources:
             requests:
               cpu: 10m
-              memory: 48Mi
+              memory: 128Mi
+            # 64Mi throttled large blob pushes to a crawl: streaming a
+            # ~50MB image layer made Go's GC thrash inside the cgroup,
+            # dropping registry throughput to ~0.6MB/s so buildkit hit its
+            # ~60s upload timeout and the push failed ("blob upload
+            # invalid" on the retried, wrong-offset resume). The Mac
+            # hostPath itself is fast (~287MB/s), so this is pure memory
+            # starvation. 512Mi gives blob uploads headroom.
             limits:
-              memory: 64Mi
+              memory: 512Mi
       volumes:
         - name: data
           persistentVolumeClaim:

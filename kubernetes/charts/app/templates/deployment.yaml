@@ -109,18 +109,33 @@ spec:
               memory: {{ include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") }}
             limits:
               memory: {{ include "app.memoryLimit" . }}
+          # A startupProbe gates liveness/readiness until the app first
+          # answers, so a slow or event-loop-busy boot can't trip liveness
+          # and SIGKILL the pod mid-startup (startupFailureThreshold *
+          # startupPeriodSeconds = grace window). timeoutSeconds defaults to
+          # 5s, not k8s's brutal 1s: an app that also runs in-process
+          # background work can briefly exceed 1s on a trivial health route.
+          startupProbe:
+            httpGet:
+              path: {{ .Values.spec.health.path }}
+              port: {{ .Values.spec.port }}
+            periodSeconds: {{ .Values.spec.health.startupPeriodSeconds | default 5 }}
+            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.spec.health.startupFailureThreshold | default 60 }}
           livenessProbe:
             httpGet:
               path: {{ .Values.spec.health.path }}
               port: {{ .Values.spec.port }}
-            initialDelaySeconds: {{ .Values.spec.health.initialDelaySeconds }}
             periodSeconds: {{ .Values.spec.health.periodSeconds }}
+            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.spec.health.failureThreshold | default 5 }}
           readinessProbe:
             httpGet:
               path: {{ .Values.spec.health.path }}
               port: {{ .Values.spec.port }}
-            initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
+            failureThreshold: 3
       {{- if or .Values.spec.storage .Values.spec.configFiles }}
       volumes:
         {{- if .Values.spec.storage }}

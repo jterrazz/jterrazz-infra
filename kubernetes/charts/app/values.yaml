@@ -19,6 +19,14 @@ spec:
     path: /health
     initialDelaySeconds: 10
     periodSeconds: 30
+    # Probe timeouts/thresholds (k8s defaults 1s/3 are too tight for apps
+    # that also run in-process background work). Override per-app if needed.
+    timeoutSeconds: 5
+    failureThreshold: 5
+    # startupProbe grace = startupFailureThreshold * startupPeriodSeconds
+    # (default 60 * 5s = 5min) before liveness/readiness begin.
+    startupPeriodSeconds: 5
+    startupFailureThreshold: 60
 
 environments: {}
 
