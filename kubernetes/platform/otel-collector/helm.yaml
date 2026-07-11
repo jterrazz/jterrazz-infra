@@ -65,6 +65,14 @@ config:
       endpoint: http://prometheus-server.platform-telemetry.svc:80/api/v1/write
       tls:
         insecure: true
+      # Promote OTLP resource attributes (service.name, deployment.environment)
+      # to Prometheus labels. Without this, every app's metrics carry no env
+      # label, so an app's prod/next/staging series collide into one. App
+      # metric resources here are intentionally low-cardinality (service +
+      # environment only), so this adds a `deployment_environment` label
+      # without a cardinality blow-up.
+      resource_to_telemetry_conversion:
+        enabled: true
 
   service:
     pipelines:

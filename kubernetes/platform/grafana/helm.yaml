@@ -19,6 +19,14 @@ sidecar:
     folderAnnotation: grafana_folder
     provider:
       foldersFromFilesStructure: true
+  # Unified-alerting rules provisioned from ConfigMaps labelled grafana_alert=1.
+  # Rules fire and show in Grafana's Alerting UI; with no contact point wired
+  # they aren't pushed anywhere (delivery is a deliberate later step).
+  alerts:
+    enabled: true
+    searchNamespace: ALL
+    label: grafana_alert
+    labelValue: "1"
 
 # Datasources auto-configured for the telemetry stack
 datasources:

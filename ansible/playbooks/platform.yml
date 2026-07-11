@@ -621,6 +621,17 @@
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: true
 
+    - name: Deploy Grafana alert rules
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - apply
+          - -f
+          - "{{ manifest_dest }}/kubernetes/platform/grafana/alerts/signews-api-alerts.yaml"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: true
+
     # 5. n8n workflow automation
     # Platform resources (PV+PVC) must land before the app helm install,
     # otherwise `helm install n8n --wait` blocks on a pod that can't

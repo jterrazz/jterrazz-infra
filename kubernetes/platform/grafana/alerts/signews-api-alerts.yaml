@@ -1,0 +1,63 @@
+# Grafana unified-alerting rule, provisioned via the grafana alerts sidecar
+# (ConfigMaps labelled grafana_alert=1). Fires and shows in Grafana's Alerting
+# UI; no contact point is wired, so nothing is pushed out (delivery is a
+# deliberate later step). See kubernetes/platform/grafana/helm.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alert-signews-api
+  namespace: platform-telemetry
+  labels:
+    grafana_alert: "1"
+data:
+  signews-api.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: signews-api
+        folder: signews-api
+        interval: 1m
+        rules:
+          - uid: signews-api-eventloop-lag
+            title: signews-api event-loop lag high
+            condition: C
+            for: 5m
+            noDataState: OK
+            execErrState: OK
+            labels:
+              severity: warning
+            annotations:
+              summary: >-
+                signews-api {{ $labels.deployment_environment }} event-loop p99
+                lag > 1s for 5m — in-process work is starving request handling
+                (the 2026-07 outage class).
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  expr: 'nodejs_eventloop_lag_ms{job="signews-api", stat="p99"}'
+                  instant: false
+                  range: true
+                  intervalMs: 60000
+                  maxDataPoints: 43200
+              - refId: B
+                datasourceUid: __expr__
+                model:
+                  refId: B
+                  type: reduce
+                  expression: A
+                  reducer: last
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: B
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params: [1000]
