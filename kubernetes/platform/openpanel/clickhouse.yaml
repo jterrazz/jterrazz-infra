@@ -25,7 +25,11 @@ data:
             <console>true</console>
         </logger>
 
-        <keep_alive_timeout>10</keep_alive_timeout>
+        <!-- 10→60s: op-api's @clickhouse/client pings SELECT 1 on pooled idle
+             sockets that ClickHouse had already closed after 10s → "HTTP request
+             error" spam (~8/10min; real queries unaffected). Keeping idle
+             sockets open longer than the client's reuse interval stops it. -->
+        <keep_alive_timeout>60</keep_alive_timeout>
 
         <!-- Stop all the unnecessary logging (issue #324 mitigation) -->
         <query_thread_log remove="remove"/>

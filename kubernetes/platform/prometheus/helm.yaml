@@ -22,9 +22,13 @@ server:
   env:
     - name: GOMEMLIMIT
       value: "560MiB"
-  # Enable remote write receiver so OTel collector can push metrics
   extraFlags:
+    # OTel collector pushes metrics here.
     - "web.enable-remote-write-receiver"
+    # Let the configmap-reload sidecar hot-reload config via POST /-/reload.
+    # Without it every reload got 403 (~1/min of log spam) and config changes
+    # only applied on a full pod restart.
+    - "web.enable-lifecycle"
   # Fix data directory permissions (Prometheus runs as nobody:65534)
   initContainers:
     - name: fix-permissions
