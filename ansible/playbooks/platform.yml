@@ -464,7 +464,7 @@
     # 4. Cloudflared (Cloudflare Tunnel) — public traffic ingress without
     # exposing port 443 on the host. Depends on the InfisicalSecret CRD
     # (installed in step 3) since the tunnel token is synced from Infisical
-    # at /jterrazz-infra env=prod key=CLOUDFLARE_TUNNEL_TOKEN. See
+    # at /jterrazz-infrastructure env=prod key=CLOUDFLARE_TUNNEL_TOKEN. See
     # kubernetes/platform/cloudflared/README.md for the one-time tunnel
     # creation in the Cloudflare Zero Trust dashboard.
     - name: Apply cloudflared deployment
@@ -739,7 +739,7 @@
       register: librechat_platform_result
       changed_when: "'has been upgraded' in librechat_platform_result.stdout or 'has been installed' in librechat_platform_result.stdout"
 
-    # Sync LibreChat secrets from Infisical (/jterrazz-infra/librechat) before the app so its
+    # Sync LibreChat secrets from Infisical (/jterrazz-infrastructure/librechat) before the app so its
     # `existingSecretName` resolves on first boot.
     - name: Apply LibreChat Infisical secret
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/secret.yaml
@@ -819,7 +819,7 @@
       register: openpanel_base_apply
       changed_when: "'created' in openpanel_base_apply.stdout or 'configured' in openpanel_base_apply.stdout"
 
-    # Sync secrets from Infisical (/jterrazz-infra/openpanel) before the DBs/apps so their
+    # Sync secrets from Infisical (/jterrazz-infrastructure/openpanel) before the DBs/apps so their
     # envFrom + POSTGRES_PASSWORD resolve on first boot.
     - name: Apply OpenPanel Infisical secret
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openpanel/secret.yaml

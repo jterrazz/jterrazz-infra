@@ -15,7 +15,7 @@ name: Deploy Platform
 # half as the CI_DEPLOY_SSH_PRIVATE GitHub Action secret on this repo.
 # To rotate: regen the keypair, paste the new pub into the security
 # role default, set the new priv via `gh secret set CI_DEPLOY_SSH_PRIVATE
-# -R jterrazz/jterrazz-infra`, then `make deploy-local` to roll the
+# -R jterrazz/jterrazz-infrastructure`, then `make deploy-local` to roll the
 # pubkey onto the VM.
 
 on:
@@ -71,7 +71,7 @@ jobs:
           CI_DEPLOY_SSH_PRIVATE: ${{ secrets.CI_DEPLOY_SSH_PRIVATE }}
         run: |
           if [ -z "${CI_DEPLOY_SSH_PRIVATE:-}" ]; then
-            echo "::error::CI_DEPLOY_SSH_PRIVATE missing — set via: gh secret set CI_DEPLOY_SSH_PRIVATE -R jterrazz/jterrazz-infra < /tmp/ci-deploy"
+            echo "::error::CI_DEPLOY_SSH_PRIVATE missing — set via: gh secret set CI_DEPLOY_SSH_PRIVATE -R jterrazz/jterrazz-infrastructure < /tmp/ci-deploy"
             exit 1
           fi
           KEY_FILE="$(mktemp -t ci-deploy-XXXXXX.key)"
@@ -80,7 +80,7 @@ jobs:
           echo "CI_DEPLOY_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
 
       # Generate the same extra-vars file shape that scripts/deploy.sh
-      # produces locally. Shared/core secrets live at /jterrazz-infra; per-service
+      # produces locally. Shared/core secrets live at /jterrazz-infrastructure; per-service
       # secrets in subfolders with de-prefixed keys (grafana + portainer both
       # ADMIN_PASSWORD), so each path is fetched EXPLICITLY (not recursively) to
       # avoid collisions. Mirrors fetch_secrets_file() in deploy.sh — keep in sync.
@@ -103,10 +103,10 @@ jobs:
               -H "Authorization: Bearer $JWT" \
               "https://eu.infisical.com/api/v3/secrets/raw"
           }
-          ROOT="$(fetch /jterrazz-infra)"
-          GRAFANA="$(fetch /jterrazz-infra/grafana)"
-          N8N="$(fetch /jterrazz-infra/n8n)"
-          PORTAINER="$(fetch /jterrazz-infra/portainer)"
+          ROOT="$(fetch /jterrazz-infrastructure)"
+          GRAFANA="$(fetch /jterrazz-infrastructure/grafana)"
+          N8N="$(fetch /jterrazz-infrastructure/n8n)"
+          PORTAINER="$(fetch /jterrazz-infrastructure/portainer)"
           python3 - "$EXTRA" "$ROOT" "$GRAFANA" "$N8N" "$PORTAINER" <<'PY'
           import os, sys, json
 

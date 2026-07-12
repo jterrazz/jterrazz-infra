@@ -116,7 +116,7 @@ make destroy-local # tear down the OrbStack VM (data on the Mac stays)
 ```
 
 `scripts/deploy.sh` is the canonical entry point. It pulls every Ansible
-secret from Infisical `/jterrazz-infra` env=prod using the
+secret from Infisical `/jterrazz-infrastructure` env=prod using the
 universal-auth credentials in `.env`, passes them as extra-vars, and
 runs the playbook against the chosen target.
 
@@ -272,7 +272,7 @@ Rotate with `pulumi config set --secret hcloud:token <new>` in
 
 ### Infisical — project `jterrazz`, env `prod`
 
-* **`/jterrazz-infra`** (Ansible playbooks): `TAILSCALE_OAUTH_CLIENT_ID`,
+* **`/jterrazz-infrastructure`** (Ansible playbooks): `TAILSCALE_OAUTH_CLIENT_ID`,
   `TAILSCALE_OAUTH_CLIENT_SECRET`, `CLOUDFLARE_API_TOKEN`,
   `CLOUDFLARE_TUNNEL_TOKEN`, `GITHUB_TOKEN_JTERRAZZ`,
   `GITHUB_TOKEN_CLAWRR`, `DOCKER_REGISTRY_PASSWORD`,

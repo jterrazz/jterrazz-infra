@@ -71,7 +71,7 @@ librechat-rag-api:
 
 librechat:
   # Pulls CREDS_KEY, CREDS_IV, JWT_SECRET, JWT_REFRESH_SECRET and
-  # GATEWAY_API_KEY into the pod env (synced from Infisical /jterrazz-infra/librechat by
+  # GATEWAY_API_KEY into the pod env (synced from Infisical /jterrazz-infrastructure/librechat by
   # secret.yaml). GATEWAY_API_KEY must be one of the gateway's API_KEYS.
   # NOTE: the chart wires envFrom to a secret literally named
   # `librechat-credentials-env` regardless of this value, so secret.yaml MUST

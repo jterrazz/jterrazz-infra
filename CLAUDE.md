@@ -73,7 +73,7 @@ additive ingress rule for `platform-ai` → gateway:8317. Its datastore is a
 standalone `mongo:7`
 (`kubernetes/platform/librechat/mongodb.yaml`) — the chart's bundled Bitnami
 mongo subchart is disabled (deprecated upstream + no dynamic StorageClass
-here). Secrets sync from Infisical `/jterrazz-infra/librechat`. Private-only for now
+here). Secrets sync from Infisical `/jterrazz-infrastructure/librechat`. Private-only for now
 (`ALLOW_REGISTRATION=false` + `private-access` middleware); going public means
 dropping `private` and relying on LibreChat's own auth.
 
@@ -98,7 +98,7 @@ migrations on boot. **Split exposure**: private dashboard on
 `analytics.jterrazz.com` exposing **only** `/api/track` (cloudflared tunnel →
 Traefik, `stripPrefix /api`). ClickHouse runs upstream's log-to-stdout config
 (issue #324) + a per-query mem cap (#382), no CH/Redis auth (firewalled by
-`netpol.yaml`). Secrets from Infisical `/jterrazz-infra/openpanel`. Two DNS quirks (details in
+`netpol.yaml`). Secrets from Infisical `/jterrazz-infrastructure/openpanel`. Two DNS quirks (details in
 the dir's README): the public `analytics` CNAME is Pulumi-managed
 (`dns.ts`) but its **tunnel route** is a per-hostname rule in the Zero Trust
 dashboard (the tunnel isn't a wildcard); and `openpanel.jterrazz.com` resolves

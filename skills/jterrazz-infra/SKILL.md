@@ -23,7 +23,7 @@ deploys via Helm. OrbStack is the current active prod (May 2026 swap).
 - **Private access**: Tailscale (SSH + internal services)
 - **TLS**: cert-manager + Let's Encrypt DNS-01 via Cloudflare
 - **DNS**: Pulumi-managed Cloudflare records (private CNAMEs in `pulumi/src/dns.ts`) + cloudflared auto-DNS for public tunnel hostnames
-- **Secrets**: Infisical (`/jterrazz-infra` for Ansible, `/jterrazz-ci` for app CI)
+- **Secrets**: Infisical (`/jterrazz-infrastructure` for Ansible, `/jterrazz-ci` for app CI)
 - **Observability**: Grafana + Loki + Tempo + Prometheus + OTel Collector
 - **Registry**: Private Docker registry at `registry.jterrazz.com`
 

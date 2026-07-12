@@ -15,7 +15,7 @@
 # has `manageDns: true` set on it. Default: hetzner.
 #
 # Secrets used by Ansible (Cloudflare API token, Tailscale OAuth, etc.)
-# are pulled live from Infisical `/jterrazz-infra` env=prod using the
+# are pulled live from Infisical `/jterrazz-infrastructure` env=prod using the
 # universal-auth credentials in `.env`. Nothing sensitive lives on disk
 # beyond the temp extra-vars file (0600, deleted on exit).
 #
@@ -62,7 +62,7 @@ pulumi_destroy() {
 }
 
 # Fetch all Ansible-bound secrets from Infisical env=prod into a temp YAML file.
-# Shared/core secrets live at /jterrazz-infra; per-service secrets in subfolders
+# Shared/core secrets live at /jterrazz-infrastructure; per-service secrets in subfolders
 # (grafana, n8n, portainer). Each path is fetched EXPLICITLY (not recursively)
 # so short keys can repeat across services (grafana + portainer both use
 # ADMIN_PASSWORD) without colliding. If a role needs a new value, add it below
@@ -84,10 +84,10 @@ fetch_secrets_file() {
     }
 
     local root grafana n8n portainer
-    root=$(_fetch_path "/jterrazz-infra")
-    grafana=$(_fetch_path "/jterrazz-infra/grafana")
-    n8n=$(_fetch_path "/jterrazz-infra/n8n")
-    portainer=$(_fetch_path "/jterrazz-infra/portainer")
+    root=$(_fetch_path "/jterrazz-infrastructure")
+    grafana=$(_fetch_path "/jterrazz-infrastructure/grafana")
+    n8n=$(_fetch_path "/jterrazz-infrastructure/n8n")
+    portainer=$(_fetch_path "/jterrazz-infrastructure/portainer")
 
     local out
     out=$(mktemp -t jterrazz-infra-vars-XXXXXX.yml)
@@ -103,7 +103,7 @@ def kv(raw):
 
 root, grafana, n8n, portainer = kv(root_json), kv(grafana_json), kv(n8n_json), kv(portainer_json)
 
-# (Infisical path → key) → Ansible variable. Shared/core at /jterrazz-infra;
+# (Infisical path → key) → Ansible variable. Shared/core at /jterrazz-infrastructure;
 # per-service in subfolders with short (de-prefixed) keys.
 out = {
     "cloudflare_api_token":          root.get("CLOUDFLARE_API_TOKEN"),
