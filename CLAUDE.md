@@ -157,7 +157,7 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   `nodeAffinity` matching the actual node name, injected by Ansible
   via `templates/kubernetes/telemetry-storage.yaml.j2`.
 - On OrbStack, `/var/lib/k8s-data` is a symlink to
-  `/mnt/mac/Users/<user>/.jterrazz-infra/data` so the data survives
+  `/mnt/mac/Users/<user>/.jterrazz-infrastructure/data` so the data survives
   `pulumi destroy && pulumi up`.
 
 ## Centralized CI/CD Workflows (`jterrazz/jterrazz-actions`)
@@ -217,7 +217,7 @@ targets. This is the universal CI interface regardless of toolchain.
 
 - Pulumi stacks: `jterrazz/production` (Hetzner), `jterrazz/local` (OrbStack). `PULUMI_ACCESS_TOKEN` required.
 - **Pulumi commands must run from `pulumi/`** (not repo root).
-- OrbStack VM reachable via the OrbStack SSH proxy: `ssh root@jterrazz-infra@orb`.
+- OrbStack VM reachable via the OrbStack SSH proxy: `ssh root@jterrazz-infrastructure@orb`.
 - Hetzner (when up): `ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)`.
 
 `.env` (gitignored, in repo root):
@@ -247,7 +247,7 @@ make apps          # trigger every app's CI to (re)deploy
 ### SSH to the cluster
 
 ```bash
-ssh root@jterrazz-infra@orb                                                       # OrbStack
+ssh root@jterrazz-infrastructure@orb                                                       # OrbStack
 ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
 ```
 
@@ -335,7 +335,7 @@ pulumi up
   hostname was unceremoniously destroyed (no `tailscale logout`), the
   new VM joins as `<hostname>-2` and MagicDNS no longer resolves the
   canonical name. Rename via the Tailscale API
-  (`POST /api/v2/device/<id>/name {"name":"jterrazz-infra"}`).
+  (`POST /api/v2/device/<id>/name {"name":"jterrazz-infrastructure"}`).
 - **`tag` field on legacy apps**: apps without `tag: main` on prod fall
   into the workflow's legacy branch which deploys "staging" (which
   doesn't exist for them) and silently leaves prod stale. Always

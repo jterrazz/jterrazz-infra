@@ -27,7 +27,7 @@ export interface MachineOutputs {
     /**
      * Hostname this machine registers with Tailscale. Stable per target so
      * MagicDNS records don't collide when both stacks ever come up at the
-     * same time (`jterrazz-vps` for Hetzner vs `jterrazz-infra` for OrbStack).
+     * same time (`jterrazz-vps` for Hetzner vs `jterrazz-infrastructure` for OrbStack).
      */
     tailscaleHostname: pulumi.Output<string>;
 

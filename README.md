@@ -75,14 +75,14 @@ The `target` config on each stack picks which target file under
 `pulumi/src/targets/` to invoke:
 
 ```bash
-# pulumi/Pulumi.production.yaml  → jterrazz-infra:target: hetzner
-# pulumi/Pulumi.local.yaml       → jterrazz-infra:target: orbstack
+# pulumi/Pulumi.production.yaml  → jterrazz-infrastructure:target: hetzner
+# pulumi/Pulumi.local.yaml       → jterrazz-infrastructure:target: orbstack
 ```
 
 **Which one owns DNS?** Only one stack at a time should own the
 Cloudflare CNAMEs for the private services (n8n, portainer, grafana,
 registry, gateway, chat, openpanel). Whichever stack has
-`jterrazz-infra:manageDns: "true"` creates them. To swap:
+`jterrazz-infrastructure:manageDns: "true"` creates them. To swap:
 
 ```bash
 cd pulumi
@@ -233,7 +233,7 @@ volumes under `<app>/` (e.g. `librechat/mongo`, `openpanel/clickhouse`).
 
 * On **Hetzner**, that's the VPS's local disk — survives reboots, not
   VM destruction.
-* On **OrbStack**, it's a symlink to `~/.jterrazz-infra/data/` on the
+* On **OrbStack**, it's a symlink to `~/.jterrazz-infrastructure/data/` on the
   Mac (via OrbStack's auto file-share at `/mnt/mac/`) — survives the
   OrbStack VM being destroyed and recreated.
 
@@ -253,7 +253,7 @@ volumes under `<app>/` (e.g. `librechat/mongo`, `openpanel/clickhouse`).
 ```
 
 Backup: `tar -czvf backup-$(date +%Y%m%d).tar.gz /var/lib/k8s-data/`
-(or, on OrbStack, the Mac-side `~/.jterrazz-infra/data/`).
+(or, on OrbStack, the Mac-side `~/.jterrazz-infrastructure/data/`).
 
 ## Required secrets
 
@@ -327,6 +327,6 @@ kubectl rollout restart -n platform-networking \
   deploy/cert-manager deploy/cert-manager-webhook deploy/cert-manager-cainjector
 
 # SSH to the active cluster
-ssh root@jterrazz-infra@orb                          # OrbStack
+ssh root@jterrazz-infrastructure@orb                          # OrbStack
 ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
 ```

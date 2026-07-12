@@ -31,7 +31,7 @@ Done once per tunnel; recorded here for reference and recovery.
 ### 1. Create the tunnel
 
 Cloudflare → Zero Trust → Networks → Tunnels → Create a tunnel.
-Connector type **Cloudflared**, name `jterrazz-infra`. On the next
+Connector type **Cloudflared**, name `jterrazz-infrastructure`. On the next
 screen Cloudflare shows a connection token (starts with `eyJ…`).
 
 ### 2. Store the token in Infisical

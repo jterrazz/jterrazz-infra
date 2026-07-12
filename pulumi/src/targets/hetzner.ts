@@ -38,7 +38,7 @@ export function createHetznerMachine(config: pulumi.Config): MachineOutputs {
     const sshKeyPair = new tls.PrivateKey("main", { algorithm: "ED25519" });
 
     const sshKey = new hcloud.SshKey("main", {
-        name: "jterrazz-infra",
+        name: "jterrazz-infrastructure",
         publicKey: sshKeyPair.publicKeyOpenssh,
     }, providerOpts);
 
@@ -74,7 +74,7 @@ ssh_authorized_keys:
         // module (pulumi/src/dns.ts) consumes this to point the private
         // service CNAMEs at the active machine; renaming would force a
         // re-issue of every tailnet host lookup, so we keep it.
-        // OrbStack's identity is `jterrazz-infra`, so the tailnet has a
+        // OrbStack's identity is `jterrazz-infrastructure`, so the tailnet has a
         // distinct identity per target.
         tailscaleHostname: pulumi.output("jterrazz-vps"),
         status: server.status,

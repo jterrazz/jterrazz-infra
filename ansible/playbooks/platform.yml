@@ -485,7 +485,7 @@
       failed_when: telemetry_ns_result.rc != 0 and 'already exists' not in telemetry_ns_result.stderr
 
     # PV nodeAffinity must reference the actual node name (= the OrbStack
-    # VM's hostname, `jterrazz-infra`). Render the template under
+    # VM's hostname, `jterrazz-infrastructure`). Render the template under
     # platform/ where the rest of the telemetry stack lives, so the
     # `kubectl apply -k` discovery (if ever used) still finds it.
     - name: Ensure telemetry manifest dir exists
@@ -784,6 +784,19 @@
 
     # Additive NetworkPolicy so LibreChat (platform-ai) can reach the gateway
     # Service — the gateway's own policy doesn't list platform namespaces.
+    # On a fresh cluster the gateway app (and its namespace) isn't deployed
+    # yet — the app CI creates it later — so ensure the namespace exists first;
+    # the policy then just waits for the gateway pods to appear. Helm adopts
+    # the pre-created namespace when the app deploys.
+    - name: Ensure gateway namespace exists (for the additive NetworkPolicy on a fresh cluster)
+      ansible.builtin.shell: >
+        kubectl get namespace prod-gateway-intelligence ||
+        kubectl create namespace prod-gateway-intelligence
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: "'created' in gateway_ns_ensure.stdout"
+      register: gateway_ns_ensure
+
     - name: Allow LibreChat to reach the gateway
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/gateway-netpol.yaml
       environment:
@@ -895,6 +908,18 @@
 
     - name: Wait for registry to be ready
       ansible.builtin.command: kubectl rollout status deployment/registry -n platform-registry --timeout=60s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      changed_when: false
+
+    # The Helm login below talks HTTPS to registry.jterrazz.com, so the
+    # Let's Encrypt cert must be issued first. On a fresh cluster DNS-01
+    # issuance lags the registry pod by a minute or two — wait for it,
+    # otherwise the login fails with a TLS error.
+    - name: Wait for registry TLS certificate to be issued
+      ansible.builtin.command: >
+        kubectl wait --for=condition=Ready certificate/registry-tls
+        -n platform-registry --timeout=180s
       environment:
         KUBECONFIG: "{{ kubeconfig_remote }}"
       changed_when: false

@@ -14,7 +14,7 @@
         # OrbStack mounts the Mac user's home at /mnt/mac/Users/<user>.
         # The data folder is created by the Pulumi OrbStack provider before
         # the VM is started, so this path is always present here.
-        orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infra/data"
+        orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infrastructure/data"
 
     - name: Replace /var/lib/k8s-data with a symlink to the Mac dir
       ansible.builtin.file:

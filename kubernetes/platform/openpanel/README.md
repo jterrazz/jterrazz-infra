@@ -50,7 +50,7 @@ the namespace by `netpol.yaml`.
 
 All three datastores use manual **hostPath PVs (`Retain`)** under
 `/var/lib/k8s-data` → on OrbStack that's a symlink to
-`/mnt/mac/Users/jterrazz.agent/.jterrazz-infra/data` (the Mac), so data
+`/mnt/mac/Users/jterrazz.agent/.jterrazz-infrastructure/data` (the Mac), so data
 survives pod restarts, `kubectl delete`, helm/redeploys and `pulumi destroy`.
 
 | PVC / PV               | Size  | Path (`/var/lib/k8s-data/...`) |

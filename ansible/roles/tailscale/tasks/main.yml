@@ -20,6 +20,12 @@
 # bogus IP first and CoreDNS upstream forwarding times out for any
 # name that isn't in the tailnet. Force a working public resolver as
 # the global default.
+- name: Ensure systemd-resolved drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    mode: "0755"
+
 - name: Configure systemd-resolved global DNS overrides
   ansible.builtin.copy:
     dest: /etc/systemd/resolved.conf.d/upstream.conf

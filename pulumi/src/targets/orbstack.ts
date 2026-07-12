@@ -227,20 +227,24 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
     const config = new pulumi.Config("orbstack");
     // Default name keeps the VM distinct in `orbctl list` even if someone
     // forgets to set `orbstack:machineName`. Pulumi.local.yaml overrides
-    // this to "jterrazz-infra" — the canonical Tailscale identity.
+    // this to "jterrazz-infrastructure" — the canonical Tailscale identity.
     const machineName = config.get("machineName") || "jterrazz-orbstack";
     const distro = config.get("distro") || "ubuntu";
     const version = config.get("version") || "noble";
     const arch = config.get("arch") || "arm64";
     const dataPathOnMac =
-        config.get("dataPath") || path.join(os.homedir(), ".jterrazz-infra", "data");
+        config.get("dataPath") || path.join(os.homedir(), ".jterrazz-infrastructure", "data");
 
     const vm = new OrbStackVM(machineName, {
         name: machineName,
         distro,
         version,
         arch,
-        user: "root",
+        // No `-u root`: OrbStack 2.2.0 broke `orbctl create -u root` — its
+        // initial setup runs `usermod --uid 501 root`, which fails with
+        // "user root is currently used by process 1". The VM is created with
+        // the default macOS-named user instead; root still exists and Ansible
+        // connects to it explicitly via `root@<vm>@orb` (ansible_user).
         bindMounts: [
             // k3s storage lives at /var/lib/k8s-data; Ansible's storage
             // role symlinks it to /mnt/mac/<dataPath> so data survives

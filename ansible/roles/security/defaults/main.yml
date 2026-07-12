@@ -27,7 +27,7 @@ security_ssh_tailscale_only: false
 # CI_DEPLOY_SSH_PRIVATE GitHub Action secret on jterrazz-infrastructure.
 # Rotate by regenerating, replacing this default, updating the GH
 # secret, then `make deploy-local`.
-security_ci_deploy_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPCsf2boqXrePRFuhL3KfJjpabJ0bjAeNqpTLl7GREf ci-deploy@jterrazz-infra"
+security_ci_deploy_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPCsf2boqXrePRFuhL3KfJjpabJ0bjAeNqpTLl7GREf ci-deploy@jterrazz-infrastructure"
 
 # Base firewall rules.
 #

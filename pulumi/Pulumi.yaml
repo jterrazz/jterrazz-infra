@@ -1,4 +1,4 @@
-name: jterrazz-infra
+name: jterrazz-infrastructure
 runtime:
   name: nodejs
   options:

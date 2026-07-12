@@ -1,6 +1,6 @@
 config:
-  jterrazz-infra:target: orbstack
-  jterrazz-infra:manageDns: "true"
-  orbstack:machineName: jterrazz-infra
+  jterrazz-infrastructure:target: orbstack
+  jterrazz-infrastructure:manageDns: "true"
+  orbstack:machineName: jterrazz-infrastructure
   cloudflare:apiToken:
-    secure: AAABAK9OgriAcO0XQ7Cky32+GvDUBrNnaH/Saz6tm/KjtwunblOEeYVyQvVD81aOFBbimQVIgLMVSy8NvYx6JIxQ9Knrq1DY
+    secure: AAABALRpAHstP1AbuEkn8GRkNsB3CEQBQ02CrQPNdIxnLarH9zPndQq0DwfPv1o3a0OyiHwC0GUXSVMZlFArtFrWZU2zxKi0

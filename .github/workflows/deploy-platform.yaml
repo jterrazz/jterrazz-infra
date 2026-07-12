@@ -46,7 +46,7 @@ jobs:
 
       # Fetch CI secrets (Tailscale OAuth, docker registry creds) + join
       # the tailnet as tag:ci. After this step the runner can reach the
-      # OrbStack VM at jterrazz-infra.tail77a797.ts.net.
+      # OrbStack VM at jterrazz-infrastructure.tail77a797.ts.net.
       - name: Setup infrastructure
         uses: jterrazz/jterrazz-actions/actions/infra-connect@main
         with:

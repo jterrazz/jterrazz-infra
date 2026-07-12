@@ -34,7 +34,7 @@
     user: root
     key: "{{ security_ci_deploy_pubkey }}"
     state: present
-    comment: "ci-deploy (jterrazz-infra GHA)"
+    comment: "ci-deploy (jterrazz-infrastructure GHA)"
   when: security_ci_deploy_pubkey | length > 0
 
 # UFW Firewall

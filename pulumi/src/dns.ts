@@ -24,7 +24,7 @@ import * as cloudflare from "@pulumi/cloudflare";
 const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 
 // Tailscale tailnet suffix. Stable across the tailnet — the only
-// variable is the cluster's hostname (= `jterrazz-infra` today),
+// variable is the cluster's hostname (= `jterrazz-infrastructure` today),
 // passed in from machine.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 

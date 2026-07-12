@@ -81,7 +81,7 @@ make deploy-local                    # OrbStack
 make deploy                          # Hetzner
 
 # SSH to the cluster
-ssh root@jterrazz-infra@orb                       # OrbStack
+ssh root@jterrazz-infrastructure@orb                       # OrbStack
 ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
 
 # Check an app
