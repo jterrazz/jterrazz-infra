@@ -53,19 +53,6 @@ jobs:
           infisical-client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
-      # Fetch the platform-layer secrets ansible needs (Cloudflare, n8n
-      # encryption key, etc.) from a different Infisical path than CI.
-      - name: Fetch platform secrets from Infisical
-        uses: Infisical/secrets-action@v1.0.9
-        with:
-          method: universal
-          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          domain: https://eu.infisical.com
-          project-slug: jterrazz
-          env-slug: prod
-          secret-path: /jterrazz-infra
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -93,9 +80,10 @@ jobs:
           echo "CI_DEPLOY_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
 
       # Generate the same extra-vars file shape that scripts/deploy.sh
-      # produces locally, so the playbook gets exactly the variables its
-      # roles + platform.yml expect. Mapping mirrors fetch_secrets_file()
-      # in deploy.sh — keep them in sync if you add a new role secret.
+      # produces locally. Shared/core secrets live at /jterrazz-infra; per-service
+      # secrets in subfolders with de-prefixed keys (grafana + portainer both
+      # ADMIN_PASSWORD), so each path is fetched EXPLICITLY (not recursively) to
+      # avoid collisions. Mirrors fetch_secrets_file() in deploy.sh — keep in sync.
       - name: Build extra-vars file
         env:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -103,32 +91,48 @@ jobs:
         run: |
           EXTRA="$(mktemp -t platform-vars-XXXXXX.yml)"
           chmod 600 "$EXTRA"
-          python3 - "$EXTRA" <<'PY'
-          import os, sys, json
-          mapping = {
-              "CLOUDFLARE_API_TOKEN":          "cloudflare_api_token",
-              "CLOUDFLARE_TUNNEL_TOKEN":       "cloudflare_tunnel_token",
-              "TAILSCALE_OAUTH_CLIENT_ID":     "tailscale_oauth_client_id",
-              "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale_oauth_client_secret",
-              "DOCKER_REGISTRY_PASSWORD":      "registry_password",
-              "PORTAINER_ADMIN_PASSWORD":      "portainer_password",
-              "GRAFANA_PASSWORD":              "grafana_password",
-              "N8N_ENCRYPTION_KEY":            "n8n_encryption_key",
+          JWT="$(curl -s -X POST https://eu.infisical.com/api/v1/auth/universal-auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"clientId\":\"$INFISICAL_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CLIENT_SECRET\"}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
+          fetch() {
+            curl -s -G \
+              --data-urlencode "workspaceSlug=jterrazz" \
+              --data-urlencode "environment=prod" \
+              --data-urlencode "secretPath=$1" \
+              -H "Authorization: Bearer $JWT" \
+              "https://eu.infisical.com/api/v3/secrets/raw"
           }
-          out = {}
-          missing = []
-          for env_key, ansible_var in mapping.items():
-              val = os.environ.get(env_key)
-              if val is None:
-                  missing.append(env_key)
-                  continue
-              out[ansible_var] = val
+          ROOT="$(fetch /jterrazz-infra)"
+          GRAFANA="$(fetch /jterrazz-infra/grafana)"
+          N8N="$(fetch /jterrazz-infra/n8n)"
+          PORTAINER="$(fetch /jterrazz-infra/portainer)"
+          python3 - "$EXTRA" "$ROOT" "$GRAFANA" "$N8N" "$PORTAINER" <<'PY'
+          import os, sys, json
+
+          extra, root_j, grafana_j, n8n_j, portainer_j = sys.argv[1:6]
+
+          def kv(raw):
+              return {s["secretKey"]: s["secretValue"] for s in json.loads(raw).get("secrets", [])}
+
+          root, grafana, n8n, portainer = kv(root_j), kv(grafana_j), kv(n8n_j), kv(portainer_j)
+          out = {
+              "cloudflare_api_token":          root.get("CLOUDFLARE_API_TOKEN"),
+              "cloudflare_tunnel_token":       root.get("CLOUDFLARE_TUNNEL_TOKEN"),
+              "tailscale_oauth_client_id":     root.get("TAILSCALE_OAUTH_CLIENT_ID"),
+              "tailscale_oauth_client_secret": root.get("TAILSCALE_OAUTH_CLIENT_SECRET"),
+              "registry_password":             root.get("DOCKER_REGISTRY_PASSWORD"),
+              "grafana_password":              grafana.get("ADMIN_PASSWORD"),
+              "n8n_encryption_key":            n8n.get("ENCRYPTION_KEY"),
+              "portainer_password":            portainer.get("ADMIN_PASSWORD"),
+          }
+          missing = [k for k, v in out.items() if v is None]
+          if missing:
+              print(f"::error::Missing Infisical secrets: {', '.join(missing)}", file=sys.stderr)
+              sys.exit(1)
           out["infisical_client_id"]     = os.environ["INFISICAL_CLIENT_ID"]
           out["infisical_client_secret"] = os.environ["INFISICAL_CLIENT_SECRET"]
-          if missing:
-              print(f"::error::Missing Infisical secrets at /jterrazz-infra: {', '.join(missing)}", file=sys.stderr)
-              sys.exit(1)
-          with open(sys.argv[1], "w") as f:
+          with open(extra, "w") as f:
               for k, v in out.items():
                   v = v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
                   f.write(f'{k}: "{v}"\n')
