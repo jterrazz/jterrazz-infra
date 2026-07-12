@@ -90,7 +90,7 @@ fetch_secrets_file() {
     portainer=$(_fetch_path "/jterrazz-infrastructure/portainer")
 
     local out
-    out=$(mktemp -t jterrazz-infra-vars-XXXXXX.yml)
+    out=$(mktemp -t jterrazz-infrastructure-vars-XXXXXX.yml)
     chmod 600 "$out"
 
     python3 - "$root" "$grafana" "$n8n" "$portainer" "$out" <<'PY'
@@ -140,7 +140,7 @@ PY
 extra_args_for_target() {
     if [ "$target" = "production" ]; then
         local key_file ip
-        key_file=$(mktemp -t jterrazz-infra-ssh-XXXXXX.key)
+        key_file=$(mktemp -t jterrazz-infrastructure-ssh-XXXXXX.key)
         chmod 600 "$key_file"
         (cd "$PROJECT_DIR/pulumi" && pulumi stack output sshPrivateKey --show-secrets --stack "$STACK") > "$key_file"
         ip=$(cd "$PROJECT_DIR/pulumi" && pulumi stack output sshHost --stack "$STACK")

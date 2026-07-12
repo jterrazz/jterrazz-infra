@@ -24,7 +24,7 @@ security_ssh_tailscale_only: false
 # `deploy-platform.yaml` workflow (running on a GHA runner that joins
 # Tailscale as tag:ci) can ssh in and run ansible. Public half is safe
 # to commit (it's a pubkey); the matching private key is the
-# CI_DEPLOY_SSH_PRIVATE GitHub Action secret on jterrazz-infra.
+# CI_DEPLOY_SSH_PRIVATE GitHub Action secret on jterrazz-infrastructure.
 # Rotate by regenerating, replacing this default, updating the GH
 # secret, then `make deploy-local`.
 security_ci_deploy_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPCsf2boqXrePRFuhL3KfJjpabJ0bjAeNqpTLl7GREf ci-deploy@jterrazz-infra"

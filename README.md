@@ -1,4 +1,4 @@
-# @jterrazz/infra
+# @jterrazz/infrastructure
 
 Single-node k3s cluster, **dual-mode**: deployable on Hetzner Cloud
 (`stack=production`) or on a local OrbStack VM (`stack=local`). Same

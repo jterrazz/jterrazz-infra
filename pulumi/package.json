@@ -1,5 +1,5 @@
 {
-  "name": "jterrazz-infra",
+  "name": "jterrazz-infrastructure",
   "version": "1.0.0",
   "description": "Dual-mode k3s cluster infra (Hetzner VPS or OrbStack VM)",
   "scripts": {
