@@ -739,7 +739,7 @@
       register: librechat_platform_result
       changed_when: "'has been upgraded' in librechat_platform_result.stdout or 'has been installed' in librechat_platform_result.stdout"
 
-    # Sync LibreChat secrets from Infisical (/librechat) before the app so its
+    # Sync LibreChat secrets from Infisical (/jterrazz-infra/librechat) before the app so its
     # `existingSecretName` resolves on first boot.
     - name: Apply LibreChat Infisical secret
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/secret.yaml
@@ -819,7 +819,7 @@
       register: openpanel_base_apply
       changed_when: "'created' in openpanel_base_apply.stdout or 'configured' in openpanel_base_apply.stdout"
 
-    # Sync secrets from Infisical (/openpanel) before the DBs/apps so their
+    # Sync secrets from Infisical (/jterrazz-infra/openpanel) before the DBs/apps so their
     # envFrom + POSTGRES_PASSWORD resolve on first boot.
     - name: Apply OpenPanel Infisical secret
       ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/openpanel/secret.yaml
