@@ -3,7 +3,10 @@ controllerManager:
     resources:
       requests:
         cpu: 5m
-        memory: 64Mi
+        # Idles ~73Mi (above the old 64Mi request); a controller-runtime
+        # manager spikes higher when resyncing many InfisicalSecrets, and
+        # 128Mi left little headroom. 256Mi limit avoids a future OOM.
+        memory: 128Mi
       limits:
         cpu: null
-        memory: 128Mi
+        memory: 256Mi
