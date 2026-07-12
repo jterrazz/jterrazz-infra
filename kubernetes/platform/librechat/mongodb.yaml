@@ -46,16 +46,25 @@ spec:
               memory: 256Mi
             limits:
               memory: 512Mi
+          # TCP probe, not `mongosh --eval`: mongosh is a heavy Node REPL whose
+          # cold-start alone exceeds the 1s default probe timeout, so the exec
+          # probe timed out on ~every check → 57 liveness-kills / crash-loop
+          # (the storage engine also needs ~3s to open on the Mac hostPath).
+          # A listening port 27017 means mongod is up and accepting connections.
           livenessProbe:
-            exec:
-              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            tcpSocket:
+              port: 27017
             initialDelaySeconds: 30
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
-            exec:
-              command: ["mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+            tcpSocket:
+              port: 27017
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:
