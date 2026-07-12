@@ -61,10 +61,12 @@ pulumi_destroy() {
     pulumi destroy --yes --refresh
 }
 
-# Fetch all Ansible-bound secrets from Infisical /jterrazz-infra env=prod.
-# Returns the path to a temp YAML file. Mapping below decides which
-# Infisical keys become which Ansible vars; if a role needs a new value,
-# add it here and to the role's defaults.
+# Fetch all Ansible-bound secrets from Infisical env=prod into a temp YAML file.
+# Shared/core secrets live at /jterrazz-infra; per-service secrets in subfolders
+# (grafana, n8n, portainer). Each path is fetched EXPLICITLY (not recursively)
+# so short keys can repeat across services (grafana + portainer both use
+# ADMIN_PASSWORD) without colliding. If a role needs a new value, add it below
+# and to the role's defaults.
 fetch_secrets_file() {
     local jwt
     jwt=$(curl -s -X POST https://eu.infisical.com/api/v1/auth/universal-auth/login \
@@ -72,43 +74,56 @@ fetch_secrets_file() {
         -d "{\"clientId\":\"$INFISICAL_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CLIENT_SECRET\"}" \
         | python3 -c "import json,sys; print(json.load(sys.stdin)['accessToken'])")
 
-    local secrets_json
-    secrets_json=$(curl -s -G \
-        --data-urlencode "workspaceSlug=jterrazz" \
-        --data-urlencode "environment=prod" \
-        --data-urlencode "secretPath=/jterrazz-infra" \
-        -H "Authorization: Bearer $jwt" \
-        "https://eu.infisical.com/api/v3/secrets/raw")
+    _fetch_path() {
+        curl -s -G \
+            --data-urlencode "workspaceSlug=jterrazz" \
+            --data-urlencode "environment=prod" \
+            --data-urlencode "secretPath=$1" \
+            -H "Authorization: Bearer $jwt" \
+            "https://eu.infisical.com/api/v3/secrets/raw"
+    }
+
+    local root grafana n8n portainer
+    root=$(_fetch_path "/jterrazz-infra")
+    grafana=$(_fetch_path "/jterrazz-infra/grafana")
+    n8n=$(_fetch_path "/jterrazz-infra/n8n")
+    portainer=$(_fetch_path "/jterrazz-infra/portainer")
 
     local out
     out=$(mktemp -t jterrazz-infra-vars-XXXXXX.yml)
     chmod 600 "$out"
 
-    python3 - "$secrets_json" "$out" <<'PY'
+    python3 - "$root" "$grafana" "$n8n" "$portainer" "$out" <<'PY'
 import json, os, sys
 
-data = json.loads(sys.argv[1])
-# Infisical secret key → Ansible variable name. Extend as roles demand.
-mapping = {
-    "CLOUDFLARE_API_TOKEN":          "cloudflare_api_token",
-    "CLOUDFLARE_TUNNEL_TOKEN":       "cloudflare_tunnel_token",
-    "TAILSCALE_OAUTH_CLIENT_ID":     "tailscale_oauth_client_id",
-    "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale_oauth_client_secret",
-    "DOCKER_REGISTRY_PASSWORD":      "registry_password",
-    "PORTAINER_ADMIN_PASSWORD":      "portainer_password",
-    "GRAFANA_PASSWORD":              "grafana_password",
-    "N8N_ENCRYPTION_KEY":            "n8n_encryption_key",
+root_json, grafana_json, n8n_json, portainer_json, outpath = sys.argv[1:6]
+
+def kv(raw):
+    return {s["secretKey"]: s["secretValue"] for s in json.loads(raw).get("secrets", [])}
+
+root, grafana, n8n, portainer = kv(root_json), kv(grafana_json), kv(n8n_json), kv(portainer_json)
+
+# (Infisical path → key) → Ansible variable. Shared/core at /jterrazz-infra;
+# per-service in subfolders with short (de-prefixed) keys.
+out = {
+    "cloudflare_api_token":          root.get("CLOUDFLARE_API_TOKEN"),
+    "cloudflare_tunnel_token":       root.get("CLOUDFLARE_TUNNEL_TOKEN"),
+    "tailscale_oauth_client_id":     root.get("TAILSCALE_OAUTH_CLIENT_ID"),
+    "tailscale_oauth_client_secret": root.get("TAILSCALE_OAUTH_CLIENT_SECRET"),
+    "registry_password":             root.get("DOCKER_REGISTRY_PASSWORD"),
+    "grafana_password":              grafana.get("ADMIN_PASSWORD"),
+    "n8n_encryption_key":            n8n.get("ENCRYPTION_KEY"),
+    "portainer_password":            portainer.get("ADMIN_PASSWORD"),
 }
-out = {}
-for s in data.get("secrets", []):
-    if s["secretKey"] in mapping:
-        out[mapping[s["secretKey"]]] = s["secretValue"]
+# Drop absent values so Ansible role defaults apply rather than a literal "None".
+out = {k: v for k, v in out.items() if v is not None}
+
 # Infisical-operator credentials are local-only and live in .env, not in
 # Infisical itself (chicken-and-egg).
 out["infisical_client_id"]     = os.environ["INFISICAL_CLIENT_ID"]
 out["infisical_client_secret"] = os.environ["INFISICAL_CLIENT_SECRET"]
 
-with open(sys.argv[2], "w") as f:
+with open(outpath, "w") as f:
     for k, v in out.items():
         # Quote everything: tokens may start with `[` or contain `:`, both
         # of which mean things to the YAML parser.
