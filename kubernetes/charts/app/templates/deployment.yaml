@@ -1,5 +1,4 @@
 {{- if eq (include "app.envExists" .) "true" -}}
-{{- include "app.validatePlatformServices" . -}}
 {{- $secrets := fromYaml (include "app.secretsConfig" .) -}}
 {{- $envVars := fromYaml (include "app.envVars" .) -}}
 {{- $platformEnv := fromYaml (include "app.platformEnv" .) -}}

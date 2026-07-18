@@ -275,37 +275,30 @@ gateway-intelligence:
 {{- end -}}
 
 {{/*
-Opt-in platform services for the current environment.
+Resolved + validated opt-in platform services for the current environment.
 env-level `platformServices` fully replaces the spec-level list (same
 replace-not-merge semantics as `ingress`); otherwise the spec list applies.
+Fails fast on an unknown service name (typo protection) — validation lives here,
+in the single resolver every consumer (env injection, client labels, netpol)
+already calls, so a bad name can never render a silently-broken manifest.
 Returns a YAML list (consume via fromYamlArray).
 */}}
 {{- define "app.platformServices" -}}
-{{- $env := .Values.environment -}}
-{{- $base := .Values.spec.platformServices | default list -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments $env -}}
-{{- $envConfig = index .Values.environments $env -}}
-{{- end -}}
-{{- if hasKey $envConfig "platformServices" -}}
-{{- (index $envConfig "platformServices") | toYaml -}}
-{{- else -}}
-{{- $base | toYaml -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Fail fast on an unknown platformServices entry (typo protection). Included at
-the top of every template that consumes the catalog so a bad name never renders
-a silently-broken netpol.
-*/}}
-{{- define "app.validatePlatformServices" -}}
 {{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
-{{- range $svc := (fromYamlArray (include "app.platformServices" .)) -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments .Values.environment -}}
+{{- $envConfig = index .Values.environments .Values.environment -}}
+{{- end -}}
+{{- $services := .Values.spec.platformServices | default list -}}
+{{- if hasKey $envConfig "platformServices" -}}
+{{- $services = index $envConfig "platformServices" -}}
+{{- end -}}
+{{- range $svc := $services -}}
 {{- if not (hasKey $catalog $svc) -}}
 {{- fail (printf "spec.platformServices: unknown service %q (valid: %s)" $svc (keys $catalog | sortAlpha | join ", ")) -}}
 {{- end -}}
 {{- end -}}
+{{- $services | toYaml -}}
 {{- end -}}
 
 {{/*

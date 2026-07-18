@@ -1,5 +1,4 @@
 {{- if eq (include "app.envExists" .) "true" -}}
-{{- include "app.validatePlatformServices" . -}}
 {{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
 {{- $platformServices := fromYamlArray (include "app.platformServices" .) -}}
 {{- $appName := include "app.name" . -}}
