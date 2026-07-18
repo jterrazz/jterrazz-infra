@@ -47,17 +47,17 @@ resources:
   limits:
     memory: 1Gi
 
-# Map ANTHROPIC_API_KEY <- the existing GATEWAY_API_KEY (same gateway key),
-# so the native `anthropic` endpoint authenticates without a second Infisical
-# entry. The anthropic endpoint is what unlocks Claude's server-side web_search.
+# ANTHROPIC_API_KEY is a NON-SECRET placeholder. The gateway enforces no client
+# API key (Option A: netpol + private ingress is the boundary — CLIProxyAPI runs
+# with `api-keys: []`, auth middleware off). The Anthropic SDK still wants a
+# non-empty key, so any constant works. NOTHING sensitive here → no Infisical
+# entry. (Was: valueFrom secretKeyRef GATEWAY_API_KEY — that key is deleted.)
+# The anthropic endpoint is what unlocks Claude's server-side web_search.
 global:
   librechat:
     env:
       - name: ANTHROPIC_API_KEY
-        valueFrom:
-          secretKeyRef:
-            name: librechat-credentials-env
-            key: GATEWAY_API_KEY
+        value: "gateway-noauth"
 
 # --- Bundled datastores: OFF (see header) ---
 mongodb:
@@ -70,9 +70,9 @@ librechat-rag-api:
   enabled: false
 
 librechat:
-  # Pulls CREDS_KEY, CREDS_IV, JWT_SECRET, JWT_REFRESH_SECRET and
-  # GATEWAY_API_KEY into the pod env (synced from Infisical /jterrazz-infrastructure/librechat by
-  # secret.yaml). GATEWAY_API_KEY must be one of the gateway's API_KEYS.
+  # Pulls CREDS_KEY, CREDS_IV, JWT_SECRET, JWT_REFRESH_SECRET into the pod env
+  # (synced from Infisical /jterrazz-infrastructure/librechat by secret.yaml).
+  # No GATEWAY_API_KEY anymore — the gateway has no client auth (see above).
   # NOTE: the chart wires envFrom to a secret literally named
   # `librechat-credentials-env` regardless of this value, so secret.yaml MUST
   # create that exact name. We set it here too for clarity / to stop the chart
@@ -112,7 +112,8 @@ librechat:
     endpoints:
       custom:
         - name: "Gateway Intelligence"
-          apiKey: "${GATEWAY_API_KEY}"
+          # Non-secret placeholder — gateway does no client-key auth (netpol-only).
+          apiKey: "gateway-noauth"
           baseURL: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1"
           models:
             # Curated to Anthropic's top tier only (latest Opus/Sonnet/Haiku).

@@ -1,4 +1,8 @@
 {{- if eq (include "app.envExists" .) "true" -}}
+{{- include "app.validatePlatformServices" . -}}
+{{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
+{{- $platformServices := fromYamlArray (include "app.platformServices" .) -}}
+{{- $appName := include "app.name" . -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -20,7 +24,26 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ .Values.spec.port }}
-    {{- /* Allow traffic from explicitly declared client apps */}}
+    {{- /* Server side: if THIS app is itself a platform-service catalog target
+           carrying a clientLabel (e.g. gateway-intelligence), auto-render an
+           ingress rule that admits any pod (in any namespace) stamped with that
+           label. Consumers opt in via spec.platformServices, which stamps the
+           label — so a new consumer needs ZERO edit here. Replaces the old
+           per-name allowedClients enumeration for platform traffic. */}}
+    {{- if hasKey $catalog $appName }}
+    {{- $selfEntry := index $catalog $appName }}
+    {{- if $selfEntry.clientLabel }}
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              {{ $selfEntry.clientLabel }}: "true"
+      ports:
+        - port: {{ .Values.spec.port }}
+    {{- end }}
+    {{- end }}
+    {{- /* Bespoke ingress: explicitly declared client apps by namespace name.
+           Kept for non-platform / one-off ingress only. */}}
     {{- range .Values.spec.networkPolicy.allowedClients }}
     - from:
         - namespaceSelector:
@@ -52,7 +75,27 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
-    {{- /* Allow traffic to OTel Collector if declared */}}
+    {{- /* Opt-in platform services (spec.platformServices → catalog). Each
+           opens egress to the catalog namespace on the POD ports (never the
+           Service port). This is the sanctioned replacement for allowedServices. */}}
+    {{- range $svc := $platformServices }}
+    {{- $entry := index $catalog $svc }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $entry.egress.namespace }}
+      ports:
+        {{- range $port := $entry.egress.ports }}
+        - port: {{ $port }}
+          protocol: TCP
+        {{- end }}
+    {{- end }}
+    {{- /* DEPRECATED back-compat: spec.networkPolicy.allowedServices.
+           Chart 2.0 replaces this with spec.platformServices. Honored silently
+           for one transition window so an un-migrated app on the unpinned OCI
+           chart doesn't lose egress on a routine redeploy. Remove once every
+           app has migrated. otel-collector keeps its telemetry ports; any other
+           entry falls back to the legacy all-ports prod/next/staging rule. */}}
     {{- if has "otel-collector" (default (list) .Values.spec.networkPolicy.allowedServices) }}
     - to:
         - namespaceSelector:
@@ -64,7 +107,6 @@ spec:
         - port: 4318
           protocol: TCP
     {{- end }}
-    {{- /* Allow traffic to explicitly declared services */}}
     {{- range .Values.spec.networkPolicy.allowedServices }}
     {{- if ne . "otel-collector" }}
     - to:

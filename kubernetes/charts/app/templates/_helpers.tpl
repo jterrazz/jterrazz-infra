@@ -227,6 +227,125 @@ Secrets name
 {{- end -}}
 
 {{/*
+==============================================================================
+Platform-service catalog (chart 2.0)
+==============================================================================
+Single source of truth for the in-cluster platform services an app can opt
+into via `spec.platformServices: [ ... ]`. Declaring a service wires the whole
+bundle from this catalog: env injection (client side) + egress NetworkPolicy +
+(for a service that IS a catalog target, e.g. gateway-intelligence) the
+server-side ingress rule via a pod label selector.
+
+Per entry:
+  env         map of env var name -> value injected into opted-in consumers.
+              A user-set env of the same name always wins (see deployment.yaml).
+  egress      { namespace, ports[] } — the consumer's egress NetworkPolicy hole.
+              ports are the POD ports (NOT the Service port). Namespace is
+              pinned (gateway-intelligence only exists in prod).
+  clientLabel (optional) pod label the consumer stamps on its own pods; the
+              target service's chart-rendered ingress rule selects on it, so a
+              new consumer needs ZERO edit on the target.
+
+Auth model (Option A): the gateway has NO client-API-key enforcement — the
+security boundary is netpol + private ingress. So gateway-intelligence has NO
+secret here; consumers pass a non-secret static placeholder apiKey to satisfy
+the OpenAI SDK (which requires a non-empty string). See CLAUDE.md.
+
+Note OTEL_EXPORTER_OTLP_ENDPOINT keeps its spec-mandated name (the OTel SDK
+owns that contract — the one naming exception); GATEWAY_INTELLIGENCE_BASE_URL
+is service-name-derived and carries the /v1 suffix the OpenAI client expects.
+*/}}
+{{- define "app.platformCatalog" -}}
+otel-collector:
+  env:
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.platform-telemetry:4318"
+  egress:
+    namespace: platform-telemetry
+    ports:
+      - 4317
+      - 4318
+gateway-intelligence:
+  env:
+    GATEWAY_INTELLIGENCE_BASE_URL: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1"
+  egress:
+    namespace: prod-gateway-intelligence
+    ports:
+      - 8317
+  clientLabel: platform-client.jterrazz.com/gateway-intelligence
+{{- end -}}
+
+{{/*
+Opt-in platform services for the current environment.
+env-level `platformServices` fully replaces the spec-level list (same
+replace-not-merge semantics as `ingress`); otherwise the spec list applies.
+Returns a YAML list (consume via fromYamlArray).
+*/}}
+{{- define "app.platformServices" -}}
+{{- $env := .Values.environment -}}
+{{- $base := .Values.spec.platformServices | default list -}}
+{{- $envConfig := dict -}}
+{{- if hasKey .Values.environments $env -}}
+{{- $envConfig = index .Values.environments $env -}}
+{{- end -}}
+{{- if hasKey $envConfig "platformServices" -}}
+{{- (index $envConfig "platformServices") | toYaml -}}
+{{- else -}}
+{{- $base | toYaml -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Fail fast on an unknown platformServices entry (typo protection). Included at
+the top of every template that consumes the catalog so a bad name never renders
+a silently-broken netpol.
+*/}}
+{{- define "app.validatePlatformServices" -}}
+{{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
+{{- range $svc := (fromYamlArray (include "app.platformServices" .)) -}}
+{{- if not (hasKey $catalog $svc) -}}
+{{- fail (printf "spec.platformServices: unknown service %q (valid: %s)" $svc (keys $catalog | sortAlpha | join ", ")) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Merged env-var map (name -> value) injected by all opted-in platform services.
+*/}}
+{{- define "app.platformEnv" -}}
+{{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
+{{- $out := dict -}}
+{{- range $svc := (fromYamlArray (include "app.platformServices" .)) -}}
+{{- if hasKey $catalog $svc -}}
+{{- $entry := index $catalog $svc -}}
+{{- if $entry.env -}}
+{{- range $k, $v := $entry.env -}}
+{{- $_ := set $out $k $v -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toYaml -}}
+{{- end -}}
+
+{{/*
+Client labels (label -> "true") this consumer stamps on its own pods, so the
+target platform service's ingress selects it. Empty for services w/o a label.
+*/}}
+{{- define "app.platformClientLabels" -}}
+{{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
+{{- $out := dict -}}
+{{- range $svc := (fromYamlArray (include "app.platformServices" .)) -}}
+{{- if hasKey $catalog $svc -}}
+{{- $entry := index $catalog $svc -}}
+{{- if $entry.clientLabel -}}
+{{- $_ := set $out $entry.clientLabel "true" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toYaml -}}
+{{- end -}}
+
+{{/*
 Common labels
 */}}
 {{- define "app.labels" -}}

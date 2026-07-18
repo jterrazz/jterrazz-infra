@@ -80,8 +80,10 @@ dropping `private` and relying on LibreChat's own auth.
 The UI defaults to a single agent — **"Opus 4.8 — Web + Artifacts"** — using the
 native `anthropic` endpoint so Claude's server-side `web_search` works (the
 Agent framework's web_search would be orchestrated/SearXNG instead; not used).
-`ANTHROPIC_API_KEY` is mapped from the existing `GATEWAY_API_KEY` and
-`ANTHROPIC_REVERSE_PROXY` points at the gateway. Persistence: users, login and
+`ANTHROPIC_API_KEY` (and the custom-endpoint key) is a **non-secret placeholder**
+(`gateway-noauth`) — the gateway does no client-key auth (see the
+"gateway-intelligence: auth model" note under Key Patterns); `ANTHROPIC_REVERSE_PROXY`
+points at the gateway. Persistence: users, login and
 chat history live in `mongo` (PVC `librechat-data`); uploads/generated images
 in PVC `librechat-uploads`. Both are `Retain` hostPath under
 `/var/lib/k8s-data` → the Mac on OrbStack, so they survive pod restarts, helm
@@ -136,12 +138,40 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
 - Shared platform chart (`kubernetes/charts/platform/`) generates
   Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
 - App chart at `kubernetes/charts/app/`, published to OCI registry
-  (currently 1.17.1). Injects a default
+  (currently **2.0.0**). Injects a default
   `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request)
   **only for apps requesting >= 512Mi** (e.g. signews-api), unless the
   app sets its own `NODE_OPTIONS`. 1.14.0 applied it to all apps, which
   crash-looped small Next.js services (96MB cap starved SSR boot);
   1.14.1 added the 512Mi floor.
+- **Platform-service opt-in (app-chart 2.0)**: an app declares
+  `spec.platformServices: [otel-collector, gateway-intelligence]` and the
+  chart wires the whole bundle from a catalog in
+  `kubernetes/charts/app/templates/_helpers.tpl` (`app.platformCatalog`):
+  env injection + egress NetworkPolicy + — for a service that is itself a
+  catalog target (gateway-intelligence) — a server-side ingress rule via a
+  pod label (`platform-client.jterrazz.com/<svc>`), so a new consumer needs
+  ZERO edit on the target. Env names are service-derived
+  (`GATEWAY_INTELLIGENCE_BASE_URL`) except `OTEL_EXPORTER_OTLP_ENDPOINT`
+  (the OTel SDK owns that contract). Unknown entries hard-fail the render.
+  OTel is now **opt-in** (was an unconditional default that was inert
+  without the egress hole). The old `spec.networkPolicy.allowedServices` is
+  DEPRECATED — still honored as an egress-only alias for one transition
+  window; migrate to `platformServices` and delete it. The chart is pulled
+  UNVERSIONED by CI (`oci://…/charts/app`), so a chart push reaches every
+  app on its next deploy — that's why 2.0 keeps the alias working.
+- **gateway-intelligence: auth model (Option A — netpol-only).** CLIProxyAPI
+  does NOT enforce client API keys. With `api-keys: []` in its config its
+  access provider is unregistered and the auth middleware allows all
+  requests (verified in upstream v7 source). The security boundary is
+  therefore **NetworkPolicy + private-only ingress**, not a bearer token.
+  Consumers pass a **non-secret static placeholder** apiKey
+  (`gateway-noauth`) only to satisfy the OpenAI SDK's non-empty-string
+  requirement — it is NOT a secret, NOT centralized, and there is NO gateway
+  API key in Infisical anywhere. `MANAGEMENT_PASSWORD` (the mgmt API secret)
+  IS real and stays in Infisical `/gateway-intelligence`. If per-client auth
+  is ever wanted, it must be rendered into `config.yaml` `api-keys:` (no env
+  path exists in CLIProxyAPI) — deferred.
 - Per-service config split: `helm.yaml` (upstream chart values) +
   `platform.yaml` (ingress / cert / storage).
 - PVCs use `storageClassName: manual` with hostPath PVs, bound via

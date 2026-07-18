@@ -1,6 +1,9 @@
 {{- if eq (include "app.envExists" .) "true" -}}
+{{- include "app.validatePlatformServices" . -}}
 {{- $secrets := fromYaml (include "app.secretsConfig" .) -}}
 {{- $envVars := fromYaml (include "app.envVars" .) -}}
+{{- $platformEnv := fromYaml (include "app.platformEnv" .) -}}
+{{- $platformClientLabels := fromYaml (include "app.platformClientLabels" .) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,6 +26,12 @@ spec:
         rollout/release-revision: {{ .Release.Revision | quote }}
       labels:
         {{- include "app.selectorLabels" . | nindent 8 }}
+        {{- /* Platform-client labels: stamped on pod template labels ONLY
+               (never selectorLabels — those are immutable). The target
+               platform service's ingress NetworkPolicy selects on these. */}}
+        {{- range $key, $value := $platformClientLabels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}
     spec:
       {{- if not .Values.spec.runAsRoot }}
       securityContext:
@@ -67,10 +76,17 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "deployment.environment={{ .Values.environment }}"
             {{- end }}
-            {{- /* Default OTEL endpoint if not overridden by user */}}
-            {{- if not (hasKey $envVars "OTEL_EXPORTER_OTLP_ENDPOINT") }}
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.platform-telemetry:4318"
+            {{- /* Opt-in platform-service env (spec.platformServices → catalog
+                   in _helpers.tpl). This is where OTEL_EXPORTER_OTLP_ENDPOINT
+                   and GATEWAY_INTELLIGENCE_BASE_URL now come from — NO longer an
+                   unconditional default: an app must declare `otel-collector`
+                   (and the egress hole it opens) for telemetry to actually flow.
+                   A user-set env of the same name always wins. */}}
+            {{- range $key, $value := $platformEnv }}
+            {{- if not (hasKey $envVars $key) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
             {{- end }}
             {{- /* Default Node.js heap cap ≈ 75% of the memory request.
                    Skipped entirely if the app sets its own NODE_OPTIONS.

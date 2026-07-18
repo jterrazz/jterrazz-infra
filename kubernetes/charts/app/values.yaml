@@ -13,7 +13,14 @@ spec:
   storage: {}
   configFiles: {}
   dashboards: {}
+  # Opt-in in-cluster platform services (chart 2.0). Each name is resolved
+  # against the catalog in templates/_helpers.tpl and wires env + egress netpol
+  # (+ server-side ingress for a catalog target). Valid: otel-collector,
+  # gateway-intelligence. Unknown names hard-fail the render.
+  platformServices: []
   networkPolicy:
+    # DEPRECATED (chart 2.0): use spec.platformServices instead. Still honored
+    # as an egress-only alias for one transition window — see network-policy.yaml.
     allowedServices: []
   health:
     path: /health

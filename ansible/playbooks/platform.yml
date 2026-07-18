@@ -1022,7 +1022,7 @@
 
           Services deployed:
             - cert-manager v1.19.3
-            - infisical v0.10.25
+            - infisical secrets-operator v0.11.0
             - grafana + loki + tempo + prometheus + otel-collector
             - n8n v1.16.29
             - portainer
