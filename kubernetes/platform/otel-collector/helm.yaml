@@ -38,6 +38,17 @@ ports:
   zipkin:
     enabled: false
 
+# Injects the Langfuse Basic-Auth header value (base64 of
+# "public_key:secret_key") from the otel-collector-credentials-env Secret,
+# synced from Infisical /otel-collector by secret.yaml. Consumed via
+# ${env:LANGFUSE_BASIC_AUTH} in the otlphttp/langfuse exporter below.
+extraEnvs:
+  - name: LANGFUSE_BASIC_AUTH
+    valueFrom:
+      secretKeyRef:
+        name: otel-collector-credentials-env
+        key: LANGFUSE_BASIC_AUTH
+
 config:
   receivers:
     otlp:
@@ -51,6 +62,19 @@ config:
     batch:
       timeout: 5s
       send_batch_size: 1024
+    # Keeps only GenAI spans (AI SDK / @ai-sdk/otel) before they reach
+    # Langfuse: span name prefixed "ai." OR carrying any gen_ai.* semantic-
+    # convention attribute (e.g. gen_ai.operation.name). The filter
+    # processor DROPS telemetry that matches its condition, so this
+    # condition matches (and drops) everything that is NOT a GenAI span.
+    # error_mode: ignore -> a span that errors evaluating the condition
+    # (e.g. missing attribute) is kept flowing rather than crashing the
+    # pipeline.
+    filter/genai:
+      error_mode: ignore
+      traces:
+        span:
+          - 'not (IsMatch(name, "^ai\\..*") or attributes["gen_ai.operation.name"] != nil)'
 
   exporters:
     otlphttp/tempo:
@@ -73,6 +97,15 @@ config:
       # without a cardinality blow-up.
       resource_to_telemetry_conversion:
         enabled: true
+    otlphttp/langfuse:
+      # Langfuse Cloud OTLP ingestion endpoint. Replace with your
+      # self-hosted Langfuse instance's endpoint
+      # (https://<your-host>/api/public/otel) if not using Langfuse Cloud.
+      # NOTE: Langfuse's OTLP endpoint only accepts OTLP/HTTP - it does
+      # NOT support gRPC (4317), so this must stay an otlphttp exporter.
+      endpoint: https://cloud.langfuse.com/api/public/otel
+      headers:
+        Authorization: "Basic ${env:LANGFUSE_BASIC_AUTH}"
 
   service:
     pipelines:
@@ -80,6 +113,12 @@ config:
         receivers: [otlp]
         processors: [batch]
         exporters: [otlphttp/tempo]
+      # GenAI-only traces fanned out to Langfuse, in addition to the
+      # unchanged traces->Tempo pipeline above.
+      traces/langfuse:
+        receivers: [otlp]
+        processors: [filter/genai, batch]
+        exporters: [otlphttp/langfuse]
       logs:
         receivers: [otlp]
         processors: [batch]

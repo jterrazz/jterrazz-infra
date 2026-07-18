@@ -546,6 +546,23 @@
       register: tempo_result
       changed_when: "'has been upgraded' in tempo_result.stdout or 'has been installed' in tempo_result.stdout"
 
+    - name: Apply OTel Collector Infisical secret
+      ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/otel-collector/secret.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: otel_secret_apply
+      changed_when: "'created' in otel_secret_apply.stdout or 'configured' in otel_secret_apply.stdout"
+
+    - name: Wait for otel-collector-credentials-env to be materialized by the Infisical operator
+      ansible.builtin.command: kubectl get secret otel-collector-credentials-env -n platform-telemetry
+      environment:
+        KUBECONFIG: "{{ kubeconfig_remote }}"
+      register: otel_secret_ready
+      until: otel_secret_ready.rc == 0
+      retries: 30
+      delay: 5
+      changed_when: false
+
     - name: Install OpenTelemetry Collector via Helm
       ansible.builtin.command: >
         helm upgrade --install otel-collector open-telemetry/opentelemetry-collector
