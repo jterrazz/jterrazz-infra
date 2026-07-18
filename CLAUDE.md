@@ -159,7 +159,10 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   DEPRECATED — still honored as an egress-only alias for one transition
   window; migrate to `platformServices` and delete it. The chart is pulled
   UNVERSIONED by CI (`oci://…/charts/app`), so a chart push reaches every
-  app on its next deploy — that's why 2.0 keeps the alias working.
+  app on its next deploy — that's why 2.0 keeps the alias working. The alias
+  is slated for **removal in chart 2.1**, once every app has migrated off
+  `allowedServices` (the signews-web / clawssify-web / clawrr-web-landing
+  signoz sweep is landing now).
 - **gateway-intelligence: auth model (Option A — netpol-only).** CLIProxyAPI
   does NOT enforce client API keys. With `api-keys: []` in its config its
   access provider is unregistered and the auth middleware allows all

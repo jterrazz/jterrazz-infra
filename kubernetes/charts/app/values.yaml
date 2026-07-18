@@ -21,6 +21,9 @@ spec:
   networkPolicy:
     # DEPRECATED (chart 2.0): use spec.platformServices instead. Still honored
     # as an egress-only alias for one transition window — see network-policy.yaml.
+    # Removal is slated for chart 2.1, once every app has migrated off
+    # allowedServices (the signews-web / clawssify-web / clawrr-web-landing
+    # signoz sweep is landing now).
     allowedServices: []
   health:
     path: /health
@@ -45,11 +48,3 @@ registry:
   server: registry.jterrazz.com
   username: ""
   password: ""
-
-# Infrastructure settings — historically used to drive external-dns
-# annotations. Now external-dns is gone (Pulumi manages private CNAMEs,
-# cloudflared auto-creates public ones), so these are accepted but
-# unused. Kept for back-compat with the jterrazz-actions CI flags.
-infrastructure:
-  publicTarget: ""
-  tailscaleHostname: ""
