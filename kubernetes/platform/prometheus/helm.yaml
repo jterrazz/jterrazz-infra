@@ -4,7 +4,9 @@ server:
   resources:
     requests:
       cpu: 50m
-      memory: 384Mi
+      # req raised 384→640Mi: live working set (~431Mi) plus scrape/query
+      # burst headroom repeatedly exceeded the old 384Mi request.
+      memory: 640Mi
     # Bumped 512→768Mi: the working set reached ~431Mi (84%) after new app
     # metrics + per-environment labels increased the active-series count.
     limits:

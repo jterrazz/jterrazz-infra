@@ -5,9 +5,11 @@ persistence:
 resources:
   requests:
     cpu: 50m
-    memory: 128Mi
+    # req raised 128→160Mi, limit 256→384Mi: live usage exceeded the old
+    # 128Mi request and pushed toward the 256Mi limit.
+    memory: 160Mi
   limits:
-    memory: 256Mi
+    memory: 384Mi
 
 # Sidecar watches ConfigMaps with label grafana_dashboard=1 across all namespaces
 sidecar:

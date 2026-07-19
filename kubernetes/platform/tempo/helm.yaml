@@ -19,12 +19,12 @@ tempo:
   resources:
     requests:
       cpu: 25m
-      memory: 256Mi
+      memory: 192Mi
     limits:
       # Tempo's ingester WAL flush spikes RAM beyond the 512Mi default —
       # the upstream chart OOMKilled every few minutes on a busier
       # cluster (~3k restarts over 64 days) and made `helm --wait` flake.
-      memory: 1Gi
+      memory: 512Mi
   receivers:
     otlp:
       protocols:

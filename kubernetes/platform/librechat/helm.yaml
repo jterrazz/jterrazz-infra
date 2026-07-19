@@ -43,9 +43,9 @@ volumeMounts:
 resources:
   requests:
     cpu: 50m
-    memory: 512Mi
+    memory: 384Mi
   limits:
-    memory: 1Gi
+    memory: 768Mi
 
 # ANTHROPIC_API_KEY is a NON-SECRET placeholder. The gateway enforces no client
 # API key (Option A: netpol + private ingress is the boundary — CLIProxyAPI runs

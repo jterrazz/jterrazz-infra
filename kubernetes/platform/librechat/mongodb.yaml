@@ -43,9 +43,9 @@ spec:
           resources:
             requests:
               cpu: 25m
-              memory: 256Mi
+              memory: 192Mi
             limits:
-              memory: 512Mi
+              memory: 384Mi
           # TCP probe, not `mongosh --eval`: mongosh is a heavy Node REPL whose
           # cold-start alone exceeds the 1s default probe timeout, so the exec
           # probe timed out on ~every check → 57 liveness-kills / crash-loop

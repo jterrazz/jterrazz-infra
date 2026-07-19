@@ -60,7 +60,8 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 384Mi
+              # req raised 384→576Mi: live usage exceeded the old 384Mi request.
+              memory: 576Mi
             limits:
               memory: 1Gi
           startupProbe:
@@ -131,7 +132,8 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 256Mi
+              # req raised 256→320Mi: live usage exceeded the old 256Mi request.
+              memory: 320Mi
             limits:
               memory: 768Mi
           startupProbe:
@@ -203,9 +205,9 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 192Mi
+              memory: 128Mi
             limits:
-              memory: 512Mi
+              memory: 384Mi
           startupProbe:
             httpGet:
               path: /api/healthcheck
