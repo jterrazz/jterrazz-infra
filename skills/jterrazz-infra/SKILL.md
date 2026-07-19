@@ -1,6 +1,6 @@
 ---
-name: jterrazz-infrastructure
-description: Infrastructure for the @jterrazz ecosystem — defines how all apps deploy. K3s, Helm, Traefik, cert-manager. Activates when deploying, configuring Kubernetes, or troubleshooting.
+name: jterrazz-infra
+description: Infrastructure and deployment for jterrazz projects — K3s, Helm, Traefik, CI/CD deploy. Use when deploying apps, configuring Kubernetes, adding domains, or troubleshooting infra.
 ---
 
 # @jterrazz Infrastructure
