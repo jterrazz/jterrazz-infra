@@ -76,7 +76,7 @@ spec:
               - 192.168.0.0/16
     {{- /* Opt-in platform services (spec.platformServices → catalog). Each
            opens egress to the catalog namespace on the POD ports (never the
-           Service port). This is the sanctioned replacement for allowedServices. */}}
+           Service port). */}}
     {{- range $svc := $platformServices }}
     {{- $entry := index $catalog $svc }}
     - to:
@@ -88,36 +88,5 @@ spec:
         - port: {{ $port }}
           protocol: TCP
         {{- end }}
-    {{- end }}
-    {{- /* DEPRECATED back-compat: spec.networkPolicy.allowedServices.
-           Chart 2.0 replaces this with spec.platformServices. Honored silently
-           for one transition window so an un-migrated app on the unpinned OCI
-           chart doesn't lose egress on a routine redeploy. Remove once every
-           app has migrated. otel-collector keeps its telemetry ports; any other
-           entry falls back to the legacy all-ports prod/next/staging rule. */}}
-    {{- if has "otel-collector" (default (list) .Values.spec.networkPolicy.allowedServices) }}
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: platform-telemetry
-      ports:
-        - port: 4317
-          protocol: TCP
-        - port: 4318
-          protocol: TCP
-    {{- end }}
-    {{- range .Values.spec.networkPolicy.allowedServices }}
-    {{- if ne . "otel-collector" }}
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: prod-{{ . }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: next-{{ . }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: staging-{{ . }}
-    {{- end }}
     {{- end }}
 {{- end }}

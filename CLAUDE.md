@@ -138,7 +138,7 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
 - Shared platform chart (`kubernetes/charts/platform/`) generates
   Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
 - App chart at `kubernetes/charts/app/`, published to OCI registry
-  (currently **2.0.0**). Injects a default
+  (currently **2.1.0**). Injects a default
   `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request)
   **only for apps requesting >= 512Mi** (e.g. signews-api), unless the
   app sets its own `NODE_OPTIONS`. 1.14.0 applied it to all apps, which
@@ -155,14 +155,12 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   (`GATEWAY_INTELLIGENCE_BASE_URL`) except `OTEL_EXPORTER_OTLP_ENDPOINT`
   (the OTel SDK owns that contract). Unknown entries hard-fail the render.
   OTel is now **opt-in** (was an unconditional default that was inert
-  without the egress hole). The old `spec.networkPolicy.allowedServices` is
-  DEPRECATED — still honored as an egress-only alias for one transition
-  window; migrate to `platformServices` and delete it. The chart is pulled
-  UNVERSIONED by CI (`oci://…/charts/app`), so a chart push reaches every
-  app on its next deploy — that's why 2.0 keeps the alias working. The alias
-  is slated for **removal in chart 2.1**, once every app has migrated off
-  `allowedServices` (the signews-web / clawssify-web / clawrr-web-landing
-  signoz sweep is landing now).
+  without the egress hole). The chart is pulled UNVERSIONED by CI
+  (`oci://…/charts/app`), so a chart push reaches every app on its next
+  deploy. `spec.networkPolicy.allowedServices` (a 2.0 egress-only back-compat
+  alias) was **removed in chart 2.1** now that every app has migrated to
+  `platformServices`; only `spec.networkPolicy.allowedClients` remains (the
+  bespoke by-name ingress side).
 - **gateway-intelligence: auth model (Option A — netpol-only).** CLIProxyAPI
   does NOT enforce client API keys. With `api-keys: []` in its config its
   access provider is unregistered and the auth middleware allows all

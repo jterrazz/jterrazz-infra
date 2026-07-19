@@ -19,12 +19,11 @@ spec:
   # gateway-intelligence. Unknown names hard-fail the render.
   platformServices: []
   networkPolicy:
-    # DEPRECATED (chart 2.0): use spec.platformServices instead. Still honored
-    # as an egress-only alias for one transition window — see network-policy.yaml.
-    # Removal is slated for chart 2.1, once every app has migrated off
-    # allowedServices (the signews-web / clawssify-web / clawrr-web-landing
-    # signoz sweep is landing now).
-    allowedServices: []
+    # Bespoke ingress: namespaces of client apps allowed to reach this app's
+    # port, by name (prod-/next-/staging-<name>). For one-off, non-platform
+    # traffic only — platform-service ingress (and all egress) is handled by
+    # spec.platformServices.
+    allowedClients: []
   health:
     path: /health
     initialDelaySeconds: 10
