@@ -17,7 +17,11 @@ loki:
           prefix: index_
           period: 24h
   limits_config:
-    retention_period: 30d
+    # 90d query-lookback window. NB: compactor retention-delete is not
+    # enabled, so on-disk chunks are kept indefinitely regardless (log
+    # volume is tiny — ~103M since May); this bound is what actually caps
+    # how far back Grafana can query.
+    retention_period: 90d
 
 singleBinary:
   replicas: 1
@@ -28,7 +32,9 @@ singleBinary:
       value: "400MiB"
   persistence:
     storageClass: manual
-    size: 10Gi
+    # 10Gi→20Gi headroom for a 90d window (chunks are tiny today but kept
+    # indefinitely — see retention_period note). Nominal on hostPath.
+    size: 20Gi
   resources:
     requests:
       cpu: 25m

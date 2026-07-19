@@ -7,23 +7,28 @@ server:
       # req raised 384→640Mi: live working set (~431Mi) plus scrape/query
       # burst headroom repeatedly exceeded the old 384Mi request.
       memory: 640Mi
-    # Bumped 512→768Mi: the working set reached ~431Mi (84%) after new app
-    # metrics + per-environment labels increased the active-series count.
+    # 512→768Mi: working set reached ~431Mi (84%) after new app metrics +
+    # per-environment labels grew the active-series count. 768→896Mi adds
+    # burst headroom for 30d-range dashboard queries (see retention note);
+    # the request stays 640Mi so the guaranteed reservation is unchanged.
     limits:
-      memory: 768Mi
-  # 7d of history is plenty for a single-node hobby cluster; halving it
-  # from 15d shrinks the head/index working set. retentionSize is a
-  # hard ceiling so the TSDB can never balloon disk or RAM regardless
-  # of series churn (whichever limit trips first wins).
-  retention: "7d"
-  retentionSize: "2GB"
+      memory: 896Mi
+  # 30d of time-based history. The old retentionSize: "2GB" cap is REMOVED
+  # (it silently clipped metrics to ~7d — the TSDB sat right at 2.0G/7d —
+  # which is why Grafana only showed a week). Retention is now purely by
+  # age. Cost is disk + page cache (both reclaimable), NOT heap: Prometheus
+  # keeps only the ~2h head block's index in RAM, so steady RSS tracks
+  # active-series churn, not window length; only long-range queries
+  # transiently load older mmap'd chunks. ~285MB/day → 30d ≈ 8-10GB on the
+  # hostPath PV (Mac disk, 100G+ free; hostPath enforces no quota anyway).
+  retention: "30d"
   # GOMEMLIMIT (soft) — Go 1.19+ GC tracks it and madvise()s freed
-  # pages back to the OS as RSS nears the limit. Kept under the 768Mi
+  # pages back to the OS as RSS nears the limit. Kept under the 896Mi
   # hard limit; mmap'd TSDB chunks are page cache (reclaimable, not
-  # counted here) so 560MiB leaves ample headroom.
+  # counted here) so 680MiB leaves ample headroom.
   env:
     - name: GOMEMLIMIT
-      value: "560MiB"
+      value: "680MiB"
   extraFlags:
     # OTel collector pushes metrics here.
     - "web.enable-remote-write-receiver"

@@ -4,7 +4,7 @@ tempo:
       backend: local
       local:
         path: /var/tempo/traces
-  retention: 168h # 7 days
+  retention: 720h # 30 days
   # Drop the chart's default 1 GB Go memory ballast — a pre-Go-1.19 GC
   # hack that deliberately pins ~1 GB resident to delay collection. On
   # this near-idle tracing backend it was pure waste. Tempo 2.x
@@ -36,4 +36,6 @@ tempo:
 persistence:
   enabled: true
   storageClassName: manual
-  size: 5Gi
+  # 5Gi→10Gi for 30d of traces (~108M/7d → ~460M/30d today; headroom for
+  # traffic growth). hostPath enforces no quota — nominal, real cap = Mac disk.
+  size: 10Gi

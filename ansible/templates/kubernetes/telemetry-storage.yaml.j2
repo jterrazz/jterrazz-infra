@@ -45,14 +45,14 @@ spec:
       storage: 1Gi
   volumeName: grafana-data
 ---
-# Loki data (logs)
+# Loki data (logs) — 90d query window (see loki/helm.yaml)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: loki-data
 spec:
   capacity:
-    storage: 10Gi
+    storage: 20Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
@@ -80,17 +80,17 @@ spec:
   storageClassName: manual
   resources:
     requests:
-      storage: 10Gi
+      storage: 20Gi
   volumeName: loki-data
 ---
-# Tempo data (traces)
+# Tempo data (traces) — 30d retention (see tempo/helm.yaml)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: tempo-data
 spec:
   capacity:
-    storage: 5Gi
+    storage: 10Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
@@ -118,17 +118,17 @@ spec:
   storageClassName: manual
   resources:
     requests:
-      storage: 5Gi
+      storage: 10Gi
   volumeName: tempo-data
 ---
-# Prometheus data (metrics)
+# Prometheus data (metrics) — 30d retention, no size cap (see prometheus/helm.yaml)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: prometheus-data
 spec:
   capacity:
-    storage: 5Gi
+    storage: 20Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
@@ -155,5 +155,5 @@ spec:
   storageClassName: manual
   resources:
     requests:
-      storage: 5Gi
+      storage: 20Gi
   volumeName: prometheus-data
