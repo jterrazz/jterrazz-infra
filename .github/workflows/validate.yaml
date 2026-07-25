@@ -75,7 +75,8 @@ jobs:
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.11"
+          # ansible-core 2.21 requires Python >= 3.12.
+          python-version: "3.12"
 
       # Pinned exact (not `ansible ansible-lint`, which pulls whatever the
       # latest ansible-core/ansible-lint happen to be that day, and pulls in

@@ -287,7 +287,9 @@ map to an existing Infisical env.
 ### Composite Actions
 
 - **`actions/infra-connect`** — Fetches Infisical secrets (from
-  `/jterrazz-ci`), connects Tailscale, logs into the OCI registry.
+  `/jterrazz-actions`, its `infisical-secret-path` default), connects
+  Tailscale, logs into the OCI registry. `KUBECONFIG_BASE64` there must
+  be refreshed after every cluster repave (new k3s CA).
 - **`actions/docker-build`** — Builds and pushes the Docker image.
   Buildkit runs with `network=host` so it can resolve `*.ts.net`
   through the runner's Tailscale interface.

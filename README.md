@@ -409,10 +409,13 @@ reconciles (the deploy script never sees these):
   `POSTGRES_PASSWORD`, `COOKIE_SECRET`, `DATABASE_URL`, `DATABASE_URL_DIRECT`
 * **`/<app>/…`** — each app's own path, declared as `spec.secrets.path`
   in its `application.yaml`
-* **`/jterrazz-ci`** (app CI workflows in `jterrazz-actions`):
+* **`/jterrazz-actions`** (app CI workflows — the default
+  `infisical-secret-path` of `jterrazz-actions/actions/infra-connect`):
   `DOCKER_REGISTRY_USERNAME`, `DOCKER_REGISTRY_PASSWORD`,
   `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`,
-  `KUBECONFIG_BASE64`
+  `KUBECONFIG_BASE64` — the latter must be refreshed after every cluster
+  repave (k3s regenerates its CA, so the old client cert stops
+  authenticating; base64 the freshly fetched `kubeconfig.yaml`)
 
 ### Local `.env` (gitignored, in repo root)
 
