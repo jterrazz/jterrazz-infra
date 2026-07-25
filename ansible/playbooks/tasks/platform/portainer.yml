@@ -17,12 +17,20 @@
 # Version-pinned like every other chart here — an unpinned `helm upgrade
 # --install` silently adopts whatever the repo's latest is at deploy time,
 # which turns an unrelated deploy into an uncontrolled Portainer upgrade.
-# Bump deliberately, together with the image tag in portainer/helm.yaml.
+# Bump deliberately.
+#
+# NEVER pin below what the data has already run: Portainer migrates its
+# BoltDB schema forward on upgrade and hard-refuses to start on a schema
+# newer than the server ("database schema version does not align") — a
+# downgrade pin turns into a CrashLoopBackOff against existing
+# /var/lib/k8s-data/portainer data. 239.5.0 = CE 2.39.5, the version the
+# data was migrated to when this pin replaced the historical unpinned
+# install (2026-07).
 - name: Install Portainer via Helm
   ansible.builtin.command: >
     helm upgrade --install portainer portainer/portainer
     --namespace platform-management
-    --version 1.0.69
+    --version 239.5.0
     --values {{ manifest_dest }}/kubernetes/platform/portainer/helm.yaml
     --wait
     --timeout 5m

@@ -46,11 +46,10 @@
 # nothing for the default (empty) type. The raw manifests under
 # kubernetes/platform/ (librechat/uploads, openpanel/{postgres,redis,
 # clickhouse}) all set DirectoryOrCreate and so genuinely need nothing here.
-# The platform CHART only emits a `type` when a service passes
-# `storage.hostPathType`, and neither n8n's nor portainer's platform.yaml
-# does — so n8n-data and portainer-data are exactly the PVs that would be
-# left to the container runtime's discretion on a fresh cluster. Creating
-# them up front is cheap and keeps first-boot deterministic.
+# Since platform chart 2.0 `hostPath.type: DirectoryOrCreate` is emitted
+# unconditionally, so these mkdirs are now belt-and-braces rather than
+# load-bearing — kept because they are cheap, keep first boot deterministic
+# even if a chart regression drops the type, and predate the chart change.
 #
 # Mode 0755 — containers manage their own file ownership via securityContext.
 # The paths are load-bearing: they must match the chart's

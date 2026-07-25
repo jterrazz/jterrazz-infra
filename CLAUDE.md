@@ -18,9 +18,16 @@ Both run the exact same Ansible playbook (`site.yml`) and Helm charts.
 differ between them; everything downstream (Ansible roles, the app
 chart, the platform chart) is target-agnostic.
 
+**Host OS is Debian 13 (trixie) on both targets** — `image: debian-13`
+on Hetzner, `debian:trixie` on OrbStack. There is no dual-distro
+support: package names and templates are Debian-native. See the Debian
+13 gotchas below before touching the base/security/networking roles.
+
 The active production today is **OrbStack** (May 2026 swap). Hetzner is
-fully supported as an alternative — if you ever want it back, `pulumi
-stack init jterrazz/production` + `pulumi up` from `pulumi/`.
+fully supported as an alternative; only `Pulumi.local.yaml` is committed,
+so bringing Hetzner back means `pulumi stack init jterrazz/production`
+first — full procedure in README.md ("Bringing a stack back from
+scratch").
 
 ## Stack
 
@@ -42,13 +49,18 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
   cluster's Tailscale FQDN. Only the stack with `manageDns=true` owns the records
   (production by default; flipped to local for the active swap).
 - **In-cluster lookups** for the same private hostnames are
-  short-circuited by a CoreDNS `coredns-custom` ConfigMap (in
-  `ansible/playbooks/platform.yml`) to the cluster's own tailnet IP.
-  The public CNAME chain stops at `*.ts.net` which CoreDNS can't chase
-  through public DNS, so without this override registry pulls + helm
-  pushes NXDOMAIN. (`openpanel` is the one exception — it's mapped to
-  Traefik's ClusterIP instead, so the OpenPanel dashboard's SSR doesn't
-  hairpin; see `kubernetes/platform/openpanel/README.md`.)
+  short-circuited by a CoreDNS `coredns-custom` ConfigMap to the
+  cluster's own tailnet IP. The public CNAME chain stops at `*.ts.net`
+  which CoreDNS can't chase through public DNS, so without this override
+  registry pulls + helm pushes NXDOMAIN. The list is
+  **`private_hostnames` in `ansible/playbooks/group_vars/all.yml`**
+  (keep in sync with `PRIVATE_HOSTS` in `pulumi/src/dns.ts`), rendered by
+  `ansible/templates/kubernetes/coredns-custom.yaml.j2` and applied by
+  `ansible/playbooks/tasks/platform/coredns.yml`.
+  A second list, `private_hostnames_via_traefik`, maps to Traefik's
+  **ClusterIP** instead of the node tailnet IP — `openpanel` is its only
+  member, so the OpenPanel dashboard's SSR doesn't hairpin; see
+  `kubernetes/platform/openpanel/README.md`.
 - TLS — cert-manager via Let's Encrypt DNS-01 using the
   `CLOUDFLARE_API_TOKEN` secret.
 
@@ -62,32 +74,22 @@ stack init jterrazz/production` + `pulumi up` from `pulumi/`.
 - **gateway-intelligence** (`jterrazz/gateway-intelligence`): private at `gateway.jterrazz.com`
 
 Platform services (installed by `ansible/playbooks/platform.yml`, not the app
-chart): n8n, Portainer, and **LibreChat** — private AI chat UI at
-`chat.jterrazz.com` (`platform-ai` ns). LibreChat talks to the gateway as a
-custom OpenAI endpoint via the gateway's in-cluster Service
-(`http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1`)
-— NOT `gateway.jterrazz.com`, because that resolves to the node's own tailnet
-IP and a pod can't hairpin to the node's ServiceLB. The gateway's app-chart
-NetworkPolicy can't list a platform ns, so `gateway-netpol.yaml` adds an
-additive ingress rule for `platform-ai` → gateway:8317. Its datastore is a
-standalone `mongo:7`
-(`kubernetes/platform/librechat/mongodb.yaml`) — the chart's bundled Bitnami
-mongo subchart is disabled (deprecated upstream + no dynamic StorageClass
-here). Secrets sync from Infisical `/jterrazz-infrastructure/librechat`. Private-only for now
-(`ALLOW_REGISTRATION=false` + `private-access` middleware); going public means
-dropping `private` and relying on LibreChat's own auth.
+chart): n8n, Portainer, LibreChat and OpenPanel.
 
-The UI defaults to a single agent — **"Opus 4.8 — Web + Artifacts"** — using the
-native `anthropic` endpoint so Claude's server-side `web_search` works (the
-Agent framework's web_search would be orchestrated/SearXNG instead; not used).
-`ANTHROPIC_API_KEY` (and the custom-endpoint key) is a **non-secret placeholder**
-(`gateway-noauth`) — the gateway does no client-key auth (see the
-"gateway-intelligence: auth model" note under Key Patterns); `ANTHROPIC_REVERSE_PROXY`
-points at the gateway. Persistence: users, login and
-chat history live in `mongo` (PVC `librechat-data`); uploads/generated images
-in PVC `librechat-uploads`. Both are `Retain` hostPath under
-`/var/lib/k8s-data` → the Mac on OrbStack, so they survive pod restarts, helm
-reinstalls and `pulumi destroy` repaves (on Hetzner they'd be node-disk).
+**LibreChat** — private AI chat UI at `chat.jterrazz.com` (`platform-ai` ns),
+upstream chart + values in `kubernetes/platform/librechat/`. See that dir's
+`README.md` for versions, secrets, gateway wiring, PVC layout and the
+default-model-upgrade procedure. The load-bearing bits: it reaches the gateway
+via the **in-cluster Service** (`http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local`),
+never `gateway.jterrazz.com` (a pod can't hairpin to the node's ServiceLB);
+`gateway-netpol.yaml` adds the additive ingress rule for `platform-ai` →
+gateway:8317 because LibreChat isn't an app-chart workload and can't stamp the
+platform-client label; the API key is the non-secret placeholder
+`gateway-noauth` (see "gateway-intelligence: auth model" below); its datastore
+is a standalone `mongo:7.0`, the bundled Bitnami subchart being disabled; and
+both PVCs (`librechat-data`, `librechat-uploads`) come from the platform
+chart's named-volume storage map. Private-only for now
+(`ALLOW_REGISTRATION=false` + `private-access`).
 
 **OpenPanel** — self-hosted product analytics (`platform-analytics` ns),
 raw manifests under `kubernetes/platform/openpanel/` (does not fit the platform
@@ -96,7 +98,8 @@ for versions, data paths, upgrade and backup/restore. 6 workloads: Postgres 14
 + Redis 7.2 + ClickHouse 25.10 (hostPath `Retain` PVCs) and op-api / op-worker
 / op-dashboard (`lindesvard/openpanel-*:2.2`). op-api runs Prisma + ClickHouse
 migrations on boot. **Split exposure**: private dashboard on
-`openpanel.jterrazz.com` (Tailscale, `private-access`), public event ingest on
+`openpanel.jterrazz.com` (Tailscale — `cluster-internal-access`, NOT
+`private-access`, because the SSR caller is a pod IP), public event ingest on
 `analytics.jterrazz.com` exposing **only** `/api/track` (cloudflared tunnel →
 Traefik, `stripPrefix /api`). ClickHouse runs upstream's log-to-stdout config
 (issue #324) + a per-query mem cap (#382), no CH/Redis auth (firewalled by
@@ -105,20 +108,9 @@ the dir's README): the public `analytics` CNAME is Pulumi-managed
 (`dns.ts`) but its **tunnel route** is a per-hostname rule in the Zero Trust
 dashboard (the tunnel isn't a wildcard); and `openpanel.jterrazz.com` resolves
 **in-cluster** to Traefik's ClusterIP, not the node tailnet IP, so the
-dashboard's server-side rendering doesn't hairpin (image 2.2 has no
-`API_URL_SSR` yet).
-
-### LibreChat: upgrading the default model
-
-There is **no auto-"latest Opus"** (model IDs are opaque; the gateway exposes
-no `-latest` alias). To move the default agent to a newer Opus: bump `model`
-**and** `label`/`description` in the `opus-full` modelSpec in
-`kubernetes/platform/librechat/helm.yaml`, then push to main (CI redeploys).
-It's server-side config, so it applies to **every user automatically** — no
-per-user migration; existing conversations keep their original model, new chats
-use the new default. (If you ever want this centralized across all gateway
-clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
-`gateway-intelligence/config.yaml` — deferred.)
+dashboard's server-side rendering doesn't hairpin (`API_URL_SSR` *is* set in
+`config.yaml`, but image 2.2 was not observed to honor it — see the post-repave
+checklist below).
 
 ## Managed Domains
 
@@ -128,22 +120,60 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   (auto-creates the CNAME).
 - New private hostname: add the host to `PRIVATE_HOSTS` in
   `pulumi/src/dns.ts`, then `pulumi up` from `pulumi/`. Also add it to
-  the `coredns-custom` block in `ansible/playbooks/platform.yml` so
-  in-cluster lookups resolve.
+  `private_hostnames` in `ansible/playbooks/group_vars/all.yml` so
+  in-cluster lookups resolve — the two lists are hand-synced.
 - Cloudflare SSL mode must be **Full (Strict)** on every zone.
 
 ## Key Patterns
 
-- Platform services installed via Helm in `ansible/playbooks/platform.yml`.
-- Shared platform chart (`kubernetes/charts/platform/`) generates
-  Certificate + IngressRoute + PV/PVC from a thin `platform.yaml`.
-- App chart at `kubernetes/charts/app/`, published to OCI registry
-  (currently **2.1.0**). Injects a default
-  `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request)
-  **only for apps requesting >= 512Mi** (e.g. signews-api), unless the
-  app sets its own `NODE_OPTIONS`. 1.14.0 applied it to all apps, which
-  crash-looped small Next.js services (96MB cap starved SSR boot);
-  1.14.1 added the 512Mi floor.
+- Platform services installed via Helm by `ansible/playbooks/platform.yml`,
+  which is a **thin orchestrator**: the body lives in 17 files under
+  `ansible/playbooks/tasks/platform/`, each imported with a tag. Targeted
+  re-run: `ansible-playbook playbooks/platform.yml -i inventories/local/hosts.yml
+  -e "@<vars>" --tags telemetry`. Tags: `prereqs`, `coredns`/`dns`,
+  `infrastructure`/`namespaces`, `helm`, `secrets`, `certmanager`,
+  `infisical`, `cloudflared`, `telemetry`, `services`, `n8n`, `portainer`,
+  `librechat`, `gateway`, `openpanel`, `registry`, `chart-publish`.
+  `preflight` + `cleanup` are `always`; `--skip-tags chart-publish` leaves the
+  published OCI chart alone.
+- **Ansible variables** live in `ansible/playbooks/group_vars/all.yml` —
+  playbook-adjacent, not `ansible/group_vars/`. Ansible only auto-loads
+  `group_vars/` next to the *inventory file* or next to the *playbook*; the
+  old top-level dir was adjacent to neither and was silently never loaded
+  (every var in it was dead). Don't move it back. `k3s_version` is
+  single-sourced here, deliberately not duplicated in
+  `roles/k3s/defaults/main.yml`.
+- Shared platform chart (`kubernetes/charts/platform/`, **2.0.0**) generates
+  Certificate + IngressRoute + PV/PVCs from a thin `platform.yaml`. `storage`
+  is a **map of named volumes** (`storage.<key>.{size,pathSuffix}`) → objects
+  named `<name>-<key>`; the key `data` reproduces the historical `<name>-data`
+  names exactly, and hostPath is `/var/lib/k8s-data/<name>[/<pathSuffix>]`.
+  This is how librechat declares both `librechat-data` and
+  `librechat-uploads` (the hand-written `uploads.yaml` is gone).
+- App chart at `kubernetes/charts/app/`, published to the OCI registry
+  (currently **2.2.0**) — full `application.yaml` reference in
+  `kubernetes/charts/app/README.md`. Notable behaviours: hardened container
+  securityContext with a `spec.securityContext` / `spec.runAsRoot` escape
+  hatch; hostPath PV `nodeAffinity` only when `infrastructure.nodeName` is
+  passed; `spec.storage.{size,mountPath}` are `required`; and a default
+  `NODE_OPTIONS=--max-old-space-size` (~75% of the memory request) injected
+  **only for apps requesting >= 512Mi** (e.g. signews-api), unless the app
+  sets its own `NODE_OPTIONS` — below that floor the derived cap starves
+  small Next.js services' SSR boot and crash-loops them.
+- **The kustomize entry point is `kubernetes/infrastructure/base`**
+  (`kubectl apply -k`). The `environments/production` overlay and the
+  single-file sub-kustomizations were deleted — base *is* the deployed state.
+  It carries namespaces, Traefik HelmChartConfig + middlewares + TLS options,
+  the default-deny NetworkPolicies for `platform-management` /
+  `platform-registry`, and the `manual` StorageClass.
+- **Traefik access middlewares** (`infrastructure/base/traefik/middleware.yaml`):
+  `private-access` is the tailnet-only ipAllowList attached by `private: true`
+  and by any app ingress entry with `public: false`.
+  `cluster-internal-access` is a strict **superset** used by routes that must
+  also be reachable from inside the cluster or via a node hairpin — the
+  registry (containerd pulls) and openpanel's private route (dashboard SSR).
+  **Never chain the two**: Traefik ANDs chained ipAllowLists, so chaining
+  allows strictly less, not more.
 - **Platform-service opt-in (app-chart 2.0)**: an app declares
   `spec.platformServices: [otel-collector, gateway-intelligence]` and the
   chart wires the whole bundle from a catalog in
@@ -154,13 +184,14 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
   ZERO edit on the target. Env names are service-derived
   (`GATEWAY_INTELLIGENCE_BASE_URL`) except `OTEL_EXPORTER_OTLP_ENDPOINT`
   (the OTel SDK owns that contract). Unknown entries hard-fail the render.
-  OTel is now **opt-in** (was an unconditional default that was inert
-  without the egress hole). The chart is pulled UNVERSIONED by CI
-  (`oci://…/charts/app`), so a chart push reaches every app on its next
-  deploy. `spec.networkPolicy.allowedServices` (a 2.0 egress-only back-compat
-  alias) was **removed in chart 2.1** now that every app has migrated to
-  `platformServices`; only `spec.networkPolicy.allowedClients` remains (the
-  bespoke by-name ingress side).
+  OTel is **opt-in** (was an unconditional default that was inert without the
+  egress hole). Bespoke ingress is `spec.networkPolicy.allowedClients` (by
+  namespace name); there is no egress-side alias.
+- The app chart is pulled **UNVERSIONED** by CI (`oci://…/charts/app`), so a
+  chart push reaches every app on its next deploy — additive, defaulted
+  changes only. `publish-chart.yaml` refuses to overwrite an
+  already-published version, so bump `version:` in `Chart.yaml` in the same
+  commit as any template change.
 - **gateway-intelligence: auth model (Option A — netpol-only).** CLIProxyAPI
   does NOT enforce client API keys. With `api-keys: []` in its config its
   access provider is unregistered and the auth middleware allows all
@@ -180,7 +211,7 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
 - **hostPath layout: one dir per app** under `/var/lib/k8s-data/`. A
   multi-component app nests its volumes under `<app>/` (e.g.
   `librechat/{mongo,uploads}`, `openpanel/{postgres,clickhouse,redis}`).
-  Platform-chart volumes get a `storage.pathSuffix` for this; raw
+  Platform-chart volumes set `storage.<key>.pathSuffix` for this; raw
   manifests just set the nested `hostPath.path`.
 - Traefik **IngressRoutes** (not plain Ingress) for routing.
 - cert-manager Certificates with `letsencrypt-production` ClusterIssuer.
@@ -190,6 +221,43 @@ clients instead, CLIProxyAPI supports a `claude-opus-latest` alias in
 - On OrbStack, `/var/lib/k8s-data` is a symlink to
   `/mnt/mac/Users/<user>/.jterrazz-infrastructure/data` so the data survives
   `pulumi destroy && pulumi up`.
+- **Host security posture**: UFW (80/443/6443 tailnet-only; klipper-lb's
+  `loadBalancerSourceRanges` is the real gate), sshd hardening as a validated
+  `sshd_config.d` **drop-in**, unattended-upgrades, sysctl hardening.
+  **fail2ban and auditd are gone on purpose** — fail2ban guarded a public SSH
+  port that doesn't exist (no public inbound at all; SSH is tailnet-only), and
+  auditd needs `CAP_AUDIT_*` which the OrbStack hypervisor withholds, so it
+  was already skipped on the active target. Don't "restore" them.
+
+## This repo's CI (`.github/workflows/`)
+
+- **`validate.yaml`** — PRs *and* pushes to main. Pulumi `tsc --noEmit` +
+  `preview`; `ansible-lint` (**production** profile, config in
+  `ansible/.ansible-lint`) + `--syntax-check`; `kubectl kustomize
+  kubernetes/infrastructure/base`, both Helm charts rendered against their
+  `ci/test-values.yaml` fixtures, and every raw manifest under
+  `kubernetes/platform/**`, all piped through `kubeconform -strict` with the
+  datreeio CRD catalog. Default values render ~zero objects for these charts,
+  so **a template branch not reached by a fixture is not validated** — extend
+  the fixture when you add one. `make lint` runs the local subset.
+- **`deploy-platform.yaml`** — push to main touching
+  `ansible/playbooks/platform.yml`, `kubernetes/platform/**` or
+  `kubernetes/infrastructure/**` (or manual). Runs **`platform.yml` only**,
+  over Tailscale, against the OrbStack VM. It deliberately skips
+  base/security/networking/storage/k3s — those restart sshd/tailscaled and
+  would kill the runner's own SSH session. Pulumi is out of scope (needs
+  `orbctl` on the Mac). Its extra-vars step mirrors `fetch_secrets_file()` in
+  `scripts/deploy.sh`; **the two are hand-synced — change one, change both**
+  (and `tasks/platform/preflight.yml` asserts the same set).
+- **`publish-chart.yaml`** — push to main touching
+  `kubernetes/charts/app/**`. Guarded against republishing an existing
+  version (see above).
+- SSH auth for CI is a **split keypair**: public half committed as
+  `security_ci_deploy_pubkey` in `ansible/roles/security/defaults/main.yml`,
+  private half the `CI_DEPLOY_SSH_PRIVATE` GitHub secret. Rotating needs
+  both plus a `make deploy-local` to roll the pubkey onto the VM.
+- Third-party actions are SHA-pinned; `jterrazz/jterrazz-actions/*` floats on
+  `@main` on purpose (first-party, meant to roll across the fleet).
 
 ## Centralized CI/CD Workflows (`jterrazz/jterrazz-actions`)
 
@@ -275,12 +343,14 @@ make deploy        # Hetzner
 make apps          # trigger every app's CI to (re)deploy
 ```
 
-### SSH to the cluster
+### Targeted platform re-run
 
 ```bash
-ssh root@jterrazz-infrastructure@orb                                                       # OrbStack
-ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
+cd ansible && ansible-playbook playbooks/platform.yml \
+  -i inventories/local/hosts.yml -e "@<extra-vars>" --tags <tag>
 ```
+
+(SSH one-liners are in "Connection Details" above.)
 
 ### Restart cert-manager (after k3s churn)
 
@@ -306,31 +376,95 @@ kubectl get ingressroute -n prod-<app>
 gh workflow run "Build and Deploy" -R jterrazz/<app>
 ```
 
-### Swap Hetzner ↔ OrbStack
+### Swap Hetzner ↔ OrbStack / bring a torn-down stack back
 
-```bash
-cd pulumi
-pulumi config set manageDns false --stack production
-pulumi config set manageDns true  --stack local
-pulumi up --stack production    # removes DNS records
-pulumi up --stack local         # creates them pointing at OrbStack
-# Then scale Hetzner cloudflared to 0 (and OrbStack to 1) to flip
-# public traffic. Apps need to be re-pushed if you want fresh images
-# on the new cluster's registry — `make apps`.
-```
+Both procedures (the `manageDns` flip + cloudflared scale, and the
+`pulumi stack init` sequence) are in **README.md** — "Dual-mode — choose your
+production". Only one stack may have `manageDns: true` at a time, and after a
+swap `make apps` re-pushes every app onto the new cluster's registry.
 
-### Bring a torn-down stack back
+## Post-repave verification checklist (TEMPORARY — delete once done)
 
-```bash
-cd pulumi
-pulumi stack init jterrazz/production
-pulumi config set target hetzner
-pulumi config set --secret hcloud:token <token>
-pulumi config set --secret cloudflare:apiToken <token>
-pulumi up
-```
+The Debian 13 refactor left five things deliberately unverified because they
+can only be checked against a freshly repaved cluster. Work through these
+after the next `make deploy-local`, then delete this section **and** the
+matching `TODO`s in the source files.
+
+1. **`private-access` still allowlists `10.42.0.0/16`** (the k3s pod CIDR),
+   which is exactly what keeps a pod able to reach Portainer through Traefik.
+   It's retained only because klipper-lb MASQUERADEs LoadBalancer traffic
+   inside the svclb pod's netns, so a tailnet client's request *may* arrive
+   with an svclb pod IP. **Test**: hit a private host from the tailnet and
+   read Traefik's access-log `ClientAddr`. If it shows `100.64.x.x`, delete
+   that line from `infrastructure/base/traefik/middleware.yaml` — one edit,
+   and the pod → Portainer hole closes.
+2. **OpenPanel `API_URL_SSR`.** `API_URL_SSR=http://op-api:3000` is set in
+   `openpanel/config.yaml` but image 2.2 was not observed to honor it, so the
+   CoreDNS Traefik-ClusterIP mapping carries SSR today. **Test**: remove
+   `openpanel.jterrazz.com` from `private_hostnames_via_traefik` in
+   `ansible/playbooks/group_vars/all.yml`, restart CoreDNS + op-dashboard,
+   load `/onboarding`. If it renders, drop the mapping for good.
+3. **`op-*` uid.** The three OpenPanel app images don't document their user,
+   so they run hardened but **without** a uid pin (TODO in
+   `openpanel/apps.yaml`). Check the running uid (`kubectl exec … -- id`) and
+   pin it.
+4. **Datastore uid pins hold.** ClickHouse **101**, Postgres **70** (alpine
+   variant), Redis **999**, LibreChat's mongod **999** — each paired with a
+   root `fix-perms` initContainer, because pinning the uid bypasses the
+   entrypoint's own chown. Verify each pod is actually running as that uid and
+   that no `Permission denied` appears on first boot.
+5. **cert-manager webhook NetworkPolicy fix.** `platform-networking`'s policy
+   now admits **port 10250**, which the kube-apiserver dials for the admission
+   webhook. That omission is the most plausible cause of the recurring "no
+   endpoints available for service cert-manager-webhook" breakage. **Test**:
+   create/renew a Certificate right after a fresh k3s start and confirm it
+   succeeds without the manual rollout restart below.
+
+Also still marked "tighten after repave validation": the deliberately-wide
+egress rules in the `platform-management` and `platform-registry`
+NetworkPolicies (443 to anywhere). Narrow them once a full CI push/pull cycle
+and the Portainer dashboard are confirmed green.
 
 ## Gotchas
+
+### Debian 13 (trixie) — host level
+
+- **`orb create debian` gives you bookworm.** Debian is the one distro where
+  OrbStack's bare image name is the *previous* stable, so
+  `pulumi/src/targets/orbstack.ts` pins `version: "trixie"` explicitly. Never
+  drop that.
+- **`apt-key` is removed in trixie**, so `ansible.builtin.apt_key` has nothing
+  to call. The Tailscale repo is added with
+  `ansible.builtin.deb822_repository` (suite `trixie`), which needs
+  **`python3-debian` on the target** — installed by `base.yml`.
+- **`systemd-resolved` is a separate, non-default package on Debian 12+** and
+  the OrbStack image ships it **masked**. `base.yml` installs it; the
+  `tailscale` role unmasks and starts it. Without a stub resolver Tailscale
+  writes `/etc/resolv.conf` itself with `100.100.100.100`, which does *not*
+  chase CNAMEs from a public zone into the tailnet zone — the deploy then
+  fails at `helm registry login registry.jterrazz.com`.
+- **sshd is socket-activated on Debian 13.** `ssh.socket` owns the listening
+  port, so `Port` in sshd_config is ignored and restarting `ssh.service`
+  doesn't re-bind. `base.yml` disables the socket unit and runs the classic
+  daemon; the security role's handler restarts `ssh.service` (not
+  `ssh.socket`).
+- **sshd hardening is a drop-in**, `/etc/ssh/sshd_config.d/10-hardening.conf`,
+  never a wholesale replacement of the distro file. The `Include` line must
+  stay at the **top** of `/etc/ssh/sshd_config`: the first occurrence of a
+  keyword wins, so an Include at the bottom would let the stock defaults beat
+  every value we set. Validation is two-stage (`sshd -t -f` on the candidate,
+  then `sshd -t` on the effective config) with a rescue that removes the
+  drop-in rather than locking you out.
+- **unattended-upgrades needs Debian-Security origin patterns.** The
+  Ubuntu-style pattern silently disables security updates on Debian — it
+  matches nothing, and the failure mode is a green deploy with no patching.
+- **OrbStack VMs ship without sshd**, so `openssh-server` is installed
+  explicitly (the security role needs `sshd -t` to validate its config).
+- **`orbctl create -u root` is broken since OrbStack 2.2.0** (its setup runs
+  `usermod --uid 501 root`, which fails against PID 1). The VM is created with
+  the default macOS-named user; Ansible connects as `root@<vm>@orb`.
+
+### Cluster / networking
 
 - **OrbStack DHCP DNS**: the VM's default DHCP server hands out a bogus
   resolver (`0.250.250.200`) that silently drops queries. The
@@ -383,8 +517,7 @@ pulumi up
   but the old release keeps running. `helm uninstall prod-<old-name>
   -n prod-<old-name> && kubectl delete namespace prod-<old-name>` to
   clean up.
-- **registry.jterrazz.com multi-arch GC** (historical): the
-  `docker-cleanup` action previously stripped multi-arch layers because
-  its HEAD used only the Docker manifest Accept header. Fixed in
-  jterrazz-actions@6061ab2 — multi-arch tags now resolve to the index
-  digest.
+- **CI fixtures are the validation contract.** Both charts render zero (or
+  near-zero) objects with default values, so a template branch that
+  `kubernetes/charts/{app,platform}/ci/test-values.yaml` doesn't reach is a
+  branch CI silently doesn't check.

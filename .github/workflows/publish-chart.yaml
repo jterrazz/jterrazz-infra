@@ -50,7 +50,15 @@ jobs:
       # sets of templates answering to the same tag depending on which
       # ones an app happened to pull before/after the overwrite — fail the
       # build instead and force an explicit version bump in Chart.yaml.
-      - name: Check chart version isn't already published
+      # Skip (green no-op), don't fail, when the version already exists: the
+      # Ansible chart-publish task also publishes during a full deploy, so a
+      # push landing right after `make deploy-local` would otherwise go red on
+      # an already-current registry. The guard's real job is only to prevent
+      # OVERWRITING a published version (the chart is consumed unversioned, so
+      # a silent overwrite changes what every app deploys next) — publishing
+      # nothing when it's already there achieves that.
+      - name: Check whether this chart version is already published
+        id: version_check
         run: |
           set -euo pipefail
           VERSION="$(awk -F': *' '/^version:/ {print $2; exit}' kubernetes/charts/app/Chart.yaml)"
@@ -60,12 +68,15 @@ jobs:
           fi
           echo "Chart.yaml version: $VERSION"
           if helm pull oci://registry.jterrazz.com/charts/app --version "$VERSION" --destination /tmp/chart-version-check >/dev/null 2>&1; then
-            echo "::error::app chart version $VERSION is already published at oci://registry.jterrazz.com/charts/app — bump version in kubernetes/charts/app/Chart.yaml before merging (the chart is consumed unversioned, so overwriting a published version silently changes what every app deploys next)."
-            exit 1
+            echo "::notice::app chart $VERSION is already published — nothing to do. If you CHANGED templates, bump version: in kubernetes/charts/app/Chart.yaml, or this run silently publishes nothing."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version $VERSION not yet published — proceeding."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "Version $VERSION not yet published — proceeding."
 
       - name: Package and push chart
+        if: steps.version_check.outputs.publish == 'true'
         run: |
           helm package kubernetes/charts/app --destination /tmp/
           PKG=$(ls /tmp/app-*.tgz)

@@ -257,6 +257,14 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
             // `pulumi destroy && pulumi up` (VM goes, Mac dir stays).
             { source: dataPathOnMac, destination: "/var/lib/k8s-data" },
         ],
+    }, {
+        // Every input change is a replacement (see the provider's diff), and
+        // the VM name is unique within OrbStack — Pulumi's default
+        // create-before-delete replacement would try to create the new VM
+        // while the old one still holds the name and fail with
+        // "machine already exists". Delete first; the data lives on the Mac
+        // side of the bind mount, so this is safe.
+        deleteBeforeReplace: true,
     });
 
     return {

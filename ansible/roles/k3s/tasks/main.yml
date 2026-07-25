@@ -91,14 +91,6 @@
   notify: Restart k3s
   tags: [k3s]
 
-# Apply a config change BEFORE the readiness checks below. Without this the
-# handler runs at the end of the play, i.e. k3s gets restarted only after
-# "Wait for k3s to be ready" and "Verify cluster is running" have already
-# passed against the OLD config — so a broken config change looks green and
-# only surfaces on the next run.
-- name: Restart k3s now if the config changed
-  ansible.builtin.meta: flush_handlers
-
 # Installation
 - name: Download k3s install script
   ansible.builtin.get_url:
@@ -132,6 +124,19 @@
     state: started
     daemon_reload: true
   tags: [k3s]
+
+# Apply a config change BEFORE the readiness checks below. Without this the
+# handler runs at the end of the play, i.e. k3s gets restarted only after
+# "Wait for k3s to be ready" and "Verify cluster is running" have already
+# passed against the OLD config — so a broken config change looks green and
+# only surfaces on the next run.
+#
+# Placement matters: the flush must sit AFTER install/enable, not right
+# after the config template — on a fresh host the template fires the notify
+# while the k3s unit doesn't exist yet, and an earlier flush dies with
+# "Could not find the requested service k3s".
+- name: Restart k3s now if the config changed
+  ansible.builtin.meta: flush_handlers
 
 - name: Wait for k3s to be ready
   ansible.builtin.wait_for:

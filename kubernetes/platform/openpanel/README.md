@@ -186,8 +186,10 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
   was not observed to honor it (the override landed on `main` after the 2.2
   cut). **To verify after the next repave: if `API_URL_SSR` is honored by
   image 2.2, the CoreDNS Traefik-ClusterIP special case can be removed.** Test
-  by deleting the `openpanel.jterrazz.com` line from the `coredns-custom`
-  block in `ansible/playbooks/platform.yml`, restarting CoreDNS and
+  by deleting `openpanel.jterrazz.com` from `private_hostnames_via_traefik` in
+  `ansible/playbooks/group_vars/all.yml` (the list the `coredns-custom`
+  ConfigMap is rendered from — see
+  `ansible/playbooks/tasks/platform/coredns.yml`), restarting CoreDNS and
   op-dashboard, and loading `/onboarding`. Until that is confirmed, both the
   env var and the CoreDNS mapping stay.
 
