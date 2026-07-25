@@ -6,19 +6,61 @@ Application name
 {{- end -}}
 
 {{/*
-Get current environment config (returns empty dict if not defined)
+==============================================================================
+app.merged — THE resolver (chart 2.3)
+==============================================================================
+The fully-resolved `spec` for the environment being rendered. Every template
+starts with
+
+  {{- $spec := fromYaml (include "app.merged" .) -}}
+
+and then reads plain keys ($spec.port, $spec.env, $spec.resources.memory, …).
+
+This replaces eight near-identical helpers that each re-implemented the same
+"look up .Values.environments[.Values.environment], then pick a key out of it
+or fall back to spec" preamble: app.envConfig (which was already dead code),
+app.getValue, app.getResource, app.infisicalEnv, app.secretsConfig,
+app.ingressList, app.envVars, and app.platformServices' merge half. Same
+semantics, one implementation — and an environment can now override ANY spec
+key, not just the six that happened to have a bespoke helper.
+
+Semantics come from sprig's mergeOverwrite (spec first, environment second),
+which is exactly the rule this chart already had:
+
+  * scalars  — the environment's value wins, else spec's, else the caller's
+               `| default`.
+  * maps     — DEEP merged, environment wins per key. `resources: {memory: …}`
+               in an environment keeps the base `cpu`; `env:` and `secrets:`
+               merge key-by-key with THE ENVIRONMENT WINNING on a collision.
+               (The 2.2 README claimed base wins on env/secrets collisions.
+               That was never true — app.envVars called `merge $envEnv
+               $baseEnv`, and sprig's `merge` does not overwrite keys already
+               present in its first argument, so the environment's value
+               survived. The doc was wrong, not the code; behaviour is
+               unchanged here and the doc is fixed.)
+  * lists    — REPLACED wholesale. An environment's `ingress` or
+               `platformServices` list fully supersedes spec's, deliberately:
+               a half-merged list of network surfaces is unreadable.
+
+deepCopy because mergeOverwrite mutates its first argument, and .Values is
+shared across every template in the render.
 */}}
-{{- define "app.envConfig" -}}
+{{- define "app.merged" -}}
 {{- $env := .Values.environment | required "environment is required" -}}
+{{- $envConfig := dict -}}
 {{- if hasKey .Values.environments $env -}}
-{{- index .Values.environments $env | toYaml -}}
-{{- else -}}
-{{- dict | toYaml -}}
+{{- $envConfig = index .Values.environments $env -}}
 {{- end -}}
+{{- mergeOverwrite (deepCopy (.Values.spec | default dict)) (deepCopy $envConfig) | toYaml -}}
 {{- end -}}
 
 {{/*
-Check if current environment is defined
+Check if current environment is defined.
+
+Nothing renders for an environment that isn't declared under `environments:` —
+a typo'd `--set environment=prd` produces an empty release rather than an
+error. Turning that into a hard failure is a breaking change owned by a later
+coordinated release; deliberately NOT done here.
 */}}
 {{- define "app.envExists" -}}
 {{- $env := .Values.environment -}}
@@ -30,79 +72,77 @@ false
 {{- end -}}
 
 {{/*
-Get merged value: environment override > base spec > default
-Usage: include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1)
-*/}}
-{{- define "app.getValue" -}}
-{{- $env := .ctx.Values.environment -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .ctx.Values.environments $env -}}
-{{- $envConfig = index .ctx.Values.environments $env -}}
-{{- end -}}
-{{- if hasKey $envConfig .key -}}
-{{- index $envConfig .key -}}
-{{- else if hasKey .ctx.Values.spec .key -}}
-{{- index .ctx.Values.spec .key -}}
-{{- else -}}
-{{- .default -}}
-{{- end -}}
-{{- end -}}
+Resolved ingress list plus the one check a values file can't express. The list
+itself comes from app.merged (an environment's list replaces spec's).
 
-{{/*
-Get nested merged value for resources
-*/}}
-{{- define "app.getResource" -}}
-{{- $env := .ctx.Values.environment -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .ctx.Values.environments $env -}}
-{{- $envConfig = index .ctx.Values.environments $env -}}
-{{- end -}}
-{{- $envResources := dict -}}
-{{- if hasKey $envConfig "resources" -}}
-{{- $envResources = index $envConfig "resources" -}}
-{{- end -}}
-{{- if hasKey $envResources .key -}}
-{{- index $envResources .key -}}
-{{- else if hasKey .ctx.Values.spec.resources .key -}}
-{{- index .ctx.Values.spec.resources .key -}}
-{{- else -}}
-{{- .default -}}
-{{- end -}}
-{{- end -}}
+  ingress:
+    - host: signews.jterrazz.com          # public
+      path: /api
+      public: true
+    - host: signews.internal.jterrazz.com # private — tailnet only
+      path: /
+      public: false
 
-{{/*
-Namespace - {environment}-{name} format
+Returns YAML; consume via fromYamlArray.
 */}}
-{{- define "app.namespace" -}}
-{{ .Values.environment }}-{{ include "app.name" . }}
+{{- define "app.ingressList" -}}
+{{- $list := (fromYaml (include "app.merged" .)).ingress | default list -}}
+{{- if not (kindIs "slice" $list) -}}
+{{- fail "ingress must be a list of { host, path?, public? } entries. The single-object form was removed in chart 1.17.0 — migrate to a one-element list." -}}
+{{- end -}}
+{{- $list | toYaml -}}
 {{- end -}}
 
 {{/*
 Full image name - can be overridden by Image Updater via spec.image
 */}}
 {{- define "app.image" -}}
-{{- if .Values.spec.image -}}
-{{- .Values.spec.image -}}
+{{- $spec := fromYaml (include "app.merged" .) -}}
+{{- if $spec.image -}}
+{{- $spec.image -}}
 {{- else -}}
 registry.jterrazz.com/{{ include "app.name" . }}:latest
 {{- end -}}
 {{- end -}}
 
 {{/*
-Memory limit (defaults to 2x memory request)
+Parse a memory quantity to an integer number of MiB. Returns "" for anything
+that is not `<n>Mi` or `<n>Gi` — both callers treat that as "can't reason
+about this, leave it alone".
+
+  {{ include "app.memMi" "512Mi" }}  ->  512
+  {{ include "app.memMi" "1Gi" }}    ->  1024
+
+Shared by app.memoryLimit and app.nodeMaxOldSpace; each carried its own copy
+of this suffix-sniffing before 2.3.
+*/}}
+{{- define "app.memMi" -}}
+{{- $mem := . | toString -}}
+{{- if hasSuffix "Mi" $mem -}}
+{{- trimSuffix "Mi" $mem | int -}}
+{{- else if hasSuffix "Gi" $mem -}}
+{{- mul (trimSuffix "Gi" $mem | int) 1024 -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Memory limit — explicit `resources.memoryLimit`, else 2x the request.
+
+The derived limit is emitted in Mi as of 2.3: a `1Gi` request now yields
+`2048Mi` where it used to yield `2Gi`. Identical quantity (1 Gi is exactly
+1024 Mi); cosmetic manifest diff on the next deploy, no behaviour change.
+A request in neither Mi nor Gi still passes through unchanged.
 */}}
 {{- define "app.memoryLimit" -}}
-{{- $memLimit := include "app.getResource" (dict "ctx" . "key" "memoryLimit" "default" "") -}}
+{{- $resources := (fromYaml (include "app.merged" .)).resources | default dict -}}
+{{- $memLimit := $resources.memoryLimit | default "" -}}
 {{- if $memLimit -}}
 {{- $memLimit -}}
 {{- else -}}
-{{- $mem := include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") -}}
-{{- if hasSuffix "Mi" $mem -}}
-{{- $val := trimSuffix "Mi" $mem | int -}}
-{{- printf "%dMi" (mul $val 2) -}}
-{{- else if hasSuffix "Gi" $mem -}}
-{{- $val := trimSuffix "Gi" $mem | int -}}
-{{- printf "%dGi" (mul $val 2) -}}
+{{- $mem := $resources.memory | default "256Mi" -}}
+{{- $mi := include "app.memMi" $mem -}}
+{{- if $mi -}}
+{{- printf "%dMi" (mul ($mi | int) 2) -}}
 {{- else -}}
 {{- $mem -}}
 {{- end -}}
@@ -121,80 +161,20 @@ return "" and the caller skips injection, preserving the safe
 uncapped default. Also returns "" for non-Mi/Gi requests.
 */}}
 {{- define "app.nodeMaxOldSpace" -}}
-{{- $mem := include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") -}}
-{{- $reqMi := 0 -}}
-{{- if hasSuffix "Mi" $mem -}}
-{{- $reqMi = trimSuffix "Mi" $mem | int -}}
-{{- else if hasSuffix "Gi" $mem -}}
-{{- $reqMi = mul (trimSuffix "Gi" $mem | int) 1024 -}}
-{{- end -}}
+{{- $resources := (fromYaml (include "app.merged" .)).resources | default dict -}}
+{{- $mem := $resources.memory | default "256Mi" -}}
+{{- $reqMi := include "app.memMi" $mem | default "0" | int -}}
 {{- if ge $reqMi 512 -}}
 {{- div (mul $reqMi 3) 4 -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-Infisical environment - uses secretsEnv override if set, otherwise maps to environment
+Infisical environment — the `secretsEnv` override if the environment sets one,
+otherwise the deploy environment's own name.
 */}}
 {{- define "app.infisicalEnv" -}}
-{{- $env := .Values.environment -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments $env -}}
-{{- $envConfig = index .Values.environments $env -}}
-{{- end -}}
-{{- if hasKey $envConfig "secretsEnv" -}}
-{{- $envConfig.secretsEnv -}}
-{{- else -}}
-{{- $env -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Get secrets config - merge base spec.secrets with environment secrets override
-*/}}
-{{- define "app.secretsConfig" -}}
-{{- $env := .Values.environment -}}
-{{- $baseSecrets := .Values.spec.secrets | default dict -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments $env -}}
-{{- $envConfig = index .Values.environments $env -}}
-{{- end -}}
-{{- $envSecrets := $envConfig.secrets | default dict -}}
-{{- merge $envSecrets $baseSecrets | toYaml -}}
-{{- end -}}
-
-{{/*
-Get ingress list for the current environment.
-
-Apps declare `ingress` as a LIST of surface entries, each with
-{ host, path?, public? }. The env's list fully replaces a spec-level
-list (no per-entry merge — keep manifests explicit). Returns YAML so
-the template can consume via fromYamlArray.
-
-  ingress:
-    - host: signews.jterrazz.com         # public
-      path: /api
-      public: true
-    - host: signews.internal.jterrazz.com# private — tailnet only
-      path: /
-      public: false
-*/}}
-{{- define "app.ingressList" -}}
-{{- $env := .Values.environment -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments $env -}}
-{{- $envConfig = index .Values.environments $env -}}
-{{- end -}}
-{{- $list := list -}}
-{{- if hasKey $envConfig "ingress" -}}
-{{- $list = $envConfig.ingress -}}
-{{- else if .Values.spec.ingress -}}
-{{- $list = .Values.spec.ingress -}}
-{{- end -}}
-{{- if not (kindIs "slice" $list) -}}
-{{- fail "ingress must be a list of { host, path?, public? } entries. The single-object form was removed in chart 1.17.0 — migrate to a one-element list." -}}
-{{- end -}}
-{{- $list | toYaml -}}
+{{- (fromYaml (include "app.merged" .)).secretsEnv | default .Values.environment -}}
 {{- end -}}
 
 {{/*
@@ -203,20 +183,6 @@ signews.jterrazz.com → signews-jterrazz-com
 */}}
 {{- define "app.hostSlug" -}}
 {{- . | lower | replace "." "-" -}}
-{{- end -}}
-
-{{/*
-Get env vars - merge base spec.env with environment env
-*/}}
-{{- define "app.envVars" -}}
-{{- $env := .Values.environment -}}
-{{- $baseEnv := .Values.spec.env | default dict -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments $env -}}
-{{- $envConfig = index .Values.environments $env -}}
-{{- end -}}
-{{- $envEnv := $envConfig.env | default dict -}}
-{{- merge $envEnv $baseEnv | toYaml -}}
 {{- end -}}
 
 {{/*
@@ -275,24 +241,18 @@ gateway-intelligence:
 {{- end -}}
 
 {{/*
-Resolved + validated opt-in platform services for the current environment.
-env-level `platformServices` fully replaces the spec-level list (same
-replace-not-merge semantics as `ingress`); otherwise the spec list applies.
-Fails fast on an unknown service name (typo protection) — validation lives here,
-in the single resolver every consumer (env injection, client labels, netpol)
-already calls, so a bad name can never render a silently-broken manifest.
-Returns a YAML list (consume via fromYamlArray).
+Validated opt-in platform services for the current environment. The list is
+resolved by app.merged (an environment's list REPLACES spec's, same rule as
+`ingress`); this helper adds the name check.
+
+Fails fast on an unknown service name (typo protection) — validation lives
+here, in the single accessor every consumer (env injection, client labels,
+netpol) already calls, so a bad name can never render a silently-broken
+manifest. Returns a YAML list (consume via fromYamlArray).
 */}}
 {{- define "app.platformServices" -}}
 {{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
-{{- $envConfig := dict -}}
-{{- if hasKey .Values.environments .Values.environment -}}
-{{- $envConfig = index .Values.environments .Values.environment -}}
-{{- end -}}
-{{- $services := .Values.spec.platformServices | default list -}}
-{{- if hasKey $envConfig "platformServices" -}}
-{{- $services = index $envConfig "platformServices" -}}
-{{- end -}}
+{{- $services := (fromYaml (include "app.merged" .)).platformServices | default list -}}
 {{- range $svc := $services -}}
 {{- if not (hasKey $catalog $svc) -}}
 {{- fail (printf "spec.platformServices: unknown service %q (valid: %s)" $svc (keys $catalog | sortAlpha | join ", ")) -}}
@@ -339,12 +299,20 @@ target platform service's ingress selects it. Empty for services w/o a label.
 {{- end -}}
 
 {{/*
-Common labels
+Common labels.
+
+`app.kubernetes.io/instance` is .Release.Name as of 2.3, where it used to be
+the reconstructed "<environment>-<name>". CI installs as
+`helm upgrade --install <env>-<app>`, so for every real deploy the two are the
+same string — but the release name is the authoritative identity, and
+reconstructing it meant the label quietly lied for any install under a
+different release name (e.g. a local `helm template`/`helm install` while
+debugging).
 */}}
 {{- define "app.labels" -}}
 app: {{ include "app.name" . }}
 app.kubernetes.io/name: {{ include "app.name" . }}
-app.kubernetes.io/instance: {{ .Values.environment }}-{{ include "app.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: helm
 environment: {{ .Values.environment }}
 {{- end -}}

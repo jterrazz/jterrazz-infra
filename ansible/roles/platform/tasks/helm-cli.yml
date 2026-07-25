@@ -1,0 +1,51 @@
+---
+# ========================================
+# Helm CLI + chart repositories
+# ========================================
+
+- name: Check if Helm is installed
+  ansible.builtin.command: which helm
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Helm
+  when: helm_check.rc != 0
+  block:
+    # Pinned to a tag, not `main`: the installer script is fetched and executed
+    # as root, so tracking a moving branch means an upstream commit can change
+    # what runs on the host between two deploys with no change on our side. The
+    # tag URL is immutable. Version comes from inventories/group_vars/all.yml.
+    - name: Download Helm install script
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/helm/helm/{{ helm_version }}/scripts/get-helm-3"
+        dest: /tmp/get_helm.sh
+        mode: "0755"
+
+    - name: Run Helm install script
+      ansible.builtin.command: /tmp/get_helm.sh
+      environment:
+        DESIRED_VERSION: "{{ helm_version }}"
+      changed_when: true
+
+    - name: Cleanup Helm install script
+      ansible.builtin.file:
+        path: /tmp/get_helm.sh
+        state: absent
+
+- name: Add Helm repositories
+  ansible.builtin.command: "helm repo add {{ item.name }} {{ item.url }}"
+  loop:
+    - { name: jetstack, url: "https://charts.jetstack.io" }
+    - name: infisical
+      url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
+    - { name: grafana, url: "https://grafana.github.io/helm-charts" }
+    - { name: prometheus-community, url: "https://prometheus-community.github.io/helm-charts" }
+    - { name: open-telemetry, url: "https://open-telemetry.github.io/opentelemetry-helm-charts" }
+  register: repo_add
+  changed_when: "'has been added' in repo_add.stdout"
+  failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
+
+- name: Update Helm repositories
+  ansible.builtin.command: helm repo update
+  changed_when: false

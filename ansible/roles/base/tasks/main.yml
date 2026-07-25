@@ -1,0 +1,168 @@
+---
+# Base System Setup
+# Installs essential packages and configures the system foundation, then
+# prepares the hostPath root that every PV in this cluster is carved out of.
+# Target OS is Debian 13 (trixie).
+
+- name: Display deployment target
+  ansible.builtin.debug:
+    msg: "Deploying to {{ inventory_hostname }} ({{ ansible_distribution }} {{ ansible_distribution_version }})"
+  tags: [always]
+
+- name: Wait for system to be ready
+  ansible.builtin.wait_for_connection:
+    connect_timeout: 20
+    timeout: 300
+  tags: [always]
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [base, packages]
+
+- name: Install essential packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - htop
+      - unzip
+      - jq
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - python3-pip
+      - python3-yaml
+      - python3-kubernetes
+      # Required by ansible.builtin.deb822_repository, which the
+      # tailscale role uses to add the Tailscale apt source. Debian 13
+      # removed the apt-key binary, so the old apt_key module is not an
+      # option and deb822 sources are the supported path.
+      - python3-debian
+      - iptables
+      # systemd-resolved is a SEPARATE package on Debian 12+ and is NOT
+      # installed by default. Several later steps hard-depend on it:
+      # the tailscale role symlinks /etc/resolv.conf at the resolved
+      # stub, and the k3s kubelet pins
+      # --resolv-conf=/run/systemd/resolve/resolv.conf. Both die if the
+      # unit does not exist, so it must be installed here — the base role
+      # runs before the tailscale and k3s roles in site.yml.
+      - systemd-resolved
+      # OrbStack VMs ship without sshd (host-side ProxyCommand handles
+      # SSH instead). The security role expects `sshd -t` to be present
+      # to validate its config; install it so the hardening applies.
+      - openssh-server
+    state: present
+  tags: [base, packages]
+
+# Debian 13 ships OpenSSH socket-activated: ssh.socket owns the listening
+# port and ssh.service is started per-connection. Two consequences we do
+# not want:
+#   1. `Port` in sshd_config is IGNORED — the socket unit's ListenStream
+#      decides the port, so a port change would silently not apply.
+#   2. Restarting ssh.service does not re-bind the listener, so a config
+#      change appears to apply but the socket keeps the old behaviour.
+# Switch to the classic always-listening daemon. Idempotent: re-running
+# on an already-converted host is a no-op.
+- name: Check for a socket-activated sshd unit
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/ssh.socket
+  register: ssh_socket_unit
+  tags: [base, ssh]
+
+- name: Disable socket activation for sshd
+  ansible.builtin.systemd_service:
+    name: ssh.socket
+    state: stopped
+    enabled: false
+  when: ssh_socket_unit.stat.exists
+  tags: [base, ssh]
+
+# Also creates /run/sshd, which `sshd -t` needs — a fresh install that
+# has never started the daemon fails validation in the security role
+# without this.
+- name: Ensure ssh service is started and enabled
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    state: started
+    enabled: true
+    daemon_reload: true
+  tags: [base, ssh]
+
+# OrbStack VMs in isolated mode (and some other lightweight setups)
+# don't expose /dev/kmsg, which kubelet opens at startup; without it
+# k3s crashloops with "open /dev/kmsg: no such file or directory".
+# Non-isolated OrbStack VMs do have it as a normal character device,
+# so we only create the symlink-to-/dev/console fallback when kmsg is
+# actually missing. The systemd-tmpfiles entry recreates the symlink
+# on reboot if needed.
+- name: Stat /dev/kmsg
+  ansible.builtin.stat:
+    path: /dev/kmsg
+  register: kmsg_dev
+  tags: [base, kmsg]
+
+- name: Backfill /dev/kmsg when the kernel doesn't expose it
+  when: not kmsg_dev.stat.exists
+  tags: [base, kmsg]
+  block:
+    - name: Persist /dev/kmsg symlink via tmpfiles.d
+      ansible.builtin.copy:
+        dest: /etc/tmpfiles.d/orbstack-kmsg.conf
+        content: "L /dev/kmsg - - - - /dev/console\n"
+        mode: "0644"
+
+    - name: Create /dev/kmsg now
+      ansible.builtin.file:
+        src: /dev/console
+        dest: /dev/kmsg
+        state: link
+        force: true
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
+  tags: [base]
+
+- name: Configure system limits for Kubernetes
+  ansible.builtin.blockinfile:
+    path: /etc/security/limits.d/kubernetes.conf
+    create: true
+    mode: "0644"
+    block: |
+      * soft nofile 65536
+      * hard nofile 65536
+      * soft nproc 65536
+      * hard nproc 65536
+  tags: [base]
+
+# ========================================
+# Storage
+# ========================================
+# Prepares the hostPath root that every PV in this cluster is carved out of.
+#
+# Do not change any path below. /var/lib/k8s-data is baked into every PV
+# manifest in kubernetes/ and holds live data.
+#
+# /var/lib/k8s-data is a symlink to a Mac folder mounted via OrbStack's
+# auto file-share (/mnt/mac/...). hostPath PVs reference /var/lib/k8s-data
+# directly, so the on-disk path stays stable, but the data lives on the
+# Mac and survives `pulumi destroy` of the VM.
+- name: Resolve Mac bind dir
+  ansible.builtin.set_fact:
+    # OrbStack mounts the Mac user's home at /mnt/mac/Users/<user>.
+    # The data folder is created by the Pulumi OrbStack provider before
+    # the VM is started, so this path is always present here.
+    storage_orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infrastructure/data"
+  tags: [base, storage]
+
+- name: Replace /var/lib/k8s-data with a symlink to the Mac dir
+  ansible.builtin.file:
+    src: "{{ storage_orbstack_data_dir }}"
+    dest: /var/lib/k8s-data
+    state: link
+    force: true
+  tags: [base, storage]

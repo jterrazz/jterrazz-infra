@@ -1,0 +1,55 @@
+# Shared non-secret env for the OpenPanel apps (op-api / op-worker /
+# op-dashboard), consumed via envFrom. Mirrors the compose `.env` — every
+# app service gets the same base env; secrets (DB URL, cookie secret) live
+# in the Infisical-synced `openpanel-secrets` Secret instead (secret.yaml).
+#
+# URL model:
+#   DASHBOARD_URL / API_URL  -> the PRIVATE host. The dashboard runs on the
+#     tailnet; its browser-side calls to /api (tRPC, /live) hit the private
+#     IngressRoute. The public ingest host (analytics.jterrazz.com) is NOT
+#     referenced here — it only carries /api/track, and the sending site
+#     configures that URL on its own side (see API_CORS_ORIGINS below).
+#   API_URL_SSR -> in-cluster op-api Service, intended to bypass the ingress
+#     for the dashboard's server-side rendering. Set here because it is
+#     harmless and forward-compatible, but image 2.2 was NOT observed to
+#     honor it (the override landed upstream on `main` after the 2.2 cut) —
+#     which is why the CoreDNS `openpanel.jterrazz.com` -> Traefik ClusterIP
+#     special case still exists. To verify after the next repave: if 2.2 does
+#     honor it, that CoreDNS special case can be dropped. See README.md
+#     ("Dashboard SSR" under Gotchas) for the test.
+#   CLICKHOUSE_URL path segment /openpanel = the DB created by init-db.sh.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openpanel-config
+  namespace: platform-analytics
+data:
+  NODE_ENV: "production"
+  SELF_HOSTED: "true"
+  BATCH_SIZE: "5000"
+  BATCH_INTERVAL: "10000"
+  ALLOW_INVITATION: "true"
+  # ALLOW_REGISTRATION is deliberately kept out of here: it starts "true" for
+  # first-admin creation, then flips to "false". It is set as a per-container
+  # env in apps.yaml so the flip is a one-line, greppable change.
+  REDIS_URL: "redis://op-redis:6379"
+  CLICKHOUSE_URL: "http://op-clickhouse:8123/openpanel"
+  DASHBOARD_URL: "https://openpanel.jterrazz.com"
+  API_URL: "https://openpanel.jterrazz.com/api"
+  API_URL_SSR: "http://op-api:3000"
+  # Browser origins allowed to POST events to /api/track on the public host.
+  #
+  # This list is aspirational EXCEPT for jterrazz.com + www.jterrazz.com: the
+  # only live sender today is the externally-hosted jterrazz-web site, which
+  # posts to analytics.jterrazz.com/api/track directly. (~340 events over the
+  # last 7 days — this ingest path is load-bearing, not dormant.) The other
+  # origins are pre-authorised for when those sites start sending; an origin
+  # that never sends costs nothing.
+  #
+  # There is no shared SDK: a `@jterrazz/analytics` package was planned and
+  # never built, and the site integrates OpenPanel's browser snippet itself.
+  # Add new sending origins here (apex; add www./sub as needed).
+  API_CORS_ORIGINS: "https://openpanel.jterrazz.com,https://jterrazz.com,https://www.jterrazz.com,https://spwn.sh,https://sig.news,https://clawssify.com,https://clawrr.com"
+  # Postgres bootstrap (non-secret half; password is in the Secret).
+  POSTGRES_USER: "openpanel"
+  POSTGRES_DB: "openpanel"

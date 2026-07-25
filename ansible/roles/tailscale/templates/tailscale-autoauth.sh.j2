@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Managed by Ansible (tailscale role). Re-authenticates Tailscale on boot
-# if the daemon came back logged out. A logged-out node can't resolve
-# *.ts.net, which breaks registry.jterrazz.com pulls and ImagePullBackOffs
-# every app pod (Cloudflare then 503s the public hostnames).
+# Managed by Ansible (tailscale role). THE definition of "log this node into
+# the tailnet" — run by tailscale-autoauth.service on every boot, and by the
+# tailscale role at deploy time. Re-authenticates if the daemon came back
+# logged out: a logged-out node can't resolve *.ts.net, which breaks
+# registry.jterrazz.com pulls and ImagePullBackOffs every app pod (Cloudflare
+# then 503s the public hostnames).
+#
+# TS_CLIENT_ID / TS_CLIENT_SECRET come from /etc/tailscale/autoauth.env under
+# systemd, and from the task environment when Ansible calls it.
 set -euo pipefail
 
 # Wait for tailscaled's socket to be answerable before deciding anything.
@@ -26,12 +31,6 @@ args=(
     --client-secret="${TS_CLIENT_SECRET}"
     --hostname="{{ tailscale_hostname }}"
     --advertise-tags="{{ tailscale_tags | join(',') }}"
-{% if tailscale_advertise_routes %}
-    --advertise-routes="{{ tailscale_advertise_routes | join(',') }}"
-{% endif %}
-{% if tailscale_accept_routes %}
-    --accept-routes
-{% endif %}
 {% if tailscale_accept_dns %}
     --accept-dns
 {% endif %}

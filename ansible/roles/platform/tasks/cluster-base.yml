@@ -1,0 +1,73 @@
+---
+# ========================================
+# Cluster-wide manifests
+# ========================================
+# Namespaces, the `manual` StorageClass, Traefik config/middleware/TLS options
+# and the default-deny NetworkPolicies — everything under kubernetes/cluster/.
+
+# Generous timeout — fresh k3s clusters (and especially the first
+# OrbStack VM with no image cache) need several minutes for Traefik's
+# Helm-install Job to pull images and complete. `kubectl wait` already
+# blocks and polls, so one call with a long deadline replaces the old
+# 240-iteration Ansible retry loop that re-ran kubectl every 2 seconds.
+#
+# It sits at the top of this file rather than with the manifest staging
+# because the Traefik objects applied below (middlewares, TLS options,
+# HelmChartConfig) are meaningless until the upstream install has landed.
+- name: Wait for Traefik to be ready
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - wait
+      - --for=condition=complete
+      - job
+      - -l
+      - helmcharts.helm.cattle.io/chart=traefik
+      - -n
+      - kube-system
+      - --timeout=480s
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  changed_when: false
+
+# Make released PVs available for rebinding (for data persistence across redeployments)
+#
+# A PV whose PVC was deleted goes to Released and will NOT rebind while it
+# still carries the old claimRef, so the app's new PVC stays Pending forever
+# and the pod never schedules. This used to be `failed_when: false`, which
+# meant a kubectl/RBAC problem here surfaced minutes later as an unexplained
+# scheduling failure. Failing loudly with the patch output is the whole point.
+- name: Clear claimRef from released PVs
+  block:
+    - name: Patch released PVs to drop their stale claimRef
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for pv in $(kubectl get pv -o jsonpath='{.items[?(@.status.phase=="Released")].metadata.name}'); do
+            kubectl patch pv $pv -p '{"spec":{"claimRef":null}}' --type=merge
+          done
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: pv_clear
+      changed_when: pv_clear.stdout != ''
+  rescue:
+    - name: Report the released-PV patch failure
+      ansible.builtin.fail:
+        msg: >-
+          Failed to clear claimRef from Released PVs. Any app whose PVC was
+          recreated will stay Pending until this succeeds. kubectl said:
+          {{ pv_clear.stderr | default('(no stderr captured)') }}
+
+# Plain `kubectl apply -f <dir> -R`, no kustomize: the kustomization.yaml was a
+# hand-maintained resource list that had to be edited every time a file was
+# added, and the overlay it once served (environments/production) is gone.
+# Everything under kubernetes/cluster/ is a plain manifest, so recursive apply
+# IS the deployed state.
+- name: Deploy the cluster-wide manifests
+  ansible.builtin.command:
+    cmd: kubectl apply -f {{ manifest_dir }}/kubernetes/cluster -R
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: cluster_base_result
+  changed_when: "'created' in cluster_base_result.stdout or 'configured' in cluster_base_result.stdout"

@@ -1,0 +1,33 @@
+# Service-chart values for OpenPanel — storage only, no ingress.
+#
+# `host` is deliberately unset: OpenPanel is the one service whose ingress the
+# chart cannot express. It has TWO hostnames with different exposure and
+# path-level routing (private dashboard + API on openpanel.jterrazz.com,
+# public /api/track ingest on analytics.jterrazz.com), plus a stripPrefix
+# middleware — see ingress.yaml in this directory, which stays hand-written.
+#
+# MIGRATION: these three volumes replace the raw PV/PVC blocks that used to
+# sit at the top of postgres.yaml / redis.yaml / clickhouse.yaml. Names,
+# sizes and hostPaths are identical to what those blocks declared:
+#   PV/PVC openpanel-postgres     3Gi   /var/lib/k8s-data/openpanel/postgres
+#   PV/PVC openpanel-redis        1Gi   /var/lib/k8s-data/openpanel/redis
+#   PV/PVC openpanel-clickhouse  10Gi   /var/lib/k8s-data/openpanel/clickhouse
+# One directory per app (repo convention): the three datastores nest under
+# openpanel/ even though each has its own PV/PVC.
+name: openpanel
+storage:
+  # Relational data: orgs, projects, dashboards, users. PGDATA is a `pgdata`
+  # subdir of the mount (see postgres.yaml) so initdb's empty-dir check never
+  # trips over lost+found.
+  postgres:
+    size: 3Gi
+    pathSuffix: postgres
+  # BullMQ job queue + event buffer, NOT an evictable cache — AOF durability
+  # is on, so in-flight events survive a restart.
+  redis:
+    size: 1Gi
+    pathSuffix: redis
+  # The event store and the dominant consumer of both disk and RAM.
+  clickhouse:
+    size: 10Gi
+    pathSuffix: clickhouse

@@ -24,8 +24,9 @@ import * as cloudflare from "@pulumi/cloudflare";
 const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 
 // Tailscale tailnet suffix. Stable across the tailnet — the only
-// variable is the cluster's hostname (= `jterrazz-infrastructure` today),
-// passed in from machine.ts.
+// variable is the cluster's hostname (= `jterrazz-infrastructure`), passed in
+// from src/targets/orbstack.ts. (This comment used to name a `machine.ts`
+// that has not existed for several refactors.)
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
 // Cloudflare Tunnel hostname. Public hosts CNAME'd here (proxied) reach the
@@ -43,7 +44,12 @@ const TUNNEL_HOSTNAME = "8f4157bb-f883-424b-8ccd-8332867cf1b2.cfargotunnel.com";
  * `openpanel` is the PRIVATE OpenPanel dashboard; its public ingest sibling
  * `analytics` is a proxied tunnel record in PUBLIC_TUNNEL_HOSTS below.
  */
-const PRIVATE_HOSTS = ["n8n", "portainer", "grafana", "registry", "gateway", "chat", "openpanel"];
+const PRIVATE_HOSTS = ["grafana", "registry", "gateway", "chat", "openpanel"];
+// Removed with their services: `n8n` (platform-automation, no workflows in
+// use) and `portainer` (platform-management, a cluster-admin dashboard
+// reachable over HTTP). Deleting the CNAME is part of deleting the service —
+// a record left pointing at the tailnet resolves to a host that 404s at
+// Traefik, which reads as an outage rather than an absence.
 
 /**
  * Public services fronted by the Cloudflare tunnel (proxied/orange). Their

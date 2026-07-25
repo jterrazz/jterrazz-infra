@@ -34,7 +34,6 @@ spec:
     allowedClients: []
   health:
     path: /health
-    initialDelaySeconds: 10
     periodSeconds: 30
     # Probe timeouts/thresholds (k8s defaults 1s/3 are too tight for apps
     # that also run in-process background work). Override per-app if needed.
@@ -56,11 +55,7 @@ registry:
   username: ""
   password: ""
 
-# Infrastructure settings. Mirrors the platform chart's block so both charts
-# take the node name the same way. Only consumed by templates/storage.yaml,
-# which emits the hostPath PV's nodeAffinity when it is non-empty and omits
-# the whole block when it is not — app-repo CI does not pass it and must keep
-# rendering. Ansible passes `--set infrastructure.nodeName=<inventory_hostname>`
-# for in-repo installs.
-infrastructure:
-  nodeName: ""
+# NOTE: `infrastructure.nodeName` was removed in chart 2.3. It gated the
+# hostPath PV's nodeAffinity, but only app CI installs this chart and CI never
+# passed a node name, so the branch never rendered. The service chart
+# (kubernetes/charts/service), whose PVs Ansible does create, still has it.

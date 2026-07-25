@@ -1,0 +1,30 @@
+---
+# Deploy the `<name>-platform` releases of the shared service chart
+# (kubernetes/charts/service) — the per-service Certificate + IngressRoute +
+# hostPath PV/PVCs that sit alongside each upstream Helm release.
+#
+# Callers set `service_chart_releases` to a list of {name, namespace} and
+# include this file. The release must land BEFORE the upstream chart:
+# `helm install <app> --wait` blocks on a pod that can't schedule because its
+# PVC doesn't exist yet. The ordering only matters on a fresh cluster — once
+# the PVs exist a re-run is fine.
+#
+# Args:
+#   service_chart_releases — [{name, namespace}, ...]; values come from
+#                            kubernetes/services/<name>/service.yaml
+
+- name: Deploy the service-chart resources
+  ansible.builtin.command: >
+    helm upgrade --install {{ item.name }}-platform {{ service_chart }}
+    --namespace {{ item.namespace }}
+    --values {{ manifest_dir }}/kubernetes/services/{{ item.name }}/service.yaml
+    --set infrastructure.nodeName={{ inventory_hostname }}
+    --wait
+    --timeout 2m
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  loop: "{{ service_chart_releases }}"
+  loop_control:
+    label: "{{ item.name }}-platform"
+  register: service_chart_result
+  changed_when: "'has been upgraded' in service_chart_result.stdout or 'has been installed' in service_chart_result.stdout"

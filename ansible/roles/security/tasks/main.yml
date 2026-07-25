@@ -44,7 +44,7 @@
   notify: Restart SSH
   tags: [security, ssh]
 
-- name: Ensure sshd drop-in directory exists
+- name: Ensure the sshd drop-in directory exists
   ansible.builtin.file:
     path: /etc/ssh/sshd_config.d
     state: directory
@@ -66,7 +66,7 @@
 - name: Harden sshd via drop-in
   tags: [security, ssh]
   block:
-    - name: Configure SSH daemon hardening drop-in
+    - name: Configure the SSH daemon hardening drop-in
       ansible.builtin.template:
         src: sshd_hardening.conf.j2
         dest: /etc/ssh/sshd_config.d/10-hardening.conf
@@ -98,7 +98,7 @@
 # in over Tailscale and run ansible-playbook. Idempotent (won't dupe
 # the key on re-runs). Pubkey lives in defaults/main.yml; setting it
 # empty in extra-vars skips the install.
-- name: Install CI deploy public key in root's authorized_keys
+- name: Install the CI deploy public key in root's authorized_keys
   ansible.posix.authorized_key:
     user: root
     key: "{{ security_ci_deploy_pubkey }}"
@@ -115,31 +115,27 @@
     path: /etc/default/ufw
     regexp: "^IPV6="
     line: "IPV6=no"
-  when: security_ufw_enabled
   tags: [security, firewall]
 
-- name: Configure UFW default incoming policy # noqa: args[module]
+- name: Configure the UFW default incoming policy # noqa: args[module]
   community.general.ufw:
     direction: incoming
     policy: "{{ security_ufw_default_incoming }}"
-  when: security_ufw_enabled
   tags: [security, firewall]
 
-- name: Configure UFW default outgoing policy # noqa: args[module]
+- name: Configure the UFW default outgoing policy # noqa: args[module]
   community.general.ufw:
     direction: outgoing
     policy: "{{ security_ufw_default_outgoing }}"
-  when: security_ufw_enabled
   tags: [security, firewall]
 
-- name: Configure UFW default forward policy # noqa: args[module]
+- name: Configure the UFW default forward policy # noqa: args[module]
   community.general.ufw:
     direction: routed
     policy: "{{ security_ufw_default_forward }}"
-  when: security_ufw_enabled
   tags: [security, firewall]
 
-- name: Configure UFW rules
+- name: Configure the UFW rules
   community.general.ufw:
     rule: "{{ item.rule }}"
     port: "{{ item.port }}"
@@ -147,52 +143,11 @@
     comment: "{{ item.comment | default('') }}"
     from_ip: "{{ item.from | default('any') }}"
   loop: "{{ security_ufw_rules }}"
-  when: security_ufw_enabled
-  tags: [security, firewall]
-
-# SSH access - public or Tailscale-only based on configuration
-- name: Configure SSH access (public)
-  community.general.ufw:
-    rule: "{{ item.rule }}"
-    port: "{{ item.port }}"
-    proto: "{{ item.proto | default('tcp') }}"
-    comment: "{{ item.comment | default('') }}"
-    from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ security_ufw_ssh_rules_public }}"
-  when:
-    - security_ufw_enabled
-    - not security_ssh_tailscale_only
-  tags: [security, firewall]
-
-- name: Configure SSH access (Tailscale only)
-  community.general.ufw:
-    rule: "{{ item.rule }}"
-    port: "{{ item.port }}"
-    proto: "{{ item.proto | default('tcp') }}"
-    comment: "{{ item.comment | default('') }}"
-    from_ip: "{{ item.from | default('any') }}"
-  loop: "{{ security_ufw_ssh_rules_tailscale }}"
-  when:
-    - security_ufw_enabled
-    - security_ssh_tailscale_only
-  tags: [security, firewall]
-
-- name: Remove public SSH rule when Tailscale-only mode
-  community.general.ufw:
-    rule: allow
-    port: "22"
-    proto: tcp
-    delete: true
-  when:
-    - security_ufw_enabled
-    - security_ssh_tailscale_only
-  failed_when: false
   tags: [security, firewall]
 
 - name: Enable UFW
   community.general.ufw:
     state: enabled
-  when: security_ufw_enabled
   tags: [security, firewall]
 
 # Automatic Updates
@@ -201,7 +156,6 @@
     src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: "0644"
-  when: security_auto_updates_enabled
   tags: [security, updates]
 
 - name: Configure unattended upgrades
@@ -209,11 +163,10 @@
     src: 50unattended-upgrades.j2
     dest: /etc/apt/apt.conf.d/50unattended-upgrades
     mode: "0644"
-  when: security_auto_updates_enabled
   tags: [security, updates]
 
 # Kernel Hardening
-- name: Configure kernel security parameters
+- name: Configure the kernel security parameters
   ansible.posix.sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"
@@ -233,5 +186,4 @@
       install sctp /bin/true
       install rds /bin/true
       install tipc /bin/true
-  when: security_disable_uncommon_protocols
   tags: [security]

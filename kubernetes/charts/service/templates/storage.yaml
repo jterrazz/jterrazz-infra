@@ -1,0 +1,94 @@
+{{- /*
+Storage is a MAP of named volumes:
+`storage.<key>` -> { size, pathSuffix, claimName }.
+
+Naming: the PV is ALWAYS `<name>-<key>`, and the PVC binds to it by
+volumeName. The `data` key therefore reproduces the historical `<name>-data`
+names exactly, which is why librechat-data, registry-data, grafana-data,
+prometheus-data and openpanel-{postgres,redis,clickhouse} all keep the object
+names they were created with.
+
+claimName (chart 2.1) overrides ONLY the PVC's metadata.name. It exists for
+volumes whose consumer imposes the claim name: a StatefulSet's
+volumeClaimTemplate looks for `storage-<release>-<ordinal>` and will provision
+a fresh dynamic volume if it doesn't find one. Loki and Tempo are installed
+from upstream StatefulSet charts, so their PVCs must be named
+storage-loki-0 / storage-tempo-0 while their PVs stay loki-data / tempo-data.
+Without this override those two pairs had to live in an Ansible-rendered
+template (ansible/templates/kubernetes/telemetry-storage.yaml.j2) instead of
+here.
+
+hostPath paths are LIVE DATA and must not move:
+  /var/lib/k8s-data/<name>[/<pathSuffix>]
+e.g. librechat + pathSuffix `mongo`   -> /var/lib/k8s-data/librechat/mongo
+     librechat + pathSuffix `uploads` -> /var/lib/k8s-data/librechat/uploads
+     grafana   + no pathSuffix        -> /var/lib/k8s-data/grafana
+
+Removed in 2.0: the `selector`-mode PVC branch and the `hostPathType` value —
+no consumer ever set either. The PVC always binds by volumeName, and
+hostPath.type is unconditionally DirectoryOrCreate to match the app chart.
+hostPath.type is an IMMUTABLE PV field, so this only takes effect on freshly
+created PVs; an existing PV created without it keeps its empty type.
+*/ -}}
+{{- $name := include "service.name" . -}}
+{{- /*
+nodeAffinity pins each hostPath PV to the node holding the data. Emitted only
+when a node name is supplied — an empty infrastructure.nodeName would produce
+`values: [""]`: a PV that matches no node and can never bind. Ansible always
+passes --set infrastructure.nodeName=<inventory_hostname>.
+
+Also immutable once set, so adding it to a PV that predates this chart means
+delete-and-recreate the PV object (the DATA is untouched — hostPath dirs and
+Retain reclaim policy).
+*/ -}}
+{{- $nodeName := .Values.infrastructure.nodeName | default "" -}}
+{{- range $key, $volume := .Values.storage }}
+{{- $size := $volume.size | required (printf "storage.%s.size is required" $key) }}
+{{- $claimName := $volume.claimName | default (printf "%s-%s" $name $key) }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $name }}-{{ $key }}
+  labels:
+    {{- include "service.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  capacity:
+    storage: {{ $size }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    # pathSuffix nests a multi-component app's volume under one dir
+    # (e.g. librechat/mongo) so the on-disk convention stays 1 dir = 1 app.
+    path: /var/lib/k8s-data/{{ $name }}{{ with $volume.pathSuffix }}/{{ . }}{{ end }}
+    type: DirectoryOrCreate
+  {{- if $nodeName }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ $nodeName }}
+  {{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claimName }}
+  labels:
+    {{- include "service.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: {{ $size }}
+  volumeName: {{ $name }}-{{ $key }}
+{{- end }}

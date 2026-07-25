@@ -1,0 +1,53 @@
+---
+# Platform layer, in dependency order.
+#
+# `preflight` and `stage-manifests` are tagged `always` on purpose: every other
+# file below reads values/manifests out of {{ manifest_dir }} and most need the
+# Tailscale facts, so `--tags telemetry` has to bring them along or it fails on
+# a missing path. (They used to carry a skippable `prereqs` tag with a comment
+# claiming otherwise.) Use `--skip-tags chart-publish` to leave the OCI chart
+# alone.
+
+- name: Validate required secrets
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [always]
+
+- name: Stage the kubernetes/ tree and gather node facts
+  ansible.builtin.import_tasks: stage-manifests.yml
+  tags: [always]
+
+- name: Configure CoreDNS split-DNS for private hostnames
+  ansible.builtin.import_tasks: coredns.yml
+  tags: [coredns, dns]
+
+- name: Deploy the cluster-wide manifests
+  ansible.builtin.import_tasks: cluster-base.yml
+  tags: [cluster-base, namespaces]
+
+- name: Install the Helm CLI and repositories
+  ansible.builtin.import_tasks: helm-cli.yml
+  tags: [helm]
+
+- name: Deploy the cluster core services
+  ansible.builtin.import_tasks: cluster-core.yml
+  tags: [cluster-core, secrets, certmanager, infisical, cloudflared]
+
+- name: Deploy the telemetry stack
+  ansible.builtin.import_tasks: telemetry.yml
+  tags: [telemetry]
+
+- name: Deploy LibreChat
+  ansible.builtin.import_tasks: librechat.yml
+  tags: [services, librechat, gateway]
+
+- name: Deploy OpenPanel
+  ansible.builtin.import_tasks: openpanel.yml
+  tags: [services, openpanel]
+
+- name: Deploy the container registry
+  ansible.builtin.import_tasks: registry.yml
+  tags: [registry]
+
+- name: Publish the app Helm chart
+  ansible.builtin.import_tasks: publish-app-chart.yml
+  tags: [chart-publish]

@@ -3,7 +3,7 @@
 # identity.
 #
 # These two values used to be recomputed in three separate places (the end of
-# this role, the top of platform.yml and the k3s role), which meant three
+# this role, the top of the platform layer and the k3s role), which meant three
 # slightly different failure modes for the same lookup. Everything now either
 # inherits the facts from the role run earlier in site.yml, or pulls them in
 # with:
@@ -14,8 +14,9 @@
 #       tasks_from: facts
 #     when: tailscale_ip is not defined
 #
-# — which is what platform.yml does when it runs standalone from CI (the
-# deploy-platform.yaml workflow skips the networking play).
+# — which is what roles/platform/tasks/stage-manifests.yml does when
+# platform.yml runs standalone from CI (the deploy-platform.yaml workflow
+# skips the host layer, so this role never ran in that invocation).
 
 - name: Get Tailscale IPv4 address
   ansible.builtin.command: tailscale ip -4

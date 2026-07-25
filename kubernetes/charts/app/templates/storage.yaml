@@ -1,5 +1,6 @@
 {{- if eq (include "app.envExists" .) "true" -}}
-{{- if .Values.spec.storage -}}
+{{- $spec := fromYaml (include "app.merged" .) -}}
+{{- if $spec.storage -}}
 {{- $appName := include "app.name" . -}}
 {{- /*
 Fail loudly on a half-configured storage block. Both fields are load-bearing:
@@ -8,19 +9,19 @@ and mountPath is consumed by deployment.yaml. Without `required` a missing
 value rendered as an empty string and produced either a PV that never bound
 or a container with an empty mountPath — both only diagnosable at runtime.
 */ -}}
-{{- $size := .Values.spec.storage.size | required (printf "spec.storage.size is required when spec.storage is set (app %s)" $appName) -}}
-{{- $_ := .Values.spec.storage.mountPath | required (printf "spec.storage.mountPath is required when spec.storage is set (app %s)" $appName) -}}
+{{- $size := $spec.storage.size | required (printf "spec.storage.size is required when spec.storage is set (app %s)" $appName) -}}
+{{- $_ := $spec.storage.mountPath | required (printf "spec.storage.mountPath is required when spec.storage is set (app %s)" $appName) -}}
 {{- /*
-nodeAffinity pins the hostPath PV to the node whose local disk actually holds
-the data — a safety belt against a renamed or added node silently scheduling
-the pod somewhere with an empty directory. Same value pattern as the platform
-chart (infrastructure.nodeName, injected by Ansible at deploy time).
+NO nodeAffinity here, deliberately (removed in 2.3 along with the
+`infrastructure.nodeName` value). This chart is installed exclusively by app
+CI (jterrazz-actions/actions/docker-deploy), which never passed a node name —
+Ansible only ever installed the OTHER chart, so the branch was dead in every
+real render and produced nothing but an unread value. The service chart, whose
+PVs Ansible does create, still pins nodeAffinity.
 
-Emitted ONLY when a node name is supplied: app-repo CI installs this chart
-without it, and an empty `values: [""]` match expression would produce a PV
-that can never bind anywhere.
+If a second node is ever added, restore it there and here together: an
+unpinned hostPath PV can bind on a node whose disk holds an empty directory.
 */ -}}
-{{- $nodeName := .Values.infrastructure.nodeName | default "" -}}
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -38,16 +39,6 @@ spec:
   hostPath:
     path: /var/lib/k8s-data/{{ $appName }}-{{ .Values.environment }}
     type: DirectoryOrCreate
-  {{- if $nodeName }}
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values:
-                - {{ $nodeName }}
-  {{- end }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

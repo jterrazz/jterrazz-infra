@@ -1,0 +1,110 @@
+# Grafana Alloy — cluster-wide pod log shipper (chart: grafana/alloy).
+#
+# WHY THIS EXISTS
+# ---------------
+# Five of the six apps in this cluster have no OpenTelemetry SDK wired in, so
+# the OTel collector's logs pipeline (otel-collector/helm.yaml -> otlphttp/loki)
+# only ever sees the one app that does instrument itself. Everything else —
+# every platform service, every datastore, every uninstrumented app — writes to
+# stdout and that output dies with the pod. Loki has been sitting there with a
+# 90d window and almost nothing in it.
+#
+# Alloy closes that gap the boring way: tail EVERY pod's stdout/stderr and push
+# it into the Loki that already exists. It is complementary to, not a
+# replacement for, the OTel collector — the collector still owns traces,
+# metrics and structured OTLP logs from instrumented apps; Alloy owns "what did
+# this pod print".
+#
+# WHY loki.source.kubernetes AND NOT local.file_match
+# ---------------------------------------------------
+# `loki.source.kubernetes` reads logs through the Kubernetes API
+# (pods/log subresource) rather than tailing /var/log/pods on the host. That
+# means no hostPath mount, no dependence on the container runtime's on-disk log
+# layout, and it works unchanged on OrbStack where /var/log/pods lives inside
+# the VM. The cost is API-server traffic, which is irrelevant at this scale
+# (single node, ~25 pods).
+
+controller:
+  # DaemonSet: one Alloy per node, each tailing only its own node's pods.
+  # Single-node cluster, so this is exactly 1 pod today — but a DaemonSet is
+  # the shape that stays correct if a second node ever appears, whereas a
+  # 1-replica Deployment would silently stop collecting half the logs.
+  type: daemonset
+
+alloy:
+  # Modest: Alloy is a log forwarder, not a buffer of record. Loki is the
+  # store. 64Mi covers the tailer set plus the write-ahead batch at this pod
+  # count; the 2x limit absorbs a burst when something starts log-spamming.
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+  configMap:
+    content: |-
+      // Discover every pod in every namespace. The DaemonSet's own node is
+      // the only one that exists today, but loki.source.kubernetes filters to
+      // the local node itself, so this stays correct multi-node.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Turn the __meta_kubernetes_* discovery metadata into the Loki stream
+      // labels we actually want to query on. Keep this list SHORT: every
+      // label is a separate Loki stream, and stream cardinality is the one
+      // way to make a small Loki instance miserable. namespace/pod/container
+      // is the standard trio; `app` is added because every workload in this
+      // repo carries it (both charts stamp it, and the raw manifests set it
+      // by hand), which makes `{app="op-api"}` work across restarts.
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app"]
+          target_label  = "app"
+        }
+        // Deliberately NOT promoted to labels: pod IP, node name, uid, and
+        // every app.kubernetes.io/* label. They change on every reschedule
+        // (or are constant), so they would multiply streams without ever
+        // being useful in a query.
+      }
+
+      // Tail stdout/stderr of every discovered container via the API server.
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+
+      // The Loki that the OTel collector and Grafana already use. Service DNS,
+      // in-cluster, no auth (auth_enabled: false in loki/helm.yaml).
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.platform-telemetry.svc.cluster.local:3100/loki/api/v1/push"
+        }
+      }
+
+# TODO-verify on first deploy: `loki.source.kubernetes` needs `pods/log`
+# (get/list/watch) on top of the `pods` read the chart's default ClusterRole
+# grants. The chart creates RBAC by default (rbac.create: true) and recent
+# versions do include pods/log, but confirm rather than assume — the failure
+# mode is silent-ish: Alloy comes up healthy and its own logs fill with
+# `is forbidden: User "system:serviceaccount:platform-telemetry:alloy" cannot
+# get resource "pods/log"`, while Loki simply stays empty. Check with:
+#   kubectl logs -n platform-telemetry ds/alloy | grep -i forbidden
+# If it is missing, add the rule via `rbac.extraRules` (or set
+# `rbac.create: false` and manage the ClusterRole here) rather than granting
+# cluster-admin.

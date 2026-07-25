@@ -1,8 +1,14 @@
 ---
 # ansible-lint configuration
 #
-# CI runs `ansible-lint playbooks/` from the `ansible/` directory
-# (.github/workflows/validate.yaml), so this file is picked up from the cwd.
+# CI and `make lint` both run
+#   ansible-lint -c ansible/.ansible-lint ansible/
+# from the repo root, so violation paths are repo-relative.
+#
+# The `-c` is load-bearing: ansible-lint's config auto-discovery searches the
+# CWD and walks UP, never down into the directory it was asked to lint. Running
+# it without `-c` from the repo root therefore silently ignored this file —
+# profile, skip_list and exclude_paths all reverted to defaults.
 #
 # Profile `production` is the strictest built-in tier. It is achievable here
 # because this repo is a small, single-target playbook set — if a rule ever
@@ -23,6 +29,14 @@ skip_list:
   - no-changed-when # explicitly handled everywhere it matters; the rest are probes
   # Long single-line helm invocations are more readable than folded YAML here.
   - yaml[line-length]
+  # var-naming[no-role-prefix] exists to stop a dozen third-party roles from
+  # colliding in the shared play namespace. This repo has five first-party
+  # roles driving one host, and the two vars that ARE read outside their role
+  # (`kubeconfig` and `manifest_dir`, used by platform.yml's post_tasks) are
+  # deliberately named without a prefix because they describe the node, not the
+  # role. Renaming ~40 `register:` handles to `platform_grafana_result` &c.
+  # would buy no collision safety here and cost readability.
+  - var-naming[no-role-prefix]
 
 warn_list:
   - experimental

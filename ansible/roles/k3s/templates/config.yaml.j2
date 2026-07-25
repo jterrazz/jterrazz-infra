@@ -29,17 +29,13 @@ write-kubeconfig: /etc/rancher/k3s/k3s.yaml
 # kubectl fails cert verification. The tailnet IP and MagicDNS name matter
 # most — that is how the laptop and CI reach the cluster.
 #
-# `ansible_host` is only a SAN on Hetzner, where it is the real public IP. On
-# OrbStack it is `orb`, an entry in the OrbStack SSH config rather than a
-# resolvable hostname, and putting it here just produced a junk SAN nobody
-# could ever present.
+# `ansible_host` is deliberately NOT a SAN: it is `orb`, an entry in the
+# OrbStack SSH config rather than a resolvable hostname, so putting it here
+# just produced a junk SAN nobody could ever present.
 tls-san:
   - {{ k3s_node_ip }}
   - localhost
   - 127.0.0.1
-{% if deployment_target | default('hetzner') != 'orbstack' and ansible_host is defined %}
-  - {{ ansible_host }}
-{% endif %}
 {% if tailscale_ip | default('') != '' %}
   - {{ tailscale_ip }}
 {% endif %}

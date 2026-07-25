@@ -1,15 +1,13 @@
 {
   "name": "jterrazz-infrastructure",
   "version": "1.0.0",
-  "description": "Dual-mode k3s cluster infra (Hetzner VPS or OrbStack VM)",
+  "description": "k3s cluster infra — an OrbStack VM on the dev Mac, plus its Cloudflare DNS",
   "scripts": {
     "build": "tsc"
   },
   "dependencies": {
     "@pulumi/cloudflare": "^5.49.1",
-    "@pulumi/hcloud": "^1.31.0",
-    "@pulumi/pulumi": "^3.217.0",
-    "@pulumi/tls": "^5.2.3"
+    "@pulumi/pulumi": "^3.217.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

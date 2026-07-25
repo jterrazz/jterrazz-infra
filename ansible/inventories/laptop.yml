@@ -1,0 +1,31 @@
+---
+# Laptop inventory — the OrbStack VM, reached through the OrbStack SSH proxy.
+#
+# Targets the OrbStack-hosted Debian 13 (trixie) VM provisioned by `pulumi up
+# --stack local`. The VM is non-isolated (OrbStack auto-mounts the Mac home at
+# /mnt/mac/, which the base role symlinks /var/lib/k8s-data into for
+# persistence across `pulumi destroy`). The host key below matches the
+# name the Pulumi dynamic provider emits.
+#
+# Invoked by `scripts/deploy.sh`. For a one-shot Ansible run:
+#   ansible-playbook -i ansible/inventories/laptop.yml \
+#     ansible/playbooks/site.yml -e "@<extra-vars-file>"
+
+# The group is named `cluster`, not `production`: the same group name is used
+# by every inventory (laptop / ci) so group_vars and any `hosts:` selector stay
+# portable. Naming it `production` collided with the *environment* concept.
+all:
+  children:
+    cluster:
+      hosts:
+        jterrazz-infrastructure:
+          # `orb` is the OrbStack SSH config's only Host entry; the VM is
+          # selected via the user-style `root@<vm>@orb` ansible_user.
+          #
+          # NOTE: `orb` is an SSH-config alias, NOT a resolvable hostname.
+          # Anything that needs a real address (kubeconfig server URL, k3s
+          # TLS SANs) must use the node's Tailscale IP/FQDN instead — see
+          # roles/k3s/tasks/kubeconfig.yml.
+          ansible_host: orb
+          ansible_user: root@jterrazz-infrastructure
+          ansible_ssh_common_args: "-F {{ lookup('env', 'HOME') }}/.orbstack/ssh/config -o StrictHostKeyChecking=no"

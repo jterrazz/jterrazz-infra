@@ -51,8 +51,9 @@ jobs:
       # ones an app happened to pull before/after the overwrite — fail the
       # build instead and force an explicit version bump in Chart.yaml.
       # Skip (green no-op), don't fail, when the version already exists: the
-      # Ansible chart-publish task also publishes during a full deploy, so a
-      # push landing right after `make deploy-local` would otherwise go red on
+      # Ansible publish-app-chart task also publishes during a full deploy
+      # (with the same guard, see roles/platform/tasks/publish-app-chart.yml),
+      # so a push landing right after `make deploy` would otherwise go red on
       # an already-current registry. The guard's real job is only to prevent
       # OVERWRITING a published version (the chart is consumed unversioned, so
       # a silent overwrite changes what every app deploys next) — publishing

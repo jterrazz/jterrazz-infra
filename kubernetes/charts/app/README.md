@@ -81,11 +81,17 @@ default**. Whole-value replacement, not deep merge, with two exceptions:
 
 | Key                     | Rule                                                             |
 | ----------------------- | ---------------------------------------------------------------- |
-| `resources.*`           | Merged per sub-key (`resources: {memory: …}` in an env keeps the base `cpu`) |
-| `env`, `secrets`        | Merged map; base wins on a key collision                          |
-| `ingress`               | **Replaces** — an env's list fully supersedes `spec.ingress`       |
-| `platformServices`      | **Replaces** — same rule, deliberately (keep manifests explicit)   |
-| everything else         | Env value if present, else `spec`, else default                   |
+| any map (`resources`, `env`, `secrets`, `health`, …) | Deep-merged per key — `resources: {memory: …}` in an env keeps the base `cpu`. **The environment wins** on a key collision. |
+| any list (`ingress`, `platformServices`) | **Replaces** — an env's list fully supersedes `spec`'s, deliberately (a half-merged list of network surfaces is unreadable) |
+| any scalar              | Env value if present, else `spec`, else default                   |
+
+(Chart 2.2's README said base wins on `env`/`secrets` collisions. That was
+never the behaviour — the environment has always won. The doc was wrong; the
+code did not change.)
+
+One resolver implements all of it: `app.merged` in `templates/_helpers.tpl`
+(chart 2.3), which is why an environment can override **any** `spec` key
+rather than the handful that used to have a bespoke helper.
 
 **Nothing renders for an environment that isn't declared.** Every template is
 gated on `environment` existing as a key under `environments:` — a typo'd
@@ -111,7 +117,8 @@ resources:
   memoryLimit: 1Gi    # optional; default = 2x request (Mi/Gi aware)
 ```
 
-Only memory is limited. `memoryLimit` defaults to double the request; a
+Only memory is limited. `memoryLimit` defaults to double the request, always
+emitted in `Mi` (a `1Gi` request yields `2048Mi` — identical quantity); a
 non-`Mi`/`Gi` request passes through unchanged.
 
 **`NODE_OPTIONS` auto-injection**: for apps requesting **>= 512Mi**, the
@@ -136,8 +143,9 @@ health:
 
 All three probes are `httpGet` on `health.path` at `spec.port`. The
 startupProbe gates liveness and readiness, so a slow boot can't get
-SIGKILLed mid-startup. `initialDelaySeconds` is accepted in values for
-historical reasons and **is not used** — the startupProbe replaced it.
+SIGKILLed mid-startup. `initialDelaySeconds` was dropped from the defaults in
+chart 2.3 — the startupProbe replaced it and no template had read it since
+1.x. Setting it is harmless (unknown keys are ignored) but does nothing.
 
 ### `spec.ingress` — a list, always
 
@@ -209,9 +217,12 @@ the Deployment to `strategy: Recreate`. A root `fix-permissions`
 initContainer `chown -R 1000:1000`s the mount, because hostPath dirs are
 created root-owned and the app container runs as 1000.
 
-The PV gets a `nodeAffinity` pin **only when `infrastructure.nodeName` is
-passed** (Ansible does this for in-repo installs; app-repo CI does not, and
-an empty value would produce a PV that can never bind).
+The PV carries **no `nodeAffinity`** as of chart 2.3. The `infrastructure.nodeName`
+value that used to gate it was removed: only app CI installs this chart and it
+never passed one, so the branch never rendered. (The `service` chart, whose PVs
+Ansible creates, still pins node affinity.) If a second node is ever added,
+this needs restoring — an unpinned hostPath PV can bind on a node whose disk
+holds an empty directory.
 
 ### `spec.configFiles`
 
@@ -324,7 +335,7 @@ failed every image pull with an unhelpful auth error.
 ## Versioning and publishing
 
 `kubernetes/charts/app/Chart.yaml` carries the chart `version:` (currently
-**2.2.0**). Push to `main` touching `kubernetes/charts/app/**` and
+**2.3.0**). Push to `main` touching `kubernetes/charts/app/**` and
 `.github/workflows/publish-chart.yaml` packages and pushes it to
 `oci://registry.jterrazz.com/charts/app`.
 

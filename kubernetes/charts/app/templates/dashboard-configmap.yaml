@@ -1,5 +1,6 @@
 {{- if and (eq (include "app.envExists" .) "true") (eq .Values.environment "prod") -}}
-{{- range $name, $json := .Values.spec.dashboards }}
+{{- $spec := fromYaml (include "app.merged" .) -}}
+{{- range $name, $json := $spec.dashboards }}
 ---
 apiVersion: v1
 kind: ConfigMap

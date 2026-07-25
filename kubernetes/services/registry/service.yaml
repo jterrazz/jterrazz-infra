@@ -1,0 +1,36 @@
+# Service-chart values for the private container registry.
+#
+# MIGRATION: the IngressRoute, Certificate, PV and PVC used to be hand-written
+# inside ansible/templates/kubernetes/registry.yaml.j2 — they could not come
+# from this chart because chart 2.0's boolean `private` could only attach
+# `private-access`, and the registry needs `cluster-internal-access`
+# (see below). Chart 2.1's `access` value fixes that, so the four objects are
+# now chart-rendered and identical to what the template produced:
+#   IngressRoute registry      Host(`registry.jterrazz.com`) -> registry:5000
+#   Certificate  registry-tls  secretName registry-tls  (UNCHANGED name — a
+#                              rename here would force a needless re-issue)
+#   PV           registry-data 10Gi  /var/lib/k8s-data/registry
+#   PVC          registry-data 10Gi  volumeName: registry-data
+#
+# The Deployment + Service (and the htpasswd Secret Ansible bootstraps) stay
+# out of the chart — see deployment.yaml in this directory.
+name: registry
+host: registry.jterrazz.com
+port: 5000
+
+# cluster-internal-access, NOT private-access: containerd's hairpin pull for
+# registry.jterrazz.com is sourced from a pod-CIDR or node address rather than
+# a tailnet IP, so the tailnet-only allow-list of `private-access` would reject
+# the cluster's own image pulls. `cluster-internal-access` is a strict superset
+# — same tailnet humans, plus the in-cluster ranges.
+access: cluster-internal
+
+storage:
+  # Bind the registry to a hostPath PV at /var/lib/k8s-data/registry/ — same
+  # pattern as every other platform service. Critical on OrbStack: without
+  # this the PVC binds to the default local-path provisioner under
+  # /var/lib/rancher/k3s/storage/... which gets wiped on
+  # `pulumi destroy && pulumi up` (registry blobs lost). The hostPath version
+  # follows the Mac-side symlink for free.
+  data:
+    size: 10Gi

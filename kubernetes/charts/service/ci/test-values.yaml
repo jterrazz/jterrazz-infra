@@ -1,0 +1,50 @@
+# CI fixture for the service chart.
+#
+# Purpose: make `helm template`/`helm lint` render REAL objects. Every
+# template is gated (`if .Values.host`, `range .Values.storage`), so linting
+# with default values renders ZERO objects. This file is the contract the CI
+# kubeconform step renders against.
+#
+#   helm template service kubernetes/charts/service \
+#     -f kubernetes/charts/service/ci/test-values.yaml
+#
+# Exercises the multi-volume storage map (the librechat shape) plus the two
+# things chart 2.1 added — `access` and `storage.<key>.claimName` — and the
+# populated-nodeName path that the app chart's fixture deliberately leaves
+# empty.
+
+name: ci-test-service
+host: ci-test-service.jterrazz.com
+port: 8080
+
+# cluster-internal-access instead of private-access on the IngressRoute.
+# This is the branch registry and openpanel need and the pre-2.1 boolean
+# could not express. Flip to `private` (the default) or `public` locally to
+# check the other two branches.
+access: cluster-internal
+
+# Named volumes. The PV is always <name>-<key>; hostPath is
+# /var/lib/k8s-data/<name>[/<pathSuffix>].
+storage:
+  # No pathSuffix -> /var/lib/k8s-data/ci-test-service
+  # PV/PVC: ci-test-service-data (reproduces the historical <name>-data name).
+  data:
+    size: 3Gi
+  # With pathSuffix -> /var/lib/k8s-data/ci-test-service/uploads
+  # PV/PVC: ci-test-service-uploads.
+  uploads:
+    size: 5Gi
+    pathSuffix: uploads
+  # claimName override (chart 2.1): the PV stays ci-test-service-metrics and
+  # the PVC's volumeName still points at it, but the PVC itself is named
+  # storage-ci-test-0 — the shape a StatefulSet volumeClaimTemplate imposes
+  # (loki, tempo).
+  metrics:
+    size: 1Gi
+    pathSuffix: metrics
+    claimName: storage-ci-test-0
+
+# Populated so the PV nodeAffinity block renders. With this empty the block
+# must be omitted entirely rather than emit `values: [""]`.
+infrastructure:
+  nodeName: ci-test-node

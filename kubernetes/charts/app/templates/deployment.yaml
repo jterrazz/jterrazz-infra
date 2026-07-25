@@ -1,6 +1,9 @@
 {{- if eq (include "app.envExists" .) "true" -}}
-{{- $secrets := fromYaml (include "app.secretsConfig" .) -}}
-{{- $envVars := fromYaml (include "app.envVars" .) -}}
+{{- $spec := fromYaml (include "app.merged" .) -}}
+{{- $secrets := $spec.secrets | default dict -}}
+{{- $envVars := $spec.env | default dict -}}
+{{- $health := $spec.health | default dict -}}
+{{- $resources := $spec.resources | default dict -}}
 {{- $platformEnv := fromYaml (include "app.platformEnv" .) -}}
 {{- $platformClientLabels := fromYaml (include "app.platformClientLabels" .) -}}
 {{- /*
@@ -21,10 +24,10 @@ chart. Note mergeOverwrite mutates its first argument, hence deepCopy.
       "capabilities" (dict "drop" (list "ALL"))
       "seccompProfile" (dict "type" "RuntimeDefault") -}}
 {{- /* runAsNonRoot would contradict an explicit spec.runAsRoot opt-out. */ -}}
-{{- if not .Values.spec.runAsRoot -}}
+{{- if not $spec.runAsRoot -}}
 {{- $_ := set $secDefaults "runAsNonRoot" true -}}
 {{- end -}}
-{{- $securityContext := mergeOverwrite (deepCopy $secDefaults) (.Values.spec.securityContext | default dict) -}}
+{{- $securityContext := mergeOverwrite (deepCopy $secDefaults) ($spec.securityContext | default dict) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,9 +35,9 @@ metadata:
   labels:
     {{- include "app.labels" . | nindent 4 }}
 spec:
-  replicas: {{ include "app.getValue" (dict "ctx" . "key" "replicas" "default" 1) }}
+  replicas: {{ $spec.replicas | default 1 }}
   revisionHistoryLimit: 3
-  {{- if .Values.spec.storage }}
+  {{- if $spec.storage }}
   strategy:
     type: Recreate
   {{- end }}
@@ -54,7 +57,7 @@ spec:
         {{ $key }}: {{ $value | quote }}
         {{- end }}
     spec:
-      {{- if not .Values.spec.runAsRoot }}
+      {{- if not $spec.runAsRoot }}
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
@@ -62,7 +65,7 @@ spec:
       {{- end }}
       imagePullSecrets:
         - name: registry-credentials
-      {{- if .Values.spec.storage }}
+      {{- if $spec.storage }}
       initContainers:
         - name: fix-permissions
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
@@ -94,11 +97,11 @@ spec:
           securityContext:
             {{- toYaml $securityContext | nindent 12 }}
           ports:
-            - containerPort: {{ .Values.spec.port }}
+            - containerPort: {{ $spec.port }}
           env:
             # Auto-injected PORT
             - name: PORT
-              value: {{ .Values.spec.port | quote }}
+              value: {{ $spec.port | quote }}
             {{- /* User-defined environment variables (merged base + env override) */}}
             {{- range $key, $value := $envVars }}
             - name: {{ $key }}
@@ -143,13 +146,13 @@ spec:
                   key: {{ . }}
             {{- end }}
             {{- end }}
-          {{- if or .Values.spec.storage .Values.spec.configFiles }}
+          {{- if or $spec.storage $spec.configFiles }}
           volumeMounts:
-            {{- if .Values.spec.storage }}
+            {{- if $spec.storage }}
             - name: data
-              mountPath: {{ .Values.spec.storage.mountPath }}
+              mountPath: {{ $spec.storage.mountPath }}
             {{- end }}
-            {{- range $filename, $content := .Values.spec.configFiles }}
+            {{- range $filename, $content := $spec.configFiles }}
             - name: config
               mountPath: /app/{{ $filename }}
               subPath: {{ $filename }}
@@ -158,8 +161,8 @@ spec:
           {{- end }}
           resources:
             requests:
-              cpu: {{ include "app.getResource" (dict "ctx" . "key" "cpu" "default" "100m") }}
-              memory: {{ include "app.getResource" (dict "ctx" . "key" "memory" "default" "256Mi") }}
+              cpu: {{ $resources.cpu | default "100m" }}
+              memory: {{ $resources.memory | default "256Mi" }}
             limits:
               memory: {{ include "app.memoryLimit" . }}
           # A startupProbe gates liveness/readiness until the app first
@@ -170,33 +173,33 @@ spec:
           # background work can briefly exceed 1s on a trivial health route.
           startupProbe:
             httpGet:
-              path: {{ .Values.spec.health.path }}
-              port: {{ .Values.spec.port }}
-            periodSeconds: {{ .Values.spec.health.startupPeriodSeconds | default 5 }}
-            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.spec.health.startupFailureThreshold | default 60 }}
+              path: {{ $health.path }}
+              port: {{ $spec.port }}
+            periodSeconds: {{ $health.startupPeriodSeconds | default 5 }}
+            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
+            failureThreshold: {{ $health.startupFailureThreshold | default 60 }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.spec.health.path }}
-              port: {{ .Values.spec.port }}
-            periodSeconds: {{ .Values.spec.health.periodSeconds }}
-            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.spec.health.failureThreshold | default 5 }}
+              path: {{ $health.path }}
+              port: {{ $spec.port }}
+            periodSeconds: {{ $health.periodSeconds | default 30 }}
+            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
+            failureThreshold: {{ $health.failureThreshold | default 5 }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.spec.health.path }}
-              port: {{ .Values.spec.port }}
+              path: {{ $health.path }}
+              port: {{ $spec.port }}
             periodSeconds: 10
-            timeoutSeconds: {{ .Values.spec.health.timeoutSeconds | default 5 }}
+            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
             failureThreshold: 3
-      {{- if or .Values.spec.storage .Values.spec.configFiles }}
+      {{- if or $spec.storage $spec.configFiles }}
       volumes:
-        {{- if .Values.spec.storage }}
+        {{- if $spec.storage }}
         - name: data
           persistentVolumeClaim:
             claimName: {{ include "app.name" . }}-data
         {{- end }}
-        {{- if .Values.spec.configFiles }}
+        {{- if $spec.configFiles }}
         - name: config
           configMap:
             name: {{ include "app.name" . }}-config

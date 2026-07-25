@@ -1,0 +1,113 @@
+# Redis for OpenPanel — this is the BullMQ job queue + event buffer, NOT an
+# evictable cache. Hence `--maxmemory-policy noeviction` (upstream default):
+# never drop queued jobs. `--appendonly yes` adds AOF durability on top of the
+# persisted volume so in-flight events survive a restart.
+#
+# No auth (upstream parity); reachable only inside platform-analytics and
+# locked down by kubernetes/cluster/network-policies/platform-analytics.yaml.
+# Recreate strategy on the `openpanel-redis` manual hostPath PV, which used to
+# be declared at the top of this file and now comes from the service chart —
+# see the `storage.redis` entry in service.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: op-redis
+  namespace: platform-analytics
+  labels:
+    app: op-redis
+    app.kubernetes.io/part-of: openpanel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: op-redis
+  template:
+    metadata:
+      labels:
+        app: op-redis
+    spec:
+      # hostPath dirs are created root-owned. The redis entrypoint normally
+      # chowns /data itself and su-exec's down, but we pin the container to
+      # uid 999 below so that branch never runs — hence this explicit chown.
+      # AOF durability depends on redis being able to write here.
+      initContainers:
+        - name: fix-perms
+          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          command: ["sh", "-c", "chown -R 999:1000 /data"]
+          # Must stay root to chown, but keeps every other guardrail: no
+          # privilege escalation, seccomp on, and all capabilities dropped
+          # except the three `chown -R` needs (CHOWN to change ownership,
+          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      containers:
+        - name: redis
+          image: redis:7.2.5-alpine
+          # Runs as the image's `redis` user — uid 999, gid 1000 (the official
+          # image creates the group at 1000 and the user at 999).
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          args:
+            - "redis-server"
+            - "--maxmemory-policy"
+            - "noeviction"
+            - "--appendonly"
+            - "yes"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openpanel-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: op-redis
+  namespace: platform-analytics
+  labels:
+    app: op-redis
+spec:
+  selector:
+    app: op-redis
+  ports:
+    - port: 6379
+      targetPort: 6379

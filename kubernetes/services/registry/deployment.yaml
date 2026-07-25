@@ -1,0 +1,101 @@
+# Private container registry — Deployment + Service.
+#
+# Statically extracted from ansible/templates/kubernetes/registry.yaml.j2.
+# That template existed for exactly one reason: it interpolated the htpasswd
+# hash Ansible generates at deploy time. Everything else in it was static and
+# is now plain YAML — the IngressRoute/Certificate/PV/PVC come from the
+# service chart (service.yaml in this directory) and the htpasswd Secret is
+# bootstrapped separately by Ansible (`registry_htpasswd`), because a password
+# hash must never be committed.
+#
+# AUTH — why htpasswd and not something better:
+#   The registry image's only built-in auth modes are `htpasswd` (a static
+#   file) and `token` (needs a separate auth server to issue JWTs). A token
+#   server is a whole extra service to run and rotate for a single-user
+#   registry, so this is htpasswd with ONE account (`deploy`), hashed with
+#   bcrypt (`htpasswd -niB`). The hash lands in Secret `registry-auth` key
+#   `htpasswd`, mounted read-only at /auth. REGISTRY_AUTH_HTPASSWD_PATH points
+#   the registry at it.
+#   Consequence: the credential is shared by CI pushes and by containerd's
+#   node-level pulls, and rotating it means re-running the registry Ansible
+#   task AND updating DOCKER_REGISTRY_PASSWORD in Infisical. The netpol in
+#   kubernetes/cluster/network-policies/platform-registry.yaml is the second
+#   half of the story — nothing but Traefik can reach :5000 at all.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: platform-registry
+  labels:
+    app: registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      containers:
+        - name: registry
+          image: registry:2.8
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REGISTRY_AUTH
+              value: "htpasswd"
+            - name: REGISTRY_AUTH_HTPASSWD_REALM
+              value: "Registry"
+            # The file inside the `auth` volume below, i.e. the `htpasswd`
+            # key of Secret registry-auth. Ansible creates that Secret from
+            # the bcrypt hash it generates at deploy time; it is deliberately
+            # NOT in this repo.
+            - name: REGISTRY_AUTH_HTPASSWD_PATH
+              value: "/auth/htpasswd"
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+            - name: auth
+              mountPath: /auth
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            # 64Mi throttled large blob pushes to a crawl: streaming a
+            # ~50MB image layer made Go's GC thrash inside the cgroup,
+            # dropping registry throughput to ~0.6MB/s so buildkit hit its
+            # ~60s upload timeout and the push failed ("blob upload
+            # invalid" on the retried, wrong-offset resume). The Mac
+            # hostPath itself is fast (~287MB/s), so this is pure memory
+            # starvation. 512Mi gives blob uploads headroom.
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            # PVC comes from the service chart (service.yaml -> storage.data).
+            claimName: registry-data
+        - name: auth
+          secret:
+            # Bootstrapped by ansible/playbooks/tasks/platform/registry.yml,
+            # not by this repo's manifests.
+            secretName: registry-auth
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: platform-registry
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+  selector:
+    app: registry

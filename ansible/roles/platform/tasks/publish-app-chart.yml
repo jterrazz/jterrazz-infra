@@ -1,0 +1,115 @@
+---
+# ========================================
+# Publish the app Helm chart to the OCI registry
+# ========================================
+#
+# This DUPLICATES .github/workflows/publish-chart.yaml, deliberately. That
+# workflow is the normal path (a chart change on main republishes it); this
+# one exists for the fresh-cluster case, where the registry is empty and the
+# app CI cannot pull `oci://registry.jterrazz.com/charts/app` at all, so no
+# app could deploy until someone hand-ran the workflow.
+#
+# If the registry already has the chart and you want a faster deploy, skip it:
+#   ansible-playbook playbooks/platform.yml ... --skip-tags chart-publish
+
+- name: Login to the OCI registry for Helm
+  ansible.builtin.command:
+    argv:
+      - helm
+      - registry
+      - login
+      - registry.jterrazz.com
+      - --username
+      - deploy
+      - --password-stdin
+    stdin: "{{ registry_password }}"
+  no_log: true
+  changed_when: false
+
+- name: Read the app chart metadata
+  ansible.builtin.slurp:
+    src: "{{ manifest_dir }}/kubernetes/charts/app/Chart.yaml"
+  register: app_chart_yaml
+
+- name: Extract the app chart version
+  ansible.builtin.set_fact:
+    app_chart_version: "{{ (app_chart_yaml.content | b64decode | from_yaml).version }}"
+
+# Mirrors the guard in .github/workflows/publish-chart.yaml, and for the same
+# reason: this chart is pulled UNVERSIONED by every app's deploy
+# (`oci://…/charts/app`, no explicit version pin), so silently overwriting an
+# already-published version would mean two different sets of templates
+# answering to the same tag depending on when an app happened to pull. Skipping
+# — rather than failing — keeps a routine redeploy green; the guard's only job
+# is to prevent the OVERWRITE, and publishing nothing achieves that. Bump
+# `version:` in Chart.yaml when you change a template, or this publishes
+# nothing.
+- name: Check whether this chart version is already published
+  ansible.builtin.command: >
+    helm pull oci://registry.jterrazz.com/charts/app
+    --version {{ app_chart_version }}
+    --destination /tmp/app-chart-check
+  register: app_chart_published
+  changed_when: false
+  failed_when: false
+
+- name: Report that the app chart version is already published
+  ansible.builtin.debug:
+    msg: >-
+      app chart {{ app_chart_version }} is already in the registry — nothing to
+      publish. If you CHANGED templates, bump version: in
+      kubernetes/charts/app/Chart.yaml.
+  when: app_chart_published.rc == 0
+
+- name: Package and push the app chart
+  when: app_chart_published.rc != 0
+  block:
+    # helm package writes <name>-<version>.tgz, and the version comes from
+    # Chart.yaml — so the filename is not knowable here. It used to be
+    # recovered by parsing `helm package`'s human-readable stdout with
+    # `stdout.split(': ')[-1]`, which breaks the moment helm changes its output
+    # or emits a warning line. Packaging into a directory that was just emptied
+    # means the one file in it IS the chart, whatever it is called.
+    - name: Reset the chart staging directory
+      ansible.builtin.file:
+        path: /tmp/app-chart
+        state: absent
+
+    - name: Create the chart staging directory
+      ansible.builtin.file:
+        path: /tmp/app-chart
+        state: directory
+        mode: "0700"
+
+    - name: Package the app Helm chart
+      ansible.builtin.command: helm package {{ manifest_dir }}/kubernetes/charts/app --destination /tmp/app-chart
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: true
+
+    - name: Locate the packaged chart
+      ansible.builtin.find:
+        paths: /tmp/app-chart
+        patterns: "*.tgz"
+      register: packaged_chart
+
+    - name: Assert exactly one chart archive was produced
+      ansible.builtin.assert:
+        that:
+          - packaged_chart.files | length == 1
+        fail_msg: >-
+          Expected exactly one .tgz in /tmp/app-chart after `helm package`, found
+          {{ packaged_chart.files | length }}. Refusing to guess which one to push.
+        quiet: true
+
+    - name: Push the app chart to the OCI registry
+      ansible.builtin.command: "helm push {{ packaged_chart.files[0].path }} oci://registry.jterrazz.com/charts"
+      changed_when: true
+
+- name: Clean up the chart staging directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/app-chart
+    - /tmp/app-chart-check

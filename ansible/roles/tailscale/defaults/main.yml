@@ -1,17 +1,13 @@
 ---
 # Tailscale role default variables
 
-# OAuth credentials (no expiration)
+# OAuth credentials (no expiration). Supplied as extra-vars by
+# scripts/deploy.sh; empty here so a run without them skips the login instead
+# of failing.
 tailscale_oauth_client_id: ""
 tailscale_oauth_client_secret: ""
 
 # Device configuration
 tailscale_hostname: "{{ inventory_hostname | regex_replace('[^a-zA-Z0-9-]', '-') }}"
 tailscale_tags: ["tag:ci"]
-tailscale_advertise_routes: []
-tailscale_accept_routes: false
 tailscale_accept_dns: true
-
-# Tailscale service configuration
-tailscale_service_enabled: true
-tailscale_service_state: started

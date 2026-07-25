@@ -1,11 +1,16 @@
 ---
 # Ansible Requirements
-# Install with: ansible-galaxy install -r requirements.yml
+# Install with: ansible-galaxy collection install -r requirements.yml
+#
+# EXACT pins, not `>=`. `>=` meant the laptop and the GHA runner could resolve
+# different collection versions from the same file — the runner installs into a
+# clean cache and always lands on the newest release, while a laptop that
+# already satisfies the floor never upgrades. Bump deliberately.
 
 collections:
   - name: kubernetes.core
-    version: ">=6.2.0"
+    version: "6.2.0"
   - name: community.general
-    version: ">=12.2.0"
+    version: "12.2.0"
   - name: ansible.posix
-    version: ">=2.1.0"
+    version: "2.1.0"

@@ -15,8 +15,8 @@ on:
 
 # One validation run per ref at a time; a new push supersedes whatever was
 # already validating for the same branch/PR. Unlike the deploy workflows
-# below (which must never be cancelled mid-apply), validation is pure
-# read-only checks, so cancelling a stale run is safe and saves runner time.
+# (which must never be cancelled mid-apply), validation is pure read-only
+# checks, so cancelling a stale run is safe and saves runner time.
 concurrency:
   group: validate-${{ github.ref }}
   cancel-in-progress: true
@@ -43,27 +43,30 @@ jobs:
         working-directory: pulumi
         run: npm ci
 
+      # Typecheck only. There is deliberately NO `pulumi preview` step: the one
+      # stack this repo has is `jterrazz/local`, whose provider drives orbctl on
+      # the dev Mac — a GHA runner has no OrbStack, so a preview could only ever
+      # fail or lie. tsc is what actually catches breakage in pulumi/src.
       - name: TypeScript Check
-        # Typechecks every file under pulumi/src, including
-        # targets/orbstack.ts — the `preview` below only ever exercises
-        # targets/hetzner.ts (the `jterrazz/production` stack), so this is
-        # the only thing in CI that would catch orbstack.ts breaking.
         working-directory: pulumi
         run: npx tsc --noEmit
 
-      - name: Pulumi Preview
-        if: github.event_name == 'pull_request'
-        uses: pulumi/actions@cd99a7f8865434dd3532b586a26f9ebea596894f # v5.5.1
-        with:
-          command: preview
-          stack-name: jterrazz/production
-          work-dir: pulumi
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          # No HCLOUD_TOKEN here: hetzner.ts reads the Hetzner API token
-          # exclusively from Pulumi stack config (`hcloud:token`, encrypted
-          # on the `jterrazz/production` stack) — the env var does nothing
-          # and previously implied a secret that isn't actually consumed.
+  scripts:
+    name: Validate Scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Mirrors the shellcheck step in `make lint`. ubuntu-latest ships
+      # shellcheck preinstalled, so there is nothing to set up.
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh scripts/lib/*.sh
+
+      - name: Python syntax check
+        # ast.parse rather than py_compile: same check, no __pycache__ artifact.
+        run: python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" scripts/lib/infisical-vars.py
 
   ansible:
     name: Validate Ansible
@@ -90,14 +93,21 @@ jobs:
         run: ansible-galaxy collection install -r requirements.yml
 
       - name: Ansible Lint
-        # Lint the whole ansible/ tree (roles + templates + tasks), not just
-        # playbooks/ — and run from the repo root so ansible-lint's config
-        # discovery picks up ansible/.ansible-lint.
-        run: ansible-lint ansible/
+        # Lint the whole ansible/ tree (roles + templates + inventories), not
+        # just playbooks/, and from the repo root so paths in the output are
+        # repo-relative. `-c` is required: ansible-lint's config discovery
+        # searches the CWD and walks UP, never down into the linted directory,
+        # so without it ansible/.ansible-lint (profile + skips) is ignored.
+        run: ansible-lint -c ansible/.ansible-lint ansible/
 
       - name: Syntax Check
+        # From ansible/ so ansible.cfg (relative roles_path) is picked up.
+        # Both playbooks, each against the inventory that actually runs it.
         working-directory: ansible
-        run: ansible-playbook playbooks/site.yml --syntax-check
+        run: |
+          set -euo pipefail
+          ansible-playbook playbooks/site.yml -i inventories/laptop.yml --syntax-check
+          ansible-playbook playbooks/platform.yml -i inventories/ci.yml --syntax-check
 
   kubernetes:
     name: Validate Kubernetes
@@ -140,15 +150,16 @@ jobs:
           sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
           kubeconform -v
 
-      - name: Validate Kustomize manifests
-        # environments/production is going away (folded into base as part of
-        # the Debian 13 migration) — base is the kustomize entrypoint now.
+      - name: Validate cluster manifests
+        # kubernetes/cluster/ is plain manifests applied with
+        # `kubectl apply -f <dir> -R` (the kustomization.yaml is gone — it was a
+        # hand-maintained resource list with no overlay left to serve), so
+        # kubeconform walks the directory directly.
         run: |
           set -euo pipefail
-          echo "Validating base manifests..."
           # shellcheck disable=SC2086
-          kubectl kustomize kubernetes/infrastructure/base | kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary -
-          echo "All manifests are valid!"
+          kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary kubernetes/cluster
+          echo "All cluster manifests are valid!"
 
       - name: Validate Helm charts against CI fixtures
         # Plain `helm lint`/`helm template` with default values renders
@@ -159,7 +170,7 @@ jobs:
         # templates.
         run: |
           set -euo pipefail
-          for chart in app platform; do
+          for chart in app service; do
             fixture="kubernetes/charts/$chart/ci/test-values.yaml"
             echo "== $chart chart =="
             helm lint "kubernetes/charts/$chart" -f "$fixture"
@@ -168,18 +179,20 @@ jobs:
               | kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary -
           done
 
-      - name: Validate raw platform manifests
-        # kubernetes/platform/** mixes Helm values files (helm.yaml,
-        # platform.yaml — consumed BY the platform chart, not raw manifests)
+      - name: Validate raw service manifests
+        # kubernetes/services/** mixes Helm values files (helm.yaml,
+        # service.yaml — consumed BY the service chart, not raw manifests)
         # with actual hand-written K8s objects (openpanel's stack, LibreChat's
-        # mongodb/uploads/secret/netpol, cloudflared's Deployment, cert-manager
-        # issuers, ...). Rather than maintain an explicit file list that goes
-        # stale the moment someone adds a file, filter by the one structural
-        # property that actually distinguishes them: a real manifest has a
-        # top-level `apiVersion:` key, a values file doesn't.
+        # mongodb/secret/netpol, cloudflared's Deployment, cert-manager
+        # issuers, the registry Deployment, ...). Rather than maintain an
+        # explicit file list that goes stale the moment someone adds a file,
+        # filter by the one structural property that actually distinguishes
+        # them: a real manifest has a top-level `apiVersion:` key, a values
+        # file doesn't. (roles/platform/tasks/registry.yml applies the same
+        # test for the same reason.)
         run: |
           set -euo pipefail
-          mapfile -t manifests < <(grep -rl '^apiVersion:' kubernetes/platform --include='*.yaml')
+          mapfile -t manifests < <(grep -rl '^apiVersion:' kubernetes/services --include='*.yaml')
           echo "Validating ${#manifests[@]} raw manifests:"
           printf '  %s\n' "${manifests[@]}"
           # shellcheck disable=SC2086

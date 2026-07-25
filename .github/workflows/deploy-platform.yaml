@@ -1,13 +1,12 @@
 name: Deploy Platform
 
 # Runs ansible-playbook against the OrbStack VM over Tailscale to apply
-# platform-layer changes (cert-manager, otel-collector, n8n, etc.) and
-# any infra manifests under kubernetes/platform or kubernetes/infrastructure.
+# platform-layer changes (cert-manager, otel-collector, librechat, ...) and
+# any manifests under kubernetes/services or kubernetes/cluster.
 #
-# Pulumi is deliberately NOT in scope here — `pulumi up --stack local`
-# requires orbctl on the dev Mac and the VM not yet existing, neither of
-# which a GHA runner can satisfy. Provisioning stays on the laptop via
-# `make deploy-local`; this workflow only handles incremental updates.
+# Pulumi is deliberately NOT in scope here — `pulumi up` drives orbctl on the
+# dev Mac, which a GHA runner cannot satisfy. Provisioning stays on the laptop
+# via `make deploy`; this workflow only handles incremental updates.
 #
 # Auth: the deploy keypair lives split — public half in
 # ansible/roles/security/defaults/main.yml (security_ci_deploy_pubkey)
@@ -15,16 +14,17 @@ name: Deploy Platform
 # half as the CI_DEPLOY_SSH_PRIVATE GitHub Action secret on this repo.
 # To rotate: regen the keypair, paste the new pub into the security
 # role default, set the new priv via `gh secret set CI_DEPLOY_SSH_PRIVATE
-# -R jterrazz/jterrazz-infrastructure`, then `make deploy-local` to roll the
+# -R jterrazz/jterrazz-infrastructure`, then `make deploy` to roll the
 # pubkey onto the VM.
 
 on:
   push:
     branches: [main]
     paths:
-      - 'ansible/playbooks/platform.yml'
-      - 'kubernetes/platform/**'
-      - 'kubernetes/infrastructure/**'
+      - 'ansible/**'
+      - 'kubernetes/services/**'
+      - 'kubernetes/cluster/**'
+      - 'kubernetes/charts/service/**'
   workflow_dispatch:
 
 permissions:
@@ -47,9 +47,7 @@ jobs:
       deployments: write
     # Records a GitHub Deployment under the `production` environment and
     # auto-updates its status (in_progress → success/failure) as this job
-    # runs, so the repo's Environments/Deployments view stays live. (The old
-    # deploy.yaml did this via `environment:` too; it was lost when that
-    # workflow was retired post-Hetzner-destroy and never re-added here.)
+    # runs, so the repo's Environments/Deployments view stays live.
     environment: production
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -95,78 +93,31 @@ jobs:
           printf '%s\n' "$CI_DEPLOY_SSH_PRIVATE" > "$KEY_FILE"
           echo "CI_DEPLOY_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
 
-      # Generate the same extra-vars file shape that scripts/deploy.sh
-      # produces locally. Shared/core secrets live at /jterrazz-infrastructure; per-service
-      # secrets in subfolders with de-prefixed keys (grafana + portainer both
-      # ADMIN_PASSWORD), so each path is fetched EXPLICITLY (not recursively) to
-      # avoid collisions. Mirrors fetch_secrets_file() in scripts/deploy.sh —
-      # same hard-fail on missing secrets, same `\`/`"`/`\n` escaping. The two
-      # are kept in sync by hand; if you change one, change the other.
+      # Same script scripts/deploy.sh uses, in its `platform` scope — one
+      # implementation of the Infisical fetch, the missing-key hard-fail and
+      # the YAML escaping instead of two hand-synced copies. `platform` omits
+      # the Tailscale OAuth credentials: platform.yml only reads Tailscale
+      # facts off an already-joined node.
       - name: Build extra-vars file
         env:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
           INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
         run: |
+          set -euo pipefail
           EXTRA="$(mktemp -t platform-vars-XXXXXX.yml)"
-          chmod 600 "$EXTRA"
-          JWT="$(curl -s -X POST https://eu.infisical.com/api/v1/auth/universal-auth/login \
-            -H 'Content-Type: application/json' \
-            -d "{\"clientId\":\"$INFISICAL_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CLIENT_SECRET\"}" \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')"
-          fetch() {
-            curl -s -G \
-              --data-urlencode "workspaceSlug=jterrazz" \
-              --data-urlencode "environment=prod" \
-              --data-urlencode "secretPath=$1" \
-              -H "Authorization: Bearer $JWT" \
-              "https://eu.infisical.com/api/v3/secrets/raw"
-          }
-          ROOT="$(fetch /jterrazz-infrastructure)"
-          GRAFANA="$(fetch /jterrazz-infrastructure/grafana)"
-          N8N="$(fetch /jterrazz-infrastructure/n8n)"
-          PORTAINER="$(fetch /jterrazz-infrastructure/portainer)"
-          python3 - "$EXTRA" "$ROOT" "$GRAFANA" "$N8N" "$PORTAINER" <<'PY'
-          import os, sys, json
-
-          extra, root_j, grafana_j, n8n_j, portainer_j = sys.argv[1:6]
-
-          def kv(raw):
-              return {s["secretKey"]: s["secretValue"] for s in json.loads(raw).get("secrets", [])}
-
-          root, grafana, n8n, portainer = kv(root_j), kv(grafana_j), kv(n8n_j), kv(portainer_j)
-          out = {
-              "cloudflare_api_token":          root.get("CLOUDFLARE_API_TOKEN"),
-              "cloudflare_tunnel_token":       root.get("CLOUDFLARE_TUNNEL_TOKEN"),
-              "tailscale_oauth_client_id":     root.get("TAILSCALE_OAUTH_CLIENT_ID"),
-              "tailscale_oauth_client_secret": root.get("TAILSCALE_OAUTH_CLIENT_SECRET"),
-              "registry_password":             root.get("DOCKER_REGISTRY_PASSWORD"),
-              "grafana_password":              grafana.get("ADMIN_PASSWORD"),
-              "n8n_encryption_key":            n8n.get("ENCRYPTION_KEY"),
-              "portainer_password":            portainer.get("ADMIN_PASSWORD"),
-          }
-          missing = [k for k, v in out.items() if v is None]
-          if missing:
-              print(f"::error::Missing Infisical secrets: {', '.join(missing)}", file=sys.stderr)
-              sys.exit(1)
-          out["infisical_client_id"]     = os.environ["INFISICAL_CLIENT_ID"]
-          out["infisical_client_secret"] = os.environ["INFISICAL_CLIENT_SECRET"]
-          with open(extra, "w") as f:
-              for k, v in out.items():
-                  v = v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                  f.write(f'{k}: "{v}"\n')
-          PY
+          python3 scripts/lib/infisical-vars.py platform "$EXTRA"
           echo "EXTRA_VARS_FILE=$EXTRA" >> "$GITHUB_ENV"
 
       # Scope: platform.yml only (Helm-managed services + manifests).
-      # Skips base/security/networking/storage/k3s because those roles
-      # can restart sshd or tailscaled and would kill the runner's SSH
-      # session mid-run. Use `make deploy-local` from the laptop when
-      # you need to apply changes outside the platform layer.
+      # Skips the base/security/tailscale/k3s roles because those can restart
+      # sshd or tailscaled and would kill the runner's SSH session mid-run.
+      # Use `make deploy` from the laptop when you need to apply changes
+      # outside the platform layer.
       - name: Run ansible-playbook (platform layer only)
         working-directory: ansible
         run: |
           ansible-playbook playbooks/platform.yml \
-            -i inventories/ci/hosts.yml \
+            -i inventories/ci.yml \
             -e "@$EXTRA_VARS_FILE" \
             -e "ansible_ssh_private_key_file=$CI_DEPLOY_KEY_FILE"
 

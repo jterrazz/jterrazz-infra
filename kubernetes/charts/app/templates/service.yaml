@@ -1,4 +1,5 @@
 {{- if eq (include "app.envExists" .) "true" -}}
+{{- $spec := fromYaml (include "app.merged" .) -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,7 +10,7 @@ spec:
   type: ClusterIP
   ports:
     - port: 80
-      targetPort: {{ .Values.spec.port }}
+      targetPort: {{ $spec.port }}
       protocol: TCP
   selector:
     {{- include "app.selectorLabels" . | nindent 4 }}

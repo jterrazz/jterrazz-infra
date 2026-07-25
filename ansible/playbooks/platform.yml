@@ -1,112 +1,46 @@
 ---
-# Platform Services Playbook
-# Installs platform services via Helm and kubectl on the production VPS.
-# All kubectl/helm commands run ON the VPS (no external k8s API access needed).
+# Platform Services Playbook — everything above k3s (Helm releases + raw
+# manifests). All kubectl/helm commands run ON the node; no external k8s API
+# access is needed.
 #
-# The body lives in tasks/platform/*.yml, imported below in dependency order.
-# Every import carries a tag so a targeted redeploy is possible, e.g.
+# The body lives in roles/platform. Every include there carries a tag, so a
+# targeted redeploy is possible:
 #
-#   ansible-playbook playbooks/platform.yml -i inventories/local/hosts.yml \
+#   ansible-playbook playbooks/platform.yml -i inventories/laptop.yml \
 #     -e "@vars.yml" --tags telemetry
-#
-# `prereqs` is imported without a skippable tag guard because everything else
-# depends on the manifests it copies and the facts it gathers — running a
-# single area still needs it. Use `--skip-tags chart-publish` to leave the OCI
-# chart alone.
 #
 # This playbook is ALSO run standalone by .github/workflows/deploy-platform.yaml
 # (platform layer only, over Tailscale), so it must not assume that the other
 # site.yml plays ran in the same invocation.
-
 - name: Platform Services Deployment
-  hosts: all
+  hosts: cluster
   become: true
   gather_facts: true
 
-  vars:
-    kubeconfig_remote: /etc/rancher/k3s/k3s.yaml
-    manifest_dest: /tmp/k8s-manifests
-    templates_dir: "{{ playbook_dir }}/../templates"
-    platform_chart: "{{ manifest_dest }}/kubernetes/charts/platform"
-    # No fallback defaults for these: a missing secret must fail the play in
-    # preflight, not silently deploy a service with a guessable password.
-    portainer_admin_password: "{{ portainer_password }}"
-    grafana_admin_password: "{{ grafana_password }}"
+  roles:
+    - role: platform
 
-  handlers:
-    # Notified by tasks/platform/coredns.yml, which flushes handlers
-    # immediately afterwards — the rest of the play needs the new records.
-    - name: Restart CoreDNS
-      ansible.builtin.command: kubectl -n kube-system rollout restart deploy/coredns
-      environment:
-        KUBECONFIG: "{{ kubeconfig_remote }}"
-      changed_when: true
-
-  tasks:
-    - name: Validate required secrets
-      ansible.builtin.import_tasks: tasks/platform/preflight.yml
+  post_tasks:
+    - name: Cleanup temporary manifests
+      ansible.builtin.file:
+        path: "{{ manifest_dir }}"
+        state: absent
       tags: [always]
 
-    - name: Prepare manifests, facts and Helm
-      ansible.builtin.import_tasks: tasks/platform/prereqs.yml
-      tags: [prereqs]
+    # No version numbers in here. The previous banner listed hand-written
+    # versions that had drifted from the actual --version pins, so it
+    # confidently reported versions that were never deployed.
+    # `platform_chart_versions` in inventories/group_vars/all.yml is what we
+    # ask for; `helm list -A` on the node is what is actually running.
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg: |
+          Platform deployment complete.
 
-    - name: Configure CoreDNS split-DNS for private hostnames
-      ansible.builtin.import_tasks: tasks/platform/coredns.yml
-      tags: [coredns, dns]
+          Deployed: cert-manager, infisical secrets-operator, cloudflared,
+          grafana + loki + tempo + prometheus + otel-collector + alloy,
+          librechat, openpanel, registry.
 
-    - name: Deploy base infrastructure manifests
-      ansible.builtin.import_tasks: tasks/platform/infrastructure.yml
-      tags: [infrastructure, namespaces]
-
-    - name: Install Helm and repositories
-      ansible.builtin.import_tasks: tasks/platform/helm.yml
-      tags: [helm]
-
-    - name: Create platform secrets
-      ansible.builtin.import_tasks: tasks/platform/secrets.yml
-      tags: [secrets]
-
-    - name: Install cert-manager
-      ansible.builtin.import_tasks: tasks/platform/certmanager.yml
-      tags: [certmanager]
-
-    - name: Install the Infisical secrets operator
-      ansible.builtin.import_tasks: tasks/platform/infisical.yml
-      tags: [infisical, secrets]
-
-    - name: Deploy cloudflared
-      ansible.builtin.import_tasks: tasks/platform/cloudflared.yml
-      tags: [cloudflared]
-
-    - name: Deploy the telemetry stack
-      ansible.builtin.import_tasks: tasks/platform/telemetry.yml
-      tags: [telemetry]
-
-    - name: Deploy n8n
-      ansible.builtin.import_tasks: tasks/platform/n8n.yml
-      tags: [services, n8n]
-
-    - name: Deploy Portainer
-      ansible.builtin.import_tasks: tasks/platform/portainer.yml
-      tags: [services, portainer]
-
-    - name: Deploy LibreChat
-      ansible.builtin.import_tasks: tasks/platform/librechat.yml
-      tags: [services, librechat, gateway]
-
-    - name: Deploy OpenPanel
-      ansible.builtin.import_tasks: tasks/platform/openpanel.yml
-      tags: [openpanel]
-
-    - name: Deploy the container registry
-      ansible.builtin.import_tasks: tasks/platform/registry.yml
-      tags: [registry]
-
-    - name: Publish the app Helm chart
-      ansible.builtin.import_tasks: tasks/platform/chart-publish.yml
-      tags: [chart-publish]
-
-    - name: Clean up
-      ansible.builtin.import_tasks: tasks/platform/cleanup.yml
+          App chart published to: oci://registry.jterrazz.com/charts/app
+          Installed versions:     helm list -A --kubeconfig {{ kubeconfig }}
       tags: [always]

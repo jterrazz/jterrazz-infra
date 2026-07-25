@@ -1,0 +1,43 @@
+apiVersion: v2
+name: service
+description: Shared chart for platform service ingress, certificates, and storage
+type: application
+# 2.1.0 — renamed from `platform` to `service` (the chart describes ONE
+# platform service, not the platform) and re-homed under
+# kubernetes/charts/service. Its values files moved from
+# kubernetes/platform/<svc>/platform.yaml to
+# kubernetes/services/<svc>/service.yaml.
+#
+# Changes in 2.1.0:
+#   * `access: private | cluster-internal | public` REPLACES the boolean
+#     `private`. private-access and cluster-internal-access are two different
+#     Traefik ipAllowLists (the latter a strict superset) and the boolean
+#     could only express the first — which is why registry's IngressRoute had
+#     to live in an Ansible-rendered template instead of here. A leftover
+#     `private:` key now hard-fails the render rather than silently producing
+#     a differently-guarded route.
+#   * `storage.<key>.claimName` optionally overrides the PVC's metadata.name.
+#     Needed by Loki/Tempo, whose StatefulSet volumeClaimTemplates impose the
+#     names storage-loki-0 / storage-tempo-0. The PV name and the PVC's
+#     volumeName binding are unchanged (still <name>-<key>).
+#   * `service.labels` (name / part-of / managed-by) is stamped on
+#     IngressRoute, Certificate, PV and PVC. `part-of: jterrazz-infrastructure`
+#     carries over the label the deleted kustomize base used to stamp
+#     cluster-wide.
+#
+# The minor bump (rather than 3.0) is deliberate: this chart is not published
+# to any registry and has no out-of-repo consumers, so its version is
+# bookkeeping. Every in-repo values file was migrated in the same commit.
+#
+# 2.0.0 — BREAKING for the four then-consumers (all migrated in the same
+# commit):
+#   * `storage` is now a MAP of named volumes (storage.<key>.{size,pathSuffix})
+#     instead of a single object. Key `data` reproduces the old <name>-data
+#     object names byte-for-byte; hostPath paths are unchanged.
+#   * removed the dead `selector`-mode PVC branch and the `hostPathType` value
+#     (no consumer set either); hostPath.type is now always DirectoryOrCreate
+#   * PV/PVC gained standard labels, matching the app chart
+#   * nodeAffinity is emitted only when infrastructure.nodeName is non-empty
+#     (it used to render `values: [""]`, a PV that can never bind)
+#   * storage.<key>.size is `required`
+version: 2.1.0

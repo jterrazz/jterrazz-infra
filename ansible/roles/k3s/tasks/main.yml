@@ -1,5 +1,32 @@
 ---
 # k3s Installation and Configuration
+#
+# Config a human is expected to change (version, directories, node IP) lives in
+# inventories/group_vars/all.yml — that file is the visible config surface.
+# This role has no defaults/main.yml on purpose: k3s_version must not be
+# duplicated (two copies of a version pin is a silent-drift trap, and the role
+# default wins only when group_vars is not loaded).
+#
+# Also deliberately absent, after grepping the repo for consumers:
+#   - k3s_cluster_cidr / k3s_service_cidr — never rendered into the config
+#     template, and their values (10.42.0.0/16, 10.43.0.0/16) are k3s's own
+#     defaults, so dropping them changes nothing.
+#   - k3s_tls_san / k3s_disable_components / k3s_extra_args — nothing in this
+#     repo ever set them. The TLS SAN list is built directly in
+#     templates/config.yaml.j2 from the node + Tailscale facts.
+#   - k3s_token — the token is generated on first install and persisted at
+#     {{ k3s_config_dir }}/token; nothing ever supplied an external one.
+
+- name: Create the k3s directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ k3s_config_dir }}"
+    - "{{ k3s_data_dir }}"
+    - /var/log/k3s
+  tags: [k3s]
 
 - name: Check if k3s is installed
   ansible.builtin.stat:
@@ -7,7 +34,7 @@
   register: k3s_binary
   tags: [k3s]
 
-- name: Get installed k3s version
+- name: Get the installed k3s version
   ansible.builtin.command: k3s --version
   register: k3s_current_version
   changed_when: false
@@ -21,13 +48,13 @@
   tags: [k3s]
 
 # Token Management - Generate once and persist
-- name: Check if k3s token file exists
+- name: Check if the k3s token file exists
   ansible.builtin.stat:
     path: "{{ k3s_config_dir }}/token"
   register: k3s_token_file
   tags: [k3s]
 
-- name: Read existing token
+- name: Read the existing token
   ansible.builtin.slurp:
     src: "{{ k3s_config_dir }}/token"
   register: k3s_existing_token
@@ -35,20 +62,18 @@
   no_log: true
   tags: [k3s]
 
-- name: Generate new token if none exists
+- name: Generate a new token if none exists
   ansible.builtin.command: openssl rand -hex 32
   register: k3s_generated_token
   changed_when: false
-  when: not k3s_token_file.stat.exists and k3s_token == ""
+  when: not k3s_token_file.stat.exists
   no_log: true
   tags: [k3s]
 
-- name: Set k3s token fact
+- name: Set the k3s token fact
   ansible.builtin.set_fact:
     k3s_cluster_token: >-
-      {%- if k3s_token != "" -%}
-        {{ k3s_token }}
-      {%- elif k3s_token_file.stat.exists -%}
+      {%- if k3s_token_file.stat.exists -%}
         {{ k3s_existing_token.content | b64decode | trim }}
       {%- else -%}
         {{ k3s_generated_token.stdout }}
@@ -56,14 +81,14 @@
   no_log: true
   tags: [k3s]
 
-- name: Ensure k3s config directory exists
+- name: Ensure the k3s config directory exists
   ansible.builtin.file:
     path: "{{ k3s_config_dir }}"
     state: directory
     mode: "0755"
   tags: [k3s]
 
-- name: Save token to file
+- name: Save the token to file
   ansible.builtin.copy:
     content: "{{ k3s_cluster_token }}"
     dest: "{{ k3s_config_dir }}/token"
@@ -73,7 +98,7 @@
   tags: [k3s]
 
 # The tailscale role sets these earlier in site.yml; this only fires when the
-# k3s play is run on its own. The IP and DNS name go into the API server's TLS
+# k3s role is run on its own. The IP and DNS name go into the API server's TLS
 # SANs, which is the only way `kubectl` over the tailnet gets a valid cert.
 - name: Ensure Tailscale facts are available
   ansible.builtin.include_role:
@@ -83,7 +108,7 @@
   tags: [k3s]
 
 # Configuration
-- name: Generate k3s config
+- name: Generate the k3s config
   ansible.builtin.template:
     src: config.yaml.j2
     dest: "{{ k3s_config_dir }}/config.yaml"
@@ -92,7 +117,7 @@
   tags: [k3s]
 
 # Installation
-- name: Download k3s install script
+- name: Download the k3s install script
   ansible.builtin.get_url:
     url: https://get.k3s.io
     dest: /tmp/k3s-install.sh
@@ -110,17 +135,17 @@
   notify: Restart k3s
   tags: [k3s]
 
-- name: Cleanup install script
+- name: Cleanup the install script
   ansible.builtin.file:
     path: /tmp/k3s-install.sh
     state: absent
   tags: [k3s]
 
 # Service Management
-- name: Enable k3s service
+- name: Enable the k3s service
   ansible.builtin.systemd_service:
     name: k3s
-    enabled: "{{ k3s_service_enabled }}"
+    enabled: true
     state: started
     daemon_reload: true
   tags: [k3s]
@@ -145,7 +170,7 @@
     timeout: 120
   tags: [k3s]
 
-- name: Verify cluster is running
+- name: Verify the cluster is running
   ansible.builtin.command: k3s kubectl get nodes
   register: k3s_nodes
   changed_when: false
@@ -155,30 +180,34 @@
   tags: [k3s]
 
 # Kubectl Setup
-- name: Create kubectl symlink
+- name: Create the kubectl symlink
   ansible.builtin.file:
     src: /usr/local/bin/k3s
     dest: /usr/local/bin/kubectl
     state: link
   tags: [k3s]
 
-- name: Set kubeconfig permissions
+- name: Set the kubeconfig permissions
   ansible.builtin.file:
     path: /etc/rancher/k3s/k3s.yaml
     mode: "0644"
   tags: [k3s]
 
-- name: Create .kube directory for root
+- name: Create the .kube directory for root
   ansible.builtin.file:
     path: /root/.kube
     state: directory
     mode: "0700"
   tags: [k3s]
 
-- name: Copy kubeconfig for root
+- name: Copy the kubeconfig for root
   ansible.builtin.copy:
     src: /etc/rancher/k3s/k3s.yaml
     dest: /root/.kube/config
     remote_src: true
     mode: "0600"
   tags: [k3s]
+
+- name: Publish the kubeconfig to the machine that ran the playbook
+  ansible.builtin.import_tasks: kubeconfig.yml
+  tags: [k3s, kubeconfig]

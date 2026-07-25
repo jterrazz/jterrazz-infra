@@ -1,6 +1,7 @@
 {{- if eq (include "app.envExists" .) "true" -}}
 {{- $catalog := fromYaml (include "app.platformCatalog" .) -}}
 {{- $platformServices := fromYamlArray (include "app.platformServices" .) -}}
+{{- $spec := fromYaml (include "app.merged" .) -}}
 {{- $appName := include "app.name" . -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -22,7 +23,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
       ports:
-        - port: {{ .Values.spec.port }}
+        - port: {{ $spec.port }}
     {{- /* Server side: if THIS app is itself a platform-service catalog target
            carrying a clientLabel (e.g. gateway-intelligence), auto-render an
            ingress rule that admits any pod (in any namespace) stamped with that
@@ -38,12 +39,12 @@ spec:
             matchLabels:
               {{ $selfEntry.clientLabel }}: "true"
       ports:
-        - port: {{ .Values.spec.port }}
+        - port: {{ $spec.port }}
     {{- end }}
     {{- end }}
     {{- /* Bespoke ingress: explicitly declared client apps by namespace name.
            Kept for non-platform / one-off ingress only. */}}
-    {{- range .Values.spec.networkPolicy.allowedClients }}
+    {{- range (($spec.networkPolicy | default dict).allowedClients | default list) }}
     - from:
         - namespaceSelector:
             matchLabels:
@@ -55,7 +56,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: staging-{{ . }}
       ports:
-        - port: {{ $.Values.spec.port }}
+        - port: {{ $spec.port }}
     {{- end }}
   egress:
     # Allow DNS resolution

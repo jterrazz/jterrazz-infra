@@ -1,0 +1,30 @@
+# Service-chart values for LibreChat (Cert + private IngressRoute + storage).
+# `access: private` attaches the `private-access` middleware (Tailscale-only
+# ipAllowList) — LibreChat is reachable on the tailnet at chat.jterrazz.com
+# and NOT exposed through the Cloudflare tunnel. When we later go public we
+# flip this to `access: public` and lean on LibreChat's own auth (registration
+# is disabled in helm.yaml until then).
+#
+# The `storage` map provisions both hostPath PV/PVC pairs. We use `manual`
+# hostPath PVCs (not the default `local-path` SC) on purpose:
+# /var/lib/k8s-data is the dir that survives a `pulumi destroy` repave;
+# local-path volumes do not.
+#
+# Object names and hostPath paths are unchanged — librechat-data /
+# librechat-uploads, mounting /var/lib/k8s-data/librechat/{mongo,uploads}.
+name: librechat
+host: chat.jterrazz.com
+port: 3080
+access: private
+storage:
+  # Backs the standalone MongoDB in mongodb.yaml (users, logins, chat
+  # history). Nested under librechat/ so the on-disk layout is 1 dir = 1 app.
+  data:
+    size: 3Gi
+    pathSuffix: mongo
+  # User-uploaded files and generated images. Mounted by helm.yaml at both
+  # /app/uploads and /app/client/public/images via subPath. Without it these
+  # live on the container's ephemeral fs and are lost on every pod restart.
+  uploads:
+    size: 5Gi
+    pathSuffix: uploads

@@ -3,65 +3,65 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { MachineOutputs } from "./types";
 
 /**
- * OrbStack-hosted Linux VM running the same k3s + platform stack the
- * cluster has always run. No first-party OrbStack provider exists for
- * Pulumi, so we wrap the `orbctl` CLI with a custom dynamic resource.
- * Three operations matter:
+ * OrbStack-hosted Linux VM running the k3s + platform stack. No first-party
+ * OrbStack provider exists for Pulumi, so we wrap the `orbctl` CLI with a
+ * custom dynamic resource. Three operations matter:
  *
  *  - **Create** calls `orbctl create`. The VM is intentionally NOT
  *    isolated: isolation drops CAP_SYS_ADMIN inside the VM, which breaks
  *    kubelet's tmpfs `noswap` mount for projected service-account tokens
- *    (k8s ≥1.31). The downside of non-isolated mode is that OrbStack
+ *    (k8s >= 1.31). The downside of non-isolated mode is that OrbStack
  *    auto-mounts the Mac filesystem at `/mnt/mac`; we use that exact
  *    behaviour for data persistence (see the bindMounts comment below).
  *  - **Read** calls `orbctl info <name> --format json` to refresh state.
  *  - **Delete** calls `orbctl delete --force <name>`.
  *
  * Update is intentionally implemented as recreate (replace-on-change for
- * every input). Mounts, distro, arch can't be changed in-place on a live
+ * every input). Mounts, distro and arch can't be changed in-place on a live
  * OrbStack VM, and re-running create is cheap (~20s).
+ *
+ * DEFERRED: rewriting this on top of `local.Command` from
+ * @pulumi/command would delete most of this file, but swapping the resource
+ * type changes its URN — Pulumi would destroy the VM and create a new one.
+ * That is a repave, so it waits for a moment when one is happening anyway.
  */
 
 /**
- * Logical bind mount declaration. Because OrbStack `--mount` requires
- * isolated mode (which breaks kubelet), we don't pass these to orbctl;
- * instead the create step ensures the source dir exists on the Mac, and
- * Ansible's storage role symlinks the VM-side path to
- * `/mnt/mac/<source>` so the VM sees the Mac folder at `destination`.
+ * Logical bind mount declaration. OrbStack's `--mount` requires isolated mode
+ * (which breaks kubelet), so we do NOT pass these to orbctl. Instead the
+ * create step ensures the source dir exists on the Mac and Ansible's storage
+ * role symlinks the VM-side path to `/mnt/mac/<source>`.
+ *
+ * `source` is the only field: a `destination` used to be declared here too,
+ * but nothing ever read it — the VM-side path is decided by Ansible, not by
+ * this resource, so carrying it here just invited someone to change it and
+ * expect something to happen.
  */
 export interface BindMount {
     /** Absolute path on the Mac. */
     source: string;
-    /** Absolute path inside the VM. */
-    destination: string;
 }
 
 export interface OrbStackVMArgs {
     /** Machine name shown in `orbctl list`. Also the Ansible `inventory_hostname`. */
     name: pulumi.Input<string>;
-    /** Linux distro (alpine | ubuntu | debian | …). */
+    /** Linux distro image, e.g. "debian". */
     distro: pulumi.Input<string>;
-    /** Optional distro version (e.g. "trixie" for Debian 13). Always set
-     *  this explicitly for Debian: `orb create debian` defaults to the
-     *  previous stable (bookworm/12), not the newest. */
-    version?: pulumi.Input<string>;
-    /** Architecture (arm64 | amd64). Defaults to host arch. */
-    arch?: pulumi.Input<string>;
-    /** Default user inside the VM. `orbctl` defaults to the macOS user; we use `root` for Ansible. */
-    user?: pulumi.Input<string>;
-    /** Host folders to mount into the VM. */
+    /** Distro version, e.g. "trixie" for Debian 13. */
+    version: pulumi.Input<string>;
+    /** Architecture (arm64 | amd64). */
+    arch: pulumi.Input<string>;
+    /** Host folders whose existence the VM depends on. */
     bindMounts?: pulumi.Input<pulumi.Input<BindMount>[]>;
 }
 
 interface OrbCreateInputs {
     name: string;
     distro: string;
-    version?: string;
-    arch?: string;
-    user?: string;
+    version: string;
+    arch: string;
     bindMounts?: BindMount[];
 }
 
@@ -79,11 +79,6 @@ interface OrbInfoJSON {
     record: {
         name: string;
         image: { distro: string; version: string; arch: string };
-        config: {
-            isolated: boolean;
-            default_username: string;
-            mounts: { source: string; destination: string }[];
-        };
         state: string;
     };
     ip4: string;
@@ -105,11 +100,9 @@ function orbctl(args: string[]): string {
 
 function readVM(name: string): OrbInfoJSON | null {
     try {
-        const out = execFileSync("orbctl", ["info", name, "--format", "json"], {
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-        });
-        return JSON.parse(out) as OrbInfoJSON;
+        // Same orbctl() wrapper as every other call — this used to duplicate
+        // the execFileSync invocation, so the two could (and did) drift.
+        return JSON.parse(orbctl(["info", name, "--format", "json"])) as OrbInfoJSON;
     } catch {
         // `orbctl info` exits non-zero when the VM doesn't exist. We treat
         // any read failure as "gone"; Pulumi's diff engine handles the rest.
@@ -121,14 +114,20 @@ const orbStackVMProvider: pulumi.dynamic.ResourceProvider = {
     async create(inputs: OrbCreateInputs): Promise<pulumi.dynamic.CreateResult> {
         // Build the argv ourselves rather than `orbctl create … | sh` so a
         // malformed input fails loudly rather than silently mangling args.
+        //
         // Note: no --isolated flag. Isolated VMs lose CAP_SYS_ADMIN, which
         // breaks kubelet (tmpfs noswap mounts, swapoff, etc.). The price is
         // that OrbStack auto-mounts the whole Mac home at /mnt/mac/...; we
         // turn that into a feature by having Ansible symlink the bindMount
-        // destinations into /mnt/mac/<source>.
-        const args = ["create"];
-        if (inputs.arch) args.push("-a", inputs.arch);
-        if (inputs.user) args.push("-u", inputs.user);
+        // sources into place.
+        //
+        // Also no `-u root`: OrbStack 2.2.0 broke `orbctl create -u root` —
+        // its initial setup runs `usermod --uid 501 root`, which fails with
+        // "user root is currently used by process 1". The VM is created with
+        // the default macOS-named user; root still exists and Ansible
+        // connects to it explicitly via `root@<vm>@orb`.
+        const args = ["create", "-a", inputs.arch];
+
         // Ensure Mac-side source dirs exist; otherwise the symlink target
         // (resolved Ansible-side) would dangle and k8s hostPath mounts would
         // fail with confusing errors at first pod schedule.
@@ -137,9 +136,8 @@ const orbStackVMProvider: pulumi.dynamic.ResourceProvider = {
                 fs.mkdirSync(m.source, { recursive: true });
             }
         }
-        const image = inputs.version ? `${inputs.distro}:${inputs.version}` : inputs.distro;
-        args.push(image, inputs.name);
 
+        args.push(`${inputs.distro}:${inputs.version}`, inputs.name);
         orbctl(args);
 
         const info = readVM(inputs.name);
@@ -161,9 +159,14 @@ const orbStackVMProvider: pulumi.dynamic.ResourceProvider = {
     async read(id: string, props: OrbCreateOutputs): Promise<pulumi.dynamic.ReadResult> {
         const info = readVM(id);
         if (!info) {
-            // Returning empty props tells Pulumi the resource is gone; the
-            // next `up` will recreate it.
-            return { id, props: {} };
+            // An UNDEFINED id is how a dynamic provider says "this resource no
+            // longer exists"; `pulumi refresh` then drops it from state and the
+            // next `up` recreates it. Returning `{ id, props: {} }` (the
+            // previous behaviour) says instead "it still exists, and every
+            // property is now empty" — so refresh kept a phantom VM in state
+            // with a blank distro/arch, and the next up saw that as an
+            // in-place-impossible change rather than a create.
+            return { id: undefined };
         }
         return {
             id,
@@ -193,7 +196,7 @@ const orbStackVMProvider: pulumi.dynamic.ResourceProvider = {
     // is destroy + recreate. Recreating is cheap (~20s).
     async diff(_id: string, oldProps: OrbCreateOutputs, newProps: OrbCreateInputs): Promise<pulumi.dynamic.DiffResult> {
         const replaces: string[] = [];
-        for (const key of ["name", "distro", "version", "arch", "user"] as const) {
+        for (const key of ["name", "distro", "version", "arch"] as const) {
             if (oldProps[key] !== newProps[key]) replaces.push(key);
         }
         if (JSON.stringify(oldProps.bindMounts) !== JSON.stringify(newProps.bindMounts)) {
@@ -222,40 +225,47 @@ export class OrbStackVM extends pulumi.dynamic.Resource {
     }
 }
 
-/** Build OrbStack-backed `MachineOutputs`. Reads its config from the
- *  `orbstack:` namespace in the stack config (see Pulumi.local.yaml).
- *  Consumed by `index.ts` when `target=orbstack`. */
-export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
+/**
+ * The one machine this stack manages.
+ *
+ * `MACHINE_NAME` is the cluster's identity in three places at once — the
+ * `orbctl list` name, the Ansible `inventory_hostname`, and the Tailscale
+ * hostname every private CNAME in dns.ts points at. It used to be an
+ * `orbstack:machineName` config knob whose DEFAULT ("jterrazz-orbstack")
+ * disagreed with the value every stack actually set, so reading it from
+ * config was a trap: a stack that forgot the key would silently boot a VM
+ * under the wrong tailnet identity and every private hostname would break.
+ *
+ * distro/version/arch are hardcoded for the same reason — they were config
+ * knobs that no stack ever overrode, and two of the three are load-bearing:
+ *   * `debian:trixie` — the version MUST stay explicit. Debian is the one
+ *     distro where OrbStack's bare image name resolves to the PREVIOUS stable
+ *     (bookworm/12), and the Ansible roles are Debian-13-native (deb822
+ *     repositories, socket-activated sshd, systemd-resolved as a separate
+ *     package).
+ *   * `arm64` — the Mac is Apple Silicon; an amd64 VM would run under
+ *     emulation.
+ *
+ * `dataPath` stays configurable: it is the one value that is genuinely
+ * per-machine (where on THIS Mac the cluster's data lives).
+ */
+const MACHINE_NAME = "jterrazz-infrastructure";
+
+export function createMachine(): { tailscaleHostname: pulumi.Output<string> } {
     const config = new pulumi.Config("orbstack");
-    // Default name keeps the VM distinct in `orbctl list` even if someone
-    // forgets to set `orbstack:machineName`. Pulumi.local.yaml overrides
-    // this to "jterrazz-infrastructure" — the canonical Tailscale identity.
-    const machineName = config.get("machineName") || "jterrazz-orbstack";
-    // Debian 13 (trixie): systemd + glibc like Ubuntu, minus snapd and the
-    // Ubuntu Pro/ESM layer — same Ansible, smaller surface. The version MUST
-    // stay explicit: OrbStack's bare `debian` image is the previous stable
-    // (bookworm), the one distro where its default isn't the newest.
-    const distro = config.get("distro") || "debian";
-    const version = config.get("version") || "trixie";
-    const arch = config.get("arch") || "arm64";
     const dataPathOnMac =
         config.get("dataPath") || path.join(os.homedir(), ".jterrazz-infrastructure", "data");
 
-    const vm = new OrbStackVM(machineName, {
-        name: machineName,
-        distro,
-        version,
-        arch,
-        // No `-u root`: OrbStack 2.2.0 broke `orbctl create -u root` — its
-        // initial setup runs `usermod --uid 501 root`, which fails with
-        // "user root is currently used by process 1". The VM is created with
-        // the default macOS-named user instead; root still exists and Ansible
-        // connects to it explicitly via `root@<vm>@orb` (ansible_user).
+    new OrbStackVM(MACHINE_NAME, {
+        name: MACHINE_NAME,
+        distro: "debian",
+        version: "trixie",
+        arch: "arm64",
         bindMounts: [
             // k3s storage lives at /var/lib/k8s-data; Ansible's storage
             // role symlinks it to /mnt/mac/<dataPath> so data survives
             // `pulumi destroy && pulumi up` (VM goes, Mac dir stays).
-            { source: dataPathOnMac, destination: "/var/lib/k8s-data" },
+            { source: dataPathOnMac },
         ],
     }, {
         // Every input change is a replacement (see the provider's diff), and
@@ -267,11 +277,5 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
         deleteBeforeReplace: true,
     });
 
-    return {
-        sshHost: vm.name,
-        sshPrivateKey: pulumi.secret(vm.sshKeyPath.apply((p) => fs.readFileSync(p, "utf8"))),
-        tailscaleHostname: pulumi.output(machineName),
-        status: vm.state,
-        name: vm.name,
-    };
+    return { tailscaleHostname: pulumi.output(MACHINE_NAME) };
 }

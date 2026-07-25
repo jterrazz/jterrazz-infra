@@ -1,6 +1,8 @@
 config:
-  jterrazz-infrastructure:target: orbstack
-  jterrazz-infrastructure:manageDns: "true"
-  orbstack:machineName: jterrazz-infrastructure
+  # `target`, `manageDns` and `orbstack:machineName` are gone: there is one
+  # target (OrbStack), it always owns the DNS records, and the machine name is
+  # hardcoded in src/targets/orbstack.ts because its config default disagreed
+  # with the value every stack set. `orbstack:dataPath` is still accepted and
+  # defaults to ~/.jterrazz-infrastructure/data.
   cloudflare:apiToken:
     secure: AAABALRpAHstP1AbuEkn8GRkNsB3CEQBQ02CrQPNdIxnLarH9zPndQq0DwfPv1o3a0OyiHwC0GUXSVMZlFArtFrWZU2zxKi0

@@ -6,7 +6,7 @@
 # sshd_config the first occurrence of a keyword takes effect and the Include
 # comes before the distro's own defaults.
 #
-# Port only takes effect because base.yml disables ssh.socket: under Debian
+# Port only takes effect because the base role disables ssh.socket: under Debian
 # 13's default socket activation the listener is owned by the socket unit's
 # ListenStream and this directive is ignored.
 
