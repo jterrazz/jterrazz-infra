@@ -1,17 +1,9 @@
 ---
 # Security Role Handlers
 
+# ssh.service, not ssh.socket: base.yml turns socket activation off so the
+# daemon owns the listener and a restart actually re-binds it.
 - name: Restart SSH
-  ansible.builtin.systemd:
-    name: ssh
-    state: restarted
-
-- name: Restart fail2ban
-  ansible.builtin.systemd:
-    name: fail2ban
-    state: restarted
-
-- name: Restart auditd
-  ansible.builtin.systemd:
-    name: auditd
+  ansible.builtin.systemd_service:
+    name: ssh.service
     state: restarted

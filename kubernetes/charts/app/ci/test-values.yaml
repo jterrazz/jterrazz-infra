@@ -1,0 +1,120 @@
+# CI fixture for the app chart.
+#
+# Purpose: make `helm template`/`helm lint` render REAL objects. The chart
+# gates every template behind `app.envExists` (metadata.name + environment +
+# a matching entry in `environments`), so linting with default values renders
+# ZERO objects and validates nothing. This file is the contract the CI
+# kubeconform step renders against.
+#
+# Modelled on a realistic app (signews-api shape): two environments, a public
+# + a private ingress surface, storage, secrets, and both platform services.
+#
+#   helm template app kubernetes/charts/app \
+#     -f kubernetes/charts/app/ci/test-values.yaml
+#
+# Keep this exercising the widest reasonable surface — if a template branch is
+# not reachable from here, CI is not checking it.
+
+metadata:
+  name: ci-test-app
+
+# Which of `environments` below is rendered. Everything is gated on this.
+environment: prod
+
+spec:
+  port: 3000
+
+  # >= 512Mi so the NODE_OPTIONS heap-cap branch in _helpers.tpl is exercised
+  # (below that floor the chart deliberately injects nothing).
+  resources:
+    cpu: 100m
+    memory: 512Mi
+    memoryLimit: 1Gi
+
+  health:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 5
+    startupPeriodSeconds: 5
+    startupFailureThreshold: 60
+
+  # Renders the PV + PVC and the root `fix-permissions` initContainer.
+  # Both keys are `required` as of chart 2.2 — dropping either must fail the
+  # render rather than produce an unbindable PV.
+  storage:
+    size: 2Gi
+    mountPath: /data
+
+  # Exercises env injection + egress NetworkPolicy for both catalog entries,
+  # and the client-label path (gateway-intelligence carries a clientLabel, so
+  # the pod template gets `platform-client.jterrazz.com/gateway-intelligence`).
+  platformServices:
+    - otel-collector
+    - gateway-intelligence
+
+  networkPolicy:
+    # Bespoke by-name ingress (the non-platform path).
+    allowedClients:
+      - ci-test-client
+
+  # Renders the InfisicalSecret plus secretKeyRef env entries.
+  secrets:
+    path: /jterrazz-ci/ci-test-app
+    env:
+      - DATABASE_URL
+      - API_TOKEN
+
+  env:
+    LOG_LEVEL: info
+
+  # Renders the ConfigMap + its volume/volumeMount.
+  configFiles:
+    ci-test.json: |
+      { "fixture": true }
+
+  # Only rendered when environment == prod.
+  dashboards:
+    overview: |
+      { "title": "ci-test-app overview", "panels": [] }
+
+  ingress:
+    # Public surface, sub-path -> exercises the stripPrefix middleware.
+    - host: ci-test-app.jterrazz.com
+      path: /api
+      public: true
+    # Private surface -> exercises the private-access middleware attachment.
+    - host: ci-test-app-internal.jterrazz.com
+      path: /
+      public: false
+
+environments:
+  prod:
+    tag: main
+    replicas: 1
+  staging:
+    tag: main
+    replicas: 1
+    secretsEnv: prod
+    resources:
+      memory: 256Mi
+    ingress:
+      - host: ci-test-app-staging.jterrazz.com
+        path: /
+        public: false
+
+# Registry credentials — present so the dockerconfigjson Secret renders.
+# The password deliberately contains a double quote and a backslash: that is
+# the exact input that broke the old raw-string-interpolation template, so
+# this fixture regression-tests the dict|toJson rewrite.
+registry:
+  server: registry.jterrazz.com
+  username: ci-test
+  password: 'p@ss"wo\rd'
+
+# Left empty on purpose: app-repo CI does not pass a node name, and the PV's
+# nodeAffinity block must be OMITTED (not rendered with an empty value) in
+# that case. The platform chart fixture covers the populated path.
+infrastructure:
+  nodeName: ""

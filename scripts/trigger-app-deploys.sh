@@ -7,6 +7,7 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 REPOS=(
@@ -20,12 +21,22 @@ REPOS=(
 
 section "Triggering App Deployments"
 
-for repo in "${REPOS[@]}"; do
+for i in "${!REPOS[@]}"; do
+  repo="${REPOS[$i]}"
   info "Triggering deploy for $repo..."
   if gh workflow run "Build and Deploy" --repo "$repo"; then
     success "Triggered $repo"
   else
     warn "Failed to trigger $repo (workflow may not exist yet)"
+  fi
+
+  # Stagger dispatches: this fires 6 rolling deploys (Docker build + helm
+  # upgrade) against a single memory-constrained node. Without a gap, all 6
+  # CI runs land on the cluster at once and compete for RAM during the
+  # build/deploy window. A short sleep spreads them out instead of letting
+  # the whole herd hit at once (skip it after the last repo).
+  if (( i < ${#REPOS[@]} - 1 )); then
+    sleep 20
   fi
 done
 

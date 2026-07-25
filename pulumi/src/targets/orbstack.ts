@@ -44,7 +44,9 @@ export interface OrbStackVMArgs {
     name: pulumi.Input<string>;
     /** Linux distro (alpine | ubuntu | debian | …). */
     distro: pulumi.Input<string>;
-    /** Optional distro version (e.g. "noble" for Ubuntu 24.04). */
+    /** Optional distro version (e.g. "trixie" for Debian 13). Always set
+     *  this explicitly for Debian: `orb create debian` defaults to the
+     *  previous stable (bookworm/12), not the newest. */
     version?: pulumi.Input<string>;
     /** Architecture (arm64 | amd64). Defaults to host arch. */
     arch?: pulumi.Input<string>;
@@ -229,8 +231,12 @@ export function createOrbStackMachine(_config: pulumi.Config): MachineOutputs {
     // forgets to set `orbstack:machineName`. Pulumi.local.yaml overrides
     // this to "jterrazz-infrastructure" — the canonical Tailscale identity.
     const machineName = config.get("machineName") || "jterrazz-orbstack";
-    const distro = config.get("distro") || "ubuntu";
-    const version = config.get("version") || "noble";
+    // Debian 13 (trixie): systemd + glibc like Ubuntu, minus snapd and the
+    // Ubuntu Pro/ESM layer — same Ansible, smaller surface. The version MUST
+    // stay explicit: OrbStack's bare `debian` image is the previous stable
+    // (bookworm), the one distro where its default isn't the newest.
+    const distro = config.get("distro") || "debian";
+    const version = config.get("version") || "trixie";
     const arch = config.get("arch") || "arm64";
     const dataPathOnMac =
         config.get("dataPath") || path.join(os.homedir(), ".jterrazz-infrastructure", "data");

@@ -6,12 +6,23 @@ host: ""
 port: 80
 private: true
 
-storage: {}
+# Named volumes. MAP of <key> -> { size, pathSuffix } as of chart 2.0
+# (was a single object with size/pathSuffix at the top level).
+#
+# Object names are <name>-<key>, so the key `data` reproduces the historical
+# <name>-data PV/PVC names exactly. hostPath is
+# /var/lib/k8s-data/<name>[/<pathSuffix>].
+#
 # storage:
-#   size: 1Gi
-#   # pathSuffix nests the volume under the app dir (1 dir = 1 app), e.g.
-#   # pathSuffix: mongo -> hostPath /var/lib/k8s-data/<name>/mongo
-#   pathSuffix: ""
+#   data:
+#     size: 3Gi
+#     # pathSuffix nests the volume under the app dir (1 dir = 1 app), e.g.
+#     # pathSuffix: mongo -> hostPath /var/lib/k8s-data/<name>/mongo
+#     pathSuffix: mongo
+#   uploads:
+#     size: 5Gi
+#     pathSuffix: uploads
+storage: {}
 
 # Infrastructure settings (injected by Ansible at deploy time).
 # nodeName is the k8s node name used as the hostPath PV's nodeAffinity

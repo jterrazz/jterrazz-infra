@@ -1,19 +1,21 @@
 ---
 # Tailscale Installation and Configuration
 
-# OrbStack's Ubuntu image ships with systemd-resolved masked. Without a
-# stub resolver, Tailscale falls back to writing /etc/resolv.conf
-# directly with `nameserver 100.100.100.100`, and that resolver does
-# not chase CNAMEs from a public zone (jterrazz.com) into the tailnet
-# zone (*.ts.net). The deploy then fails at "helm registry login
-# registry.jterrazz.com" because the CNAME chain is not followed.
+# systemd-resolved is installed by base.yml (it is a separate, non-default
+# package on Debian 12+) — but the OrbStack image ships it MASKED. Without a
+# stub resolver, Tailscale falls back to writing /etc/resolv.conf directly
+# with `nameserver 100.100.100.100`, and that resolver does not chase CNAMEs
+# from a public zone (jterrazz.com) into the tailnet zone (*.ts.net). The
+# deploy then fails at "helm registry login registry.jterrazz.com" because
+# the CNAME chain is not followed.
 - name: Ensure systemd-resolved is enabled (needed for CNAME chasing into tailnet)
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: systemd-resolved
     masked: false
     enabled: true
     state: started
     daemon_reload: true
+  tags: [tailscale, dns]
 
 # OrbStack's DHCP hands out a bogus DNS server (0.250.250.200) that
 # silently drops queries; without overriding it, resolved tries the
@@ -25,6 +27,7 @@
     path: /etc/systemd/resolved.conf.d
     state: directory
     mode: "0755"
+  tags: [tailscale, dns]
 
 - name: Configure systemd-resolved global DNS overrides
   ansible.builtin.copy:
@@ -34,13 +37,14 @@
       [Resolve]
       DNS=1.1.1.1 9.9.9.9
       FallbackDNS=1.0.0.1 8.8.8.8
-  register: resolved_conf
+  notify: Restart systemd-resolved
+  tags: [tailscale, dns]
 
-- name: Restart systemd-resolved when DNS config changed
-  ansible.builtin.systemd:
-    name: systemd-resolved
-    state: restarted
-  when: resolved_conf.changed
+# The resolver has to be live BEFORE the resolv.conf symlink and the tailscaled
+# restart below, so flush the handler here instead of letting it run at the end
+# of the play.
+- name: Apply the resolved config change now
+  ansible.builtin.meta: flush_handlers
 
 - name: Point /etc/resolv.conf at systemd-resolved stub
   ansible.builtin.file:
@@ -48,49 +52,62 @@
     dest: /etc/resolv.conf
     state: link
     force: true
-  register: resolv_conf_link
+  register: tailscale_resolv_conf_link
+  tags: [tailscale, dns]
 
 - name: Check if Tailscale is installed
   ansible.builtin.stat:
     path: /usr/bin/tailscale
   register: tailscale_binary
+  tags: [tailscale]
 
 # Only needed when tailscaled was already running with a stale resolv.conf
 # (the fresh-install branch below starts the daemon AFTER the symlink is
 # in place, so it picks up resolved on its own).
 - name: Restart tailscaled to pick up systemd-resolved integration
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: tailscaled
     state: restarted
   when:
-    - resolv_conf_link.changed
+    - tailscale_resolv_conf_link.changed
     - tailscale_binary.stat.exists
+  tags: [tailscale]
 
 - name: Install Tailscale
   when: not tailscale_binary.stat.exists
+  tags: [tailscale]
   block:
-    - name: Add Tailscale GPG key
-      ansible.builtin.apt_key:
-        url: https://pkgs.tailscale.com/stable/ubuntu/focal.noarmor.gpg
-        keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    # deb822 source, not apt_key + apt_repository: Debian 13 REMOVED the
+    # apt-key binary, so ansible.builtin.apt_key has nothing to call. The
+    # deb822_repository module writes the keyring and the .sources stanza in
+    # one step (it needs python3-debian on the target — installed in
+    # base.yml).
+    - name: Add Tailscale apt repository
+      ansible.builtin.deb822_repository:
+        name: tailscale
+        types: [deb]
+        uris: https://pkgs.tailscale.com/stable/debian
+        suites: [trixie]
+        components: [main]
+        signed_by: https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg
         state: present
+        enabled: true
 
-    - name: Add Tailscale repository
-      ansible.builtin.apt_repository:
-        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu focal main"
-        state: present
-        update_cache: true
-
+    # update_cache here rather than as a separate step: the source was only
+    # just written, so apt has no index for it yet and the install would fail
+    # with "Unable to locate package tailscale".
     - name: Install Tailscale package
       ansible.builtin.apt:
         name: tailscale
         state: present
+        update_cache: true
 
 - name: Enable Tailscale service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: tailscaled
     enabled: "{{ tailscale_service_enabled }}"
     state: "{{ tailscale_service_state }}"
+  tags: [tailscale]
 
 - name: Check if already connected to Tailscale
   ansible.builtin.shell:
@@ -101,22 +118,35 @@
   register: tailscale_connected
   changed_when: false
   failed_when: false
+  tags: [tailscale]
+
+# Built as an argv list rather than a shell string so the OAuth secret is
+# never handed to a shell (no history, no word-splitting, no quoting bugs)
+# and so no_log can hide the whole thing from the Ansible output.
+- name: Build the Tailscale up argument vector
+  ansible.builtin.set_fact:
+    tailscale_up_argv: >-
+      {{ ['tailscale', 'up',
+          '--client-id=' ~ tailscale_oauth_client_id,
+          '--client-secret=' ~ tailscale_oauth_client_secret,
+          '--hostname=' ~ tailscale_hostname,
+          '--advertise-tags=' ~ (tailscale_tags | join(','))]
+         + (['--advertise-routes=' ~ (tailscale_advertise_routes | join(','))] if tailscale_advertise_routes else [])
+         + (['--accept-routes'] if tailscale_accept_routes else [])
+         + (['--accept-dns'] if tailscale_accept_dns else []) }}
+  no_log: true
+  tags: [tailscale]
 
 - name: Connect to Tailscale
-  ansible.builtin.command: >
-    tailscale up
-    --client-id={{ tailscale_oauth_client_id }}
-    --client-secret={{ tailscale_oauth_client_secret }}
-    --hostname={{ tailscale_hostname }}
-    --advertise-tags={{ tailscale_tags | join(',') }}
-    {% if tailscale_advertise_routes %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
-    {% if tailscale_accept_routes %}--accept-routes{% endif %}
-    {% if tailscale_accept_dns %}--accept-dns{% endif %}
+  ansible.builtin.command:
+    argv: "{{ tailscale_up_argv }}"
   when:
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
     - tailscale_connected.rc != 0
   changed_when: true
+  no_log: true
+  tags: [tailscale]
 
 # Boot-time self-heal: after a host reboot tailscaled can come back
 # "Logged out" (e.g. node-key expiry) and does NOT auto-reconnect. A
@@ -127,6 +157,7 @@
   when:
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
+  tags: [tailscale]
   block:
     - name: Create Tailscale config directory
       ansible.builtin.file:
@@ -139,6 +170,7 @@
         src: tailscale-autoauth.env.j2
         dest: /etc/tailscale/autoauth.env
         mode: "0600"
+      no_log: true
 
     - name: Install Tailscale auto-reauth script
       ansible.builtin.template:
@@ -153,13 +185,14 @@
         mode: "0644"
 
     - name: Enable Tailscale auto-reauth service
-      ansible.builtin.systemd:
+      ansible.builtin.systemd_service:
         name: tailscale-autoauth.service
         enabled: true
         daemon_reload: true
 
-- name: Get Tailscale IP
-  ansible.builtin.command: tailscale ip -4
-  register: tailscale_ip
-  changed_when: false
-  failed_when: false
+# Publish tailscale_ip / tailscale_dns_hostname for the k3s role (TLS SANs),
+# playbooks/kubernetes.yml (kubeconfig server URL) and platform.yml (CoreDNS
+# overrides + Helm values).
+- name: Gather Tailscale facts for downstream plays
+  ansible.builtin.include_tasks: facts.yml
+  tags: [tailscale]

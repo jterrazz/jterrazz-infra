@@ -1,0 +1,40 @@
+---
+# ========================================
+# Platform services — Helm installs
+# Order matters: cert-manager first (TLS), then networking, then apps.
+# Each service uses helm.yaml for its upstream chart config and
+# platform.yaml for ingress/cert/storage via the shared platform chart.
+# ========================================
+
+# 1. cert-manager
+- name: Install cert-manager via Helm
+  ansible.builtin.command: >
+    helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace platform-networking
+    --version v1.20.2
+    --values {{ manifest_dest }}/kubernetes/platform/cert-manager/helm.yaml
+    --wait
+    --timeout 5m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: certmanager_result
+  changed_when: "'has been upgraded' in certmanager_result.stdout or 'has been installed' in certmanager_result.stdout"
+
+- name: Wait for cert-manager webhook to be ready
+  ansible.builtin.command:
+    cmd: kubectl rollout status deployment/cert-manager-webhook -n platform-networking --timeout=120s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  changed_when: false
+
+- name: Apply cert-manager ClusterIssuers
+  ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/cert-manager/issuers.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: issuers_result
+  changed_when: "'created' in issuers_result.stdout or 'configured' in issuers_result.stdout"
+
+# No external-dns controller — Pulumi manages the Cloudflare DNS
+# records for the cluster's private services (see pulumi/src/dns.ts).
+# Public hostnames are auto-created by cloudflared when added to the
+# tunnel's Public Hostnames in the Zero Trust dashboard.

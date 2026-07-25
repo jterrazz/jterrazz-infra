@@ -28,9 +28,50 @@ spec:
       labels:
         app: librechat-mongodb
     spec:
+      # hostPath dirs are created root-owned. The mongo image's entrypoint
+      # normally chowns /data/db itself and gosu's down to the mongodb user,
+      # but we pin the container to uid 999 below so that entrypoint branch
+      # never runs — hence this explicit chown, matching the pattern used by
+      # the app chart and by openpanel's datastores.
+      initContainers:
+        - name: fix-perms
+          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          command: ["sh", "-c", "chown -R 999:999 /data/db"]
+          # Must stay root to chown, but keeps every other guardrail: no
+          # privilege escalation, seccomp on, and all capabilities dropped
+          # except the three `chown -R` needs (CHOWN to change ownership,
+          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
       containers:
         - name: mongodb
-          image: mongo:7
+          # Pinned to the 7.0 minor, not the floating `7`. A silent jump to a
+          # new minor rewrites on-disk feature-compatibility metadata, which
+          # is a one-way door for this hostPath data — mongod refuses to start
+          # against files written by a newer release. Bump deliberately, and
+          # set featureCompatibilityVersion before/after.
+          image: mongo:7.0
+          # mongod runs as the image's `mongodb` user (uid/gid 999); the
+          # initContainer above hands it a correctly-owned data dir.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           args:
             - "--quiet"
             - "--wiredTigerCacheSizeGB"

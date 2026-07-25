@@ -78,7 +78,7 @@ spec:
     spec:
       containers:
         - name: registry
-          image: registry:2
+          image: registry:2.8
           ports:
             - containerPort: 5000
           env:
@@ -144,8 +144,12 @@ spec:
   routes:
     - match: Host(`registry.jterrazz.com`)
       kind: Rule
+      # cluster-internal-access, NOT private-access: containerd's hairpin
+      # pull for registry.jterrazz.com is sourced from a pod-CIDR or node
+      # address rather than a tailnet IP, so the tailnet-only allow-list of
+      # private-access would reject the cluster's own image pulls.
       middlewares:
-        - name: private-access
+        - name: cluster-internal-access
           namespace: platform-networking
       services:
         - name: registry

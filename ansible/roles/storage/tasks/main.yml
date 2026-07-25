@@ -1,6 +1,9 @@
 ---
 # Storage Setup
-# Creates directories for Kubernetes persistent volumes
+# Prepares the hostPath root that every PV in this cluster is carved out of.
+#
+# Do not change any path in this file. /var/lib/k8s-data is baked into every
+# PV manifest in kubernetes/ and holds live data.
 
 # /var/lib/k8s-data is a symlink to a Mac folder mounted via OrbStack's
 # auto file-share (/mnt/mac/...). hostPath PVs reference /var/lib/k8s-data
@@ -8,17 +11,18 @@
 # Mac and survives `pulumi destroy` of the VM.
 - name: Link /var/lib/k8s-data to the Mac bind dir on OrbStack
   when: deployment_target | default('hetzner') == 'orbstack'
+  tags: [storage]
   block:
     - name: Resolve Mac bind dir
       ansible.builtin.set_fact:
         # OrbStack mounts the Mac user's home at /mnt/mac/Users/<user>.
         # The data folder is created by the Pulumi OrbStack provider before
         # the VM is started, so this path is always present here.
-        orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infrastructure/data"
+        storage_orbstack_data_dir: "/mnt/mac/Users/{{ lookup('env', 'USER') }}/.jterrazz-infrastructure/data"
 
     - name: Replace /var/lib/k8s-data with a symlink to the Mac dir
       ansible.builtin.file:
-        src: "{{ orbstack_data_dir }}"
+        src: "{{ storage_orbstack_data_dir }}"
         dest: /var/lib/k8s-data
         state: link
         force: true
@@ -33,11 +37,25 @@
     mode: "0755"
     owner: root
     group: root
+  tags: [storage]
 
-# Static storage directories for apps that need persistent data
-# These directories survive app deletion (unlike dynamic local-path provisioner)
-# Mode 0755 — containers manage their own file ownership via securityContext
-- name: Create app storage directories
+# These two are NOT redundant, despite covering only 2 of the 8 apps.
+#
+# Auto-creation of a missing hostPath directory happens only when the PV sets
+# `hostPath.type: DirectoryOrCreate` — kubelet performs no checks and creates
+# nothing for the default (empty) type. The raw manifests under
+# kubernetes/platform/ (librechat/uploads, openpanel/{postgres,redis,
+# clickhouse}) all set DirectoryOrCreate and so genuinely need nothing here.
+# The platform CHART only emits a `type` when a service passes
+# `storage.hostPathType`, and neither n8n's nor portainer's platform.yaml
+# does — so n8n-data and portainer-data are exactly the PVs that would be
+# left to the container runtime's discretion on a fresh cluster. Creating
+# them up front is cheap and keeps first-boot deterministic.
+#
+# Mode 0755 — containers manage their own file ownership via securityContext.
+# The paths are load-bearing: they must match the chart's
+# /var/lib/k8s-data/<name> layout exactly.
+- name: Create app storage directories for PVs without DirectoryOrCreate
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -45,3 +63,4 @@
   loop:
     - /var/lib/k8s-data/n8n
     - /var/lib/k8s-data/portainer
+  tags: [storage]

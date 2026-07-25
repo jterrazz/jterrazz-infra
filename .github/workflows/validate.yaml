@@ -1,20 +1,41 @@
 name: Validate
 
+# Runs on PRs (pre-merge gate) AND on push to main (a direct push — e.g. a
+# merge commit made outside a PR, or an admin bypass — would otherwise reach
+# main, and therefore deploy-platform.yaml/publish-chart.yaml, unvalidated).
+#
+# No `workflow_call:` here: nothing in this repo (or known to reference it
+# externally) invokes this workflow as a reusable one — grepped for
+# `uses:.*validate` and found no callers. If that changes, re-add it.
 on:
   pull_request:
     branches: [main]
-  workflow_call:
+  push:
+    branches: [main]
+
+# One validation run per ref at a time; a new push supersedes whatever was
+# already validating for the same branch/PR. Unlike the deploy workflows
+# below (which must never be cancelled mid-apply), validation is pure
+# read-only checks, so cancelling a stale run is safe and saves runner time.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   pulumi:
     name: Validate Pulumi
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: pulumi/package-lock.json
 
@@ -23,36 +44,55 @@ jobs:
         run: npm ci
 
       - name: TypeScript Check
+        # Typechecks every file under pulumi/src, including
+        # targets/orbstack.ts — the `preview` below only ever exercises
+        # targets/hetzner.ts (the `jterrazz/production` stack), so this is
+        # the only thing in CI that would catch orbstack.ts breaking.
         working-directory: pulumi
         run: npx tsc --noEmit
 
       - name: Pulumi Preview
         if: github.event_name == 'pull_request'
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@cd99a7f8865434dd3532b586a26f9ebea596894f # v5.5.1
         with:
           command: preview
           stack-name: jterrazz/production
           work-dir: pulumi
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          # No HCLOUD_TOKEN here: hetzner.ts reads the Hetzner API token
+          # exclusively from Pulumi stack config (`hcloud:token`, encrypted
+          # on the `jterrazz/production` stack) — the env var does nothing
+          # and previously implied a secret that isn't actually consumed.
 
   ansible:
     name: Validate Ansible
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
+      # Pinned exact (not `ansible ansible-lint`, which pulls whatever the
+      # latest ansible-core/ansible-lint happen to be that day, and pulls in
+      # the full `ansible` community package's bundled collections instead
+      # of the explicit set in requirements.yml below).
       - name: Install Ansible
-        run: pip install ansible ansible-lint
+        run: pip install ansible-core==2.21.2 ansible-lint==26.6.0
+
+      - name: Install Ansible collections
+        working-directory: ansible
+        run: ansible-galaxy collection install -r requirements.yml
 
       - name: Ansible Lint
-        working-directory: ansible
-        run: ansible-lint playbooks/
+        # Lint the whole ansible/ tree (roles + templates + tasks), not just
+        # playbooks/ — and run from the repo root so ansible-lint's config
+        # discovery picks up ansible/.ansible-lint.
+        run: ansible-lint ansible/
 
       - name: Syntax Check
         working-directory: ansible
@@ -61,28 +101,85 @@ jobs:
   kubernetes:
     name: Validate Kubernetes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Recommended-by-upstream kubeconform schema locations: `default`
+      # covers core/built-in Kubernetes kinds; the datreeio catalog covers
+      # the CRDs this repo actually renders (traefik.io IngressRoute/
+      # Middleware, cert-manager.io Certificate/ClusterIssuer,
+      # secrets.infisical.com InfisicalSecret). Deliberately NOT paired with
+      # `-ignore-missing-schemas`: if a future manifest introduces a CRD kind
+      # with no schema in either location, this should fail loudly so the
+      # schema location list gets updated, rather than silently skipping
+      # validation of that object.
+      KUBECONFORM_SCHEMA_ARGS: >-
+        -schema-location default
+        -schema-location https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Validate Kustomize manifests
-        run: |
-          echo "Validating base manifests..."
-          kubectl kustomize kubernetes/infrastructure/base > /dev/null
-
-          echo "Validating production environment..."
-          kubectl kustomize kubernetes/infrastructure/environments/production > /dev/null
-
-          echo "All manifests are valid!"
+        uses: azure/setup-kubectl@901a10e89ea615cf61f57ac05cecdf23e7de06d8 # v3.2
 
       - name: Setup Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3.5
         with:
           version: v3.20.0
 
-      - name: Lint Helm charts
+      - name: Install kubeconform
         run: |
-          helm lint kubernetes/charts/app
-          helm lint kubernetes/charts/platform
+          set -euo pipefail
+          KUBECONFORM_VERSION=0.8.0
+          KUBECONFORM_SHA256=9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
+          curl -sSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: Validate Kustomize manifests
+        # environments/production is going away (folded into base as part of
+        # the Debian 13 migration) — base is the kustomize entrypoint now.
+        run: |
+          set -euo pipefail
+          echo "Validating base manifests..."
+          # shellcheck disable=SC2086
+          kubectl kustomize kubernetes/infrastructure/base | kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary -
+          echo "All manifests are valid!"
+
+      - name: Validate Helm charts against CI fixtures
+        # Plain `helm lint`/`helm template` with default values renders
+        # (near) zero objects for these charts — everything meaningful is
+        # gated behind values apps/services actually set. ci/test-values.yaml
+        # (maintained alongside each chart) supplies a representative values
+        # set so lint + template + schema validation exercise the real
+        # templates.
+        run: |
+          set -euo pipefail
+          for chart in app platform; do
+            fixture="kubernetes/charts/$chart/ci/test-values.yaml"
+            echo "== $chart chart =="
+            helm lint "kubernetes/charts/$chart" -f "$fixture"
+            # shellcheck disable=SC2086
+            helm template ci-test "kubernetes/charts/$chart" -f "$fixture" \
+              | kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary -
+          done
+
+      - name: Validate raw platform manifests
+        # kubernetes/platform/** mixes Helm values files (helm.yaml,
+        # platform.yaml — consumed BY the platform chart, not raw manifests)
+        # with actual hand-written K8s objects (openpanel's stack, LibreChat's
+        # mongodb/uploads/secret/netpol, cloudflared's Deployment, cert-manager
+        # issuers, ...). Rather than maintain an explicit file list that goes
+        # stale the moment someone adds a file, filter by the one structural
+        # property that actually distinguishes them: a real manifest has a
+        # top-level `apiVersion:` key, a values file doesn't.
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(grep -rl '^apiVersion:' kubernetes/platform --include='*.yaml')
+          echo "Validating ${#manifests[@]} raw manifests:"
+          printf '  %s\n' "${manifests[@]}"
+          # shellcheck disable=SC2086
+          kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary "${manifests[@]}"

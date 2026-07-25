@@ -35,6 +35,19 @@ spec:
       containers:
         - name: op-api
           image: lindesvard/openpanel-api:2.2
+          # Hardened WITHOUT pinning a uid: the lindesvard/openpanel-*
+          # images do not document the user they run as, and forcing
+          # runAsNonRoot on an image that expects root fails the pod outright.
+          # Everything that is safe regardless of uid is applied here.
+          # TODO after repave: `kubectl exec -n platform-analytics
+          # deploy/op-api -- id`; if it is already non-root, add
+          # runAsNonRoot/runAsUser/runAsGroup to all three op-* workloads.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           command:
             - sh
             - -c
@@ -118,6 +131,19 @@ spec:
       containers:
         - name: op-worker
           image: lindesvard/openpanel-worker:2.2
+          # Hardened WITHOUT pinning a uid: the lindesvard/openpanel-*
+          # images do not document the user they run as, and forcing
+          # runAsNonRoot on an image that expects root fails the pod outright.
+          # Everything that is safe regardless of uid is applied here.
+          # TODO after repave: `kubectl exec -n platform-analytics
+          # deploy/op-api -- id`; if it is already non-root, add
+          # runAsNonRoot/runAsUser/runAsGroup to all three op-* workloads.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 3000
           envFrom:
@@ -190,6 +216,19 @@ spec:
       containers:
         - name: op-dashboard
           image: lindesvard/openpanel-dashboard:2.2
+          # Hardened WITHOUT pinning a uid: the lindesvard/openpanel-*
+          # images do not document the user they run as, and forcing
+          # runAsNonRoot on an image that expects root fails the pod outright.
+          # Everything that is safe regardless of uid is applied here.
+          # TODO after repave: `kubectl exec -n platform-analytics
+          # deploy/op-api -- id`; if it is already non-root, add
+          # runAsNonRoot/runAsUser/runAsGroup to all three op-* workloads.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 3000
           envFrom:

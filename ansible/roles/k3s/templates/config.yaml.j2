@@ -24,24 +24,27 @@ write-kubeconfig-mode: "0644"
 write-kubeconfig: /etc/rancher/k3s/k3s.yaml
 
 # TLS SANs
+#
+# Every name a client may use to reach the API server has to be in here or
+# kubectl fails cert verification. The tailnet IP and MagicDNS name matter
+# most — that is how the laptop and CI reach the cluster.
+#
+# `ansible_host` is only a SAN on Hetzner, where it is the real public IP. On
+# OrbStack it is `orb`, an entry in the OrbStack SSH config rather than a
+# resolvable hostname, and putting it here just produced a junk SAN nobody
+# could ever present.
 tls-san:
-  - {{ ansible_host }}
   - {{ k3s_node_ip }}
   - localhost
   - 127.0.0.1
-{% if k3s_tailscale_ip | default('') != '' %}
-  - {{ k3s_tailscale_ip }}
+{% if deployment_target | default('hetzner') != 'orbstack' and ansible_host is defined %}
+  - {{ ansible_host }}
 {% endif %}
-{% for san in k3s_tls_san %}
-  - {{ san }}
-{% endfor %}
-
-# Disabled Components
-{% if k3s_disable_components %}
-disable:
-{% for component in k3s_disable_components %}
-  - {{ component }}
-{% endfor %}
+{% if tailscale_ip | default('') != '' %}
+  - {{ tailscale_ip }}
+{% endif %}
+{% if tailscale_dns_hostname | default('') != '' %}
+  - {{ tailscale_dns_hostname }}
 {% endif %}
 
 # Kubelet

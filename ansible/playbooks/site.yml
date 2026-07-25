@@ -7,6 +7,25 @@
 # Usage:
 #   Full deploy:  ansible-playbook playbooks/site.yml -i inventories/production/hosts.yml
 #   Just k3s:     ansible-playbook playbooks/kubernetes.yml -i inventories/production/hosts.yml
+#
+# Targets are Debian 13 (trixie) on both stacks — Hetzner cax21 (genericcloud
+# image) and the OrbStack VM. There is no dual-distro support: templates and
+# package names are Debian-native.
+
+# Every other play needs a Python interpreter for the module payloads, so this
+# one runs before fact gathering and talks raw SSH. Both current images ship
+# python3, hence the `command -v` short-circuit — this exists so a stripped
+# image (or a future minbase build) self-heals instead of failing on the very
+# first task with "/usr/bin/python3: not found".
+- name: Bootstrap Python interpreter
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Ensure python3 is present
+      ansible.builtin.raw: command -v python3 || (apt-get update && apt-get install -y python3)
+      register: python_bootstrap
+      changed_when: "'Setting up python3' in python_bootstrap.stdout"
 
 - name: Base System Setup
   ansible.builtin.import_playbook: base.yml

@@ -1,0 +1,97 @@
+---
+# Network Policies for platform-management (Portainer).
+#
+# Portainer is the highest-value target in the cluster: it holds a
+# cluster-admin ServiceAccount, so reaching its HTTP port is equivalent to
+# owning the cluster. Until now nothing at the network layer stopped a pod in
+# any namespace from talking to it — the only guard was Traefik's
+# `private-access` ipAllowList, which allowlisted all of RFC1918 (including
+# the pod CIDR). These policies close that at the CNI level, independent of
+# Traefik.
+#
+# k3s enforces NetworkPolicy, so this is real isolation, not decoration.
+# Traefik runs in kube-system on k3s, hence the kube-system selector.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: platform-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# Same-namespace traffic (Portainer's own components).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: platform-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-management
+
+---
+# Traefik (kube-system) -> Portainer HTTP on 9000. This is the ONLY way in
+# from outside the namespace; the tailnet route terminates at Traefik.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-portainer
+  namespace: platform-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 9000
+
+---
+# Egress: Portainer's Kubernetes integration talks to the kube-apiserver
+# (kubernetes.default -> 10.43.0.1:443) and does outbound HTTPS for version
+# checks / template fetches.
+#
+# TODO tighten after repave validation — deliberately kept wide (443 to
+# anywhere rather than an apiserver-only ipBlock) so a mis-scoped rule cannot
+# brick the one dashboard used to debug the cluster. Narrow to the apiserver
+# ClusterIP + an explicit template host once the fresh cluster is confirmed
+# healthy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress
+  namespace: platform-management
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS (CoreDNS lives in kube-system, but allow cluster-wide to be safe).
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # kube-apiserver (ClusterIP 10.43.0.1:443 and the node's :6443) plus
+    # outbound HTTPS.
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443

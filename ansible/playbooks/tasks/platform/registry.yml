@@ -1,0 +1,67 @@
+---
+# ========================================
+# Registry setup
+# ========================================
+# The private Docker/OCI registry at registry.jterrazz.com. It is applied late
+# because its IngressRoute needs cert-manager to issue the TLS cert, and the
+# chart publish below needs the registry up.
+
+- name: Install apache2-utils for htpasswd
+  ansible.builtin.apt:
+    name: apache2-utils
+    state: present
+    update_cache: true
+
+# The password is piped in on stdin (`-i`) with the value coming from the
+# task environment, NOT passed as `htpasswd -nbB deploy <password>`: an
+# argument would be visible to any user on the box via `ps` for as long as
+# the command runs. `echo` is a shell builtin, so it forks nothing, and the
+# environment of a root-owned process is not world-readable.
+- name: Generate htpasswd hash for registry
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      printf '%s' "$REGISTRY_PASSWORD" | htpasswd -niB deploy
+    executable: /bin/bash
+  environment:
+    REGISTRY_PASSWORD: "{{ registry_password }}"
+  register: htpasswd_result
+  changed_when: false
+  no_log: true
+
+- name: Set registry facts
+  ansible.builtin.set_fact:
+    registry_htpasswd: "{{ htpasswd_result.stdout | trim }}"
+  no_log: true
+
+- name: Template registry manifest with secrets
+  ansible.builtin.template:
+    src: "{{ templates_dir }}/kubernetes/registry.yaml.j2"
+    dest: "{{ manifest_dest }}/kubernetes/platform/registry.yaml"
+    mode: "0644"
+  no_log: true
+
+- name: Apply registry manifests
+  ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/registry.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: registry_result
+  changed_when: "'created' in registry_result.stdout or 'configured' in registry_result.stdout"
+
+- name: Wait for registry to be ready
+  ansible.builtin.command: kubectl rollout status deployment/registry -n platform-registry --timeout=60s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  changed_when: false
+
+# The Helm login below talks HTTPS to registry.jterrazz.com, so the
+# Let's Encrypt cert must be issued first. On a fresh cluster DNS-01
+# issuance lags the registry pod by a minute or two — wait for it,
+# otherwise the login fails with a TLS error.
+- name: Wait for registry TLS certificate to be issued
+  ansible.builtin.command: >
+    kubectl wait --for=condition=Ready certificate/registry-tls
+    -n platform-registry --timeout=180s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  changed_when: false

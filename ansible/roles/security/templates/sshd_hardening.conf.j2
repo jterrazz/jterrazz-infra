@@ -1,15 +1,18 @@
-# SSH Daemon Configuration
-# Managed by Ansible - Do not edit manually
+# SSH Daemon Hardening
+# Managed by Ansible (security role) - Do not edit manually
+#
+# This is a DROP-IN loaded by `Include /etc/ssh/sshd_config.d/*.conf` at the
+# top of Debian's stock /etc/ssh/sshd_config. Keywords set here win because in
+# sshd_config the first occurrence of a keyword takes effect and the Include
+# comes before the distro's own defaults.
+#
+# Port only takes effect because base.yml disables ssh.socket: under Debian
+# 13's default socket activation the listener is owned by the socket unit's
+# ListenStream and this directive is ignored.
 
 Port {{ security_ssh_port }}
 AddressFamily inet
 ListenAddress 0.0.0.0
-Protocol 2
-
-# Host Keys
-HostKey /etc/ssh/ssh_host_ed25519_key
-HostKey /etc/ssh/ssh_host_rsa_key
-HostKey /etc/ssh/ssh_host_ecdsa_key
 
 # Security - Modern ciphers only
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
@@ -20,7 +23,9 @@ KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384
 PermitRootLogin {{ security_ssh_permit_root_login }}
 PubkeyAuthentication {{ security_ssh_pubkey_authentication }}
 PasswordAuthentication {{ security_ssh_password_authentication }}
-ChallengeResponseAuthentication no
+# ChallengeResponseAuthentication was renamed in OpenSSH 8.7; the old spelling
+# is a deprecated alias that current sshd warns about.
+KbdInteractiveAuthentication no
 GSSAPIAuthentication no
 UsePAM yes
 
@@ -45,11 +50,3 @@ PermitUserEnvironment no
 # Logging
 SyslogFacility AUTH
 LogLevel VERBOSE
-
-# User Access
-{% if security_ssh_allowed_users %}
-AllowUsers {{ security_ssh_allowed_users | join(' ') }}
-{% endif %}
-
-# SFTP
-Subsystem sftp internal-sftp

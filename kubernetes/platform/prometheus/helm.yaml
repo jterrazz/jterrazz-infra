@@ -39,7 +39,9 @@ server:
   # Fix data directory permissions (Prometheus runs as nobody:65534)
   initContainers:
     - name: fix-permissions
-      image: busybox:1.37
+      # Digest-pinned to the same busybox reference the app chart and the
+      # openpanel/librechat datastores use — one image, one digest, cluster-wide.
+      image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
       command: ["sh", "-c", "chown -R 65534:65534 /data"]
       volumeMounts:
         - name: storage-volume

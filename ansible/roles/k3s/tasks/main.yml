@@ -5,6 +5,7 @@
   ansible.builtin.stat:
     path: /usr/local/bin/k3s
   register: k3s_binary
+  tags: [k3s]
 
 - name: Get installed k3s version
   ansible.builtin.command: k3s --version
@@ -12,28 +13,35 @@
   changed_when: false
   failed_when: false
   when: k3s_binary.stat.exists
+  tags: [k3s]
 
 - name: Determine if k3s needs installation
   ansible.builtin.set_fact:
     k3s_needs_install: "{{ not k3s_binary.stat.exists or (k3s_version not in (k3s_current_version.stdout | default(''))) }}"
+  tags: [k3s]
 
 # Token Management - Generate once and persist
 - name: Check if k3s token file exists
   ansible.builtin.stat:
     path: "{{ k3s_config_dir }}/token"
   register: k3s_token_file
+  tags: [k3s]
 
 - name: Read existing token
   ansible.builtin.slurp:
     src: "{{ k3s_config_dir }}/token"
   register: k3s_existing_token
   when: k3s_token_file.stat.exists
+  no_log: true
+  tags: [k3s]
 
 - name: Generate new token if none exists
   ansible.builtin.command: openssl rand -hex 32
   register: k3s_generated_token
   changed_when: false
   when: not k3s_token_file.stat.exists and k3s_token == ""
+  no_log: true
+  tags: [k3s]
 
 - name: Set k3s token fact
   ansible.builtin.set_fact:
@@ -45,12 +53,15 @@
       {%- else -%}
         {{ k3s_generated_token.stdout }}
       {%- endif -%}
+  no_log: true
+  tags: [k3s]
 
 - name: Ensure k3s config directory exists
   ansible.builtin.file:
     path: "{{ k3s_config_dir }}"
     state: directory
     mode: "0755"
+  tags: [k3s]
 
 - name: Save token to file
   ansible.builtin.copy:
@@ -58,17 +69,18 @@
     dest: "{{ k3s_config_dir }}/token"
     mode: "0600"
   when: not k3s_token_file.stat.exists
+  no_log: true
+  tags: [k3s]
 
-# Get Tailscale IP for TLS SAN
-- name: Get Tailscale IP
-  ansible.builtin.command: tailscale ip -4
-  register: k3s_tailscale_ip_result
-  changed_when: false
-  failed_when: false
-
-- name: Set Tailscale IP fact
-  ansible.builtin.set_fact:
-    k3s_tailscale_ip: "{{ k3s_tailscale_ip_result.stdout | default('') }}"
+# The tailscale role sets these earlier in site.yml; this only fires when the
+# k3s play is run on its own. The IP and DNS name go into the API server's TLS
+# SANs, which is the only way `kubectl` over the tailnet gets a valid cert.
+- name: Ensure Tailscale facts are available
+  ansible.builtin.include_role:
+    name: tailscale
+    tasks_from: facts
+  when: tailscale_ip is not defined
+  tags: [k3s]
 
 # Configuration
 - name: Generate k3s config
@@ -77,6 +89,15 @@
     dest: "{{ k3s_config_dir }}/config.yaml"
     mode: "0640"
   notify: Restart k3s
+  tags: [k3s]
+
+# Apply a config change BEFORE the readiness checks below. Without this the
+# handler runs at the end of the play, i.e. k3s gets restarted only after
+# "Wait for k3s to be ready" and "Verify cluster is running" have already
+# passed against the OLD config — so a broken config change looks green and
+# only surfaces on the next run.
+- name: Restart k3s now if the config changed
+  ansible.builtin.meta: flush_handlers
 
 # Installation
 - name: Download k3s install script
@@ -85,6 +106,7 @@
     dest: /tmp/k3s-install.sh
     mode: "0755"
   when: k3s_needs_install
+  tags: [k3s]
 
 - name: Install k3s
   ansible.builtin.shell: |
@@ -94,25 +116,29 @@
   changed_when: true
   when: k3s_needs_install
   notify: Restart k3s
+  tags: [k3s]
 
 - name: Cleanup install script
   ansible.builtin.file:
     path: /tmp/k3s-install.sh
     state: absent
+  tags: [k3s]
 
 # Service Management
 - name: Enable k3s service
-  ansible.builtin.systemd:
+  ansible.builtin.systemd_service:
     name: k3s
     enabled: "{{ k3s_service_enabled }}"
     state: started
     daemon_reload: true
+  tags: [k3s]
 
 - name: Wait for k3s to be ready
   ansible.builtin.wait_for:
     port: 6443
     host: "{{ k3s_node_ip }}"
     timeout: 120
+  tags: [k3s]
 
 - name: Verify cluster is running
   ansible.builtin.command: k3s kubectl get nodes
@@ -121,6 +147,7 @@
   retries: 10
   delay: 5
   until: k3s_nodes.rc == 0
+  tags: [k3s]
 
 # Kubectl Setup
 - name: Create kubectl symlink
@@ -128,17 +155,20 @@
     src: /usr/local/bin/k3s
     dest: /usr/local/bin/kubectl
     state: link
+  tags: [k3s]
 
 - name: Set kubeconfig permissions
   ansible.builtin.file:
     path: /etc/rancher/k3s/k3s.yaml
     mode: "0644"
+  tags: [k3s]
 
 - name: Create .kube directory for root
   ansible.builtin.file:
     path: /root/.kube
     state: directory
     mode: "0700"
+  tags: [k3s]
 
 - name: Copy kubeconfig for root
   ansible.builtin.copy:
@@ -146,3 +176,4 @@
     dest: /root/.kube/config
     remote_src: true
     mode: "0600"
+  tags: [k3s]

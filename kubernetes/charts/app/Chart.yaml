@@ -4,5 +4,14 @@ apiVersion: v2
 name: app
 description: Standard application chart for jterrazz infrastructure
 type: application
-version: 2.1.0
+# 2.2.0 — additive, no consumer action required:
+#   * container securityContext hardening (runAsNonRoot, no privilege
+#     escalation, capabilities drop ALL, seccomp RuntimeDefault), overridable
+#     via spec.securityContext
+#   * hostPath PV nodeAffinity, emitted only when infrastructure.nodeName is
+#     supplied (app-repo CI, which does not pass it, is unaffected)
+#   * registry-secret .dockerconfigjson is now built with dict|toJson instead
+#     of raw string interpolation — fixes passwords containing " or \
+#   * spec.storage.size / spec.storage.mountPath are now `required`
+version: 2.2.0
 appVersion: "1.17.1"

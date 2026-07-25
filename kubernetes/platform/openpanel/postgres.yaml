@@ -54,9 +54,45 @@ spec:
       labels:
         app: op-postgres
     spec:
+      # hostPath dirs are created root-owned. The postgres entrypoint normally
+      # chowns PGDATA itself and su-exec's down, but we pin the container to
+      # uid 70 below so that branch never runs — hence this explicit chown.
+      # NOTE 70:70 is correct for the ALPINE variant (the Debian-based
+      # postgres images use 999 instead).
+      initContainers:
+        - name: fix-perms
+          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          command: ["sh", "-c", "chown -R 70:70 /var/lib/postgresql/data"]
+          # Must stay root to chown, but keeps every other guardrail: no
+          # privilege escalation, seccomp on, and all capabilities dropped
+          # except the three `chown -R` needs (CHOWN to change ownership,
+          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
       containers:
         - name: postgres
           image: postgres:14-alpine
+          # Runs as the alpine image's `postgres` user (uid/gid 70); the
+          # initContainer above hands it a correctly-owned PGDATA.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 5432
           env:

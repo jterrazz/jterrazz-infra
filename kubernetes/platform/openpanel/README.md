@@ -23,8 +23,10 @@ package.
 - **op-api** owns DB migrations (`pnpm -r run migrate:deploy` on boot: Prisma
   for Postgres + code-migrations for ClickHouse), then `pnpm start`.
 - **op-worker** runs the BullMQ queues/crons (event/session/profile flushers).
-- **op-dashboard** is the Next.js UI; SSR talks to op-api in-cluster via
-  `API_URL_SSR=http://op-api:3000`.
+- **op-dashboard** is the Next.js UI. `API_URL_SSR=http://op-api:3000` is set
+  in `config.yaml` so that SSR talks to op-api in-cluster, but it is **not
+  known to be honored by image 2.2** — the CoreDNS special case below is what
+  actually makes SSR work today. See "Dashboard SSR" under Gotchas.
 - Public host routes **only** `/api/track`; everything else (dashboard,
   `/api/export`, `/api/live`, admin) is reachable only via the tailnet.
 
@@ -38,7 +40,21 @@ package.
 | ClickHouse    | `clickhouse/clickhouse-server:25.10.2.65`      |
 | PostgreSQL    | `postgres:14-alpine`                           |
 | Redis         | `redis:7.2.5-alpine`                           |
-| (init) chown  | `busybox:1.36`                                 |
+| (init) chown  | `busybox:1.37` (digest-pinned, see manifests)  |
+
+The namespace itself is **not** declared here — it lives with every other
+platform namespace in
+`kubernetes/infrastructure/base/platform-namespaces.yaml` and is created by
+the kustomize base.
+
+All six workloads run with a hardened container `securityContext`
+(`allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`,
+`seccompProfile: RuntimeDefault`). The three datastores additionally pin a
+non-root uid — ClickHouse 101, Postgres 70 (alpine variant), Redis 999 — each
+paired with a root `fix-perms` initContainer that chowns the root-owned
+hostPath dir, since pinning the uid bypasses the entrypoint's own chown. The
+`op-*` app images do not document their user, so they are hardened without a
+uid pin (see the TODO in `apps.yaml`).
 
 ClickHouse config (`clickhouse.yaml` ConfigMap) is upstream's self-hosting
 config = the **issue #324 mitigation**: logger→console, all heavy system log
@@ -64,7 +80,7 @@ One directory per app (repo convention): the three datastores nest under
 
 ## Secrets & config
 
-- **Secrets** — Infisical `/openpanel` (prod) → synced to Secret
+- **Secrets** — Infisical `/jterrazz-infrastructure/openpanel` (prod) → synced to Secret
   `openpanel-secrets` by the Infisical operator (read-only CI identity). Keys:
   `POSTGRES_PASSWORD`, `COOKIE_SECRET`, `DATABASE_URL`, `DATABASE_URL_DIRECT`.
   The project **clientId/clientSecret** (from the OpenPanel UI) should also be
@@ -156,12 +172,25 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
 - **ClickHouse hostPath perms**: the pod runs as uid 101; an init container
   chowns `/var/lib/clickhouse` because hostPath dirs are created root-owned.
 - **Dashboard SSR resolves `openpanel.jterrazz.com` to Traefik's ClusterIP,
-  in-cluster.** Image 2.2 has no `API_URL_SSR` override (it's only on `main`),
-  so op-dashboard SSR fetches its own public URL from inside the pod. Resolving
-  that to the node tailnet IP hairpins through the ServiceLB and times out (→
-  `/onboarding` throws `[tRPC SSR Error] fetch failed`). Fix: the `coredns-custom`
-  block maps `openpanel.jterrazz.com` → Traefik ClusterIP (separate hosts line
-  from the other private hosts, which use the node tailnet IP). The browser is
-  unaffected (public DNS → node tailnet IP). Revisit once a released image
-  supports `API_URL_SSR=http://op-api:3000` — then this coredns special-case
-  can be dropped.
+  in-cluster.** op-dashboard's server-side rendering fetches its own public URL
+  from inside the pod. Resolving that to the node tailnet IP hairpins through
+  the ServiceLB and times out (→ `/onboarding` throws
+  `[tRPC SSR Error] fetch failed`). Fix: the `coredns-custom` block maps
+  `openpanel.jterrazz.com` → Traefik ClusterIP (a separate hosts line from the
+  other private hosts, which use the node tailnet IP). The browser is
+  unaffected (public DNS → node tailnet IP).
+
+  `API_URL_SSR=http://op-api:3000` **is** set in `config.yaml` — it is
+  harmless and forward-compatible, and would make SSR bypass the ingress
+  entirely. The reason the CoreDNS special case still exists is that image 2.2
+  was not observed to honor it (the override landed on `main` after the 2.2
+  cut). **To verify after the next repave: if `API_URL_SSR` is honored by
+  image 2.2, the CoreDNS Traefik-ClusterIP special case can be removed.** Test
+  by deleting the `openpanel.jterrazz.com` line from the `coredns-custom`
+  block in `ansible/playbooks/platform.yml`, restarting CoreDNS and
+  op-dashboard, and loading `/onboarding`. Until that is confirmed, both the
+  env var and the CoreDNS mapping stay.
+
+  Because SSR calls arrive at Traefik from a **pod IP**, the private
+  IngressRoute uses the `cluster-internal-access` middleware rather than
+  `private-access` (see `ingress.yaml`).

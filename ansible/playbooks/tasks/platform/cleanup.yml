@@ -1,0 +1,27 @@
+---
+# ========================================
+# Cleanup
+# ========================================
+
+- name: Cleanup temporary manifests
+  ansible.builtin.file:
+    path: "{{ manifest_dest }}"
+    state: absent
+
+# No version numbers in here. The previous banner listed hand-written versions
+# ("cert-manager v1.19.3", "n8n v1.16.29") that had drifted from the actual
+# --version pins in the Helm tasks, so it confidently reported versions that
+# were never deployed. The pins in tasks/platform/*.yml are the source of
+# truth; `helm list -A` on the node is the source of truth for what is
+# actually running.
+- name: Deployment complete
+  ansible.builtin.debug:
+    msg: |
+      Platform deployment complete.
+
+      Deployed: cert-manager, infisical secrets-operator, cloudflared,
+      grafana + loki + tempo + prometheus + otel-collector, n8n, portainer,
+      librechat, openpanel, registry.
+
+      App chart published to: oci://registry.jterrazz.com/charts/app
+      Installed versions:     helm list -A --kubeconfig {{ kubeconfig_remote }}

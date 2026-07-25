@@ -1,6 +1,6 @@
 ---
 # Security Hardening Playbook
-# Configures SSH, firewall, fail2ban, and system hardening
+# Configures SSH, the firewall, unattended upgrades and kernel hardening.
 
 - name: Security Hardening
   hosts: all
@@ -12,3 +12,4 @@
       ansible.builtin.include_role:
         name: security
       when: not (skip_security | default(false))
+      tags: [security, firewall, ssh, updates, sysctl, packages]

@@ -11,3 +11,4 @@
     - name: Include storage role
       ansible.builtin.include_role:
         name: storage
+      tags: [storage]

@@ -9,8 +9,14 @@
 #     IngressRoute. The public ingest host (analytics.jterrazz.com) is NOT
 #     referenced here — it only carries /api/track and is configured
 #     client-side in @jterrazz/analytics.
-#   API_URL_SSR -> in-cluster op-api Service, bypassing the ingress for the
-#     dashboard's server-side rendering.
+#   API_URL_SSR -> in-cluster op-api Service, intended to bypass the ingress
+#     for the dashboard's server-side rendering. Set here because it is
+#     harmless and forward-compatible, but image 2.2 was NOT observed to
+#     honor it (the override landed upstream on `main` after the 2.2 cut) —
+#     which is why the CoreDNS `openpanel.jterrazz.com` -> Traefik ClusterIP
+#     special case still exists. To verify after the next repave: if 2.2 does
+#     honor it, that CoreDNS special case can be dropped. See README.md
+#     ("Dashboard SSR" under Gotchas) for the test.
 #   CLICKHOUSE_URL path segment /openpanel = the DB created by init-db.sh.
 apiVersion: v1
 kind: ConfigMap

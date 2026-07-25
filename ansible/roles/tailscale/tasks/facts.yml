@@ -1,0 +1,40 @@
+---
+# Tailscale facts — THE single place that shells out for the node's tailnet
+# identity.
+#
+# These two values used to be recomputed in three separate places (the end of
+# this role, the top of platform.yml and the k3s role), which meant three
+# slightly different failure modes for the same lookup. Everything now either
+# inherits the facts from the role run earlier in site.yml, or pulls them in
+# with:
+#
+#   - name: Ensure Tailscale facts are available
+#     ansible.builtin.include_role:
+#       name: tailscale
+#       tasks_from: facts
+#     when: tailscale_ip is not defined
+#
+# — which is what platform.yml does when it runs standalone from CI (the
+# deploy-platform.yaml workflow skips the networking play).
+
+- name: Get Tailscale IPv4 address
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ip_result
+  changed_when: false
+  failed_when: false
+
+- name: Get Tailscale status
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_result
+  changed_when: false
+  failed_when: false
+
+- name: Set shared Tailscale facts
+  ansible.builtin.set_fact:
+    tailscale_ip: "{{ tailscale_ip_result.stdout | default('') | trim }}"
+    # DNSName comes back fully qualified with a trailing dot; strip it so the
+    # value can be used directly as a hostname in Helm values and TLS SANs.
+    tailscale_dns_hostname: >-
+      {{ (tailscale_status_result.stdout | from_json).Self.DNSName | regex_replace('\.$', '')
+         if tailscale_status_result.rc == 0 else '' }}
+    cacheable: true

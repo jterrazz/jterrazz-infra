@@ -3,4 +3,8 @@ host: n8n.jterrazz.com
 port: 5678
 private: true
 storage:
-  size: 1Gi
+  # Named-volume map (platform chart 2.0). Key `data` keeps the
+  # historical PV/PVC names n8n-data and the hostPath
+  # /var/lib/k8s-data/n8n unchanged.
+  data:
+    size: 1Gi

@@ -11,8 +11,24 @@
 # 2. manual - For persistent data that survives app deletion
 #    - Static provisioning (requires pre-created PV)
 #    - Data retained when PVC is deleted (Retain policy)
-#    - Location: /var/lib/k8s-data/
-#    - Used by: n8n, Grafana, Prometheus, Loki, Tempo
+#    - Location: /var/lib/k8s-data/  (on OrbStack: a symlink to the Mac, so
+#      the data also survives a `pulumi destroy` repave)
+#    - Layout convention: one directory per app; a multi-component app nests
+#      its volumes under <app>/ (e.g. librechat/{mongo,uploads}).
+#
+#    Used by (PV/PVC name -> where it is declared):
+#      platform chart (kubernetes/charts/platform, storage map):
+#        n8n-data, portainer-data, librechat-data, librechat-uploads
+#      app chart (kubernetes/charts/app): <app>-<env>-data, for any app that
+#        sets spec.storage
+#      raw manifests (kubernetes/platform/openpanel/):
+#        openpanel-postgres, openpanel-clickhouse, openpanel-redis
+#      Ansible-rendered templates (outside kubernetes/):
+#        registry-data              <- templates/kubernetes/registry.yaml.j2
+#        grafana / prometheus / loki / tempo telemetry volumes
+#                                   <- templates/kubernetes/telemetry-storage.yaml.j2
+#      (Grafana has no `storage` block in its platform.yaml — its PV comes
+#       from the telemetry template, which also carries the nodeAffinity.)
 
 apiVersion: storage.k8s.io/v1
 kind: StorageClass

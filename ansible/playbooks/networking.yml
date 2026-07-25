@@ -12,3 +12,4 @@
       ansible.builtin.include_role:
         name: tailscale
       when: not (skip_tailscale | default(false))
+      tags: [networking, tailscale, dns]

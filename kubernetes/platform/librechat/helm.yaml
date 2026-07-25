@@ -3,18 +3,24 @@
 #
 # Datastore strategy: the chart's bundled MongoDB/Redis subcharts pull from
 # the deprecated Bitnami repo (broken since 2025-09). We disable ALL bundled
-# datastores and run a standalone mongo:7 (see mongodb.yaml) on a `manual`
+# datastores and run a standalone mongo:7.0 (see mongodb.yaml) on a `manual`
 # hostPath PVC — that survives a cluster repave, the default `local-path` SC
 # does not.
 
 replicaCount: 1
 
-# Pin to the chart's appVersion default (v0.8.7-rc1) by leaving tag empty.
-# Bump deliberately — set an explicit tag here once a stable release is cut.
+# Tag pinned EXPLICITLY rather than inherited from the chart's appVersion.
+# An empty tag means "whatever appVersion this chart revision happens to
+# carry", so the running image could change under us without any diff here.
+#
+# v0.8.7-rc1 is what chart 2.0.6 (pinned in ansible/playbooks/platform.yml)
+# ships as its appVersion; upstream has cut no stable release for this chart
+# revision, so we pin the rc deliberately rather than pretend otherwise.
+# Bump this together with the chart version once a stable tag exists.
 image:
   registry: registry.librechat.ai
   repository: danny-avila/librechat
-  tag: ""
+  tag: "v0.8.7-rc1"
 
 # IngressRoute (platform.yaml) targets a Service literally named `librechat`,
 # so override the chart's fullname to match.
@@ -25,9 +31,11 @@ service:
   port: 3080
   targetPort: 3080
 
-# Persist user uploads + generated images (see uploads.yaml). Same PVC mounted
-# at both LibreChat asset dirs via subPath. Without this they're lost on every
-# pod restart (imageVolume stays off; this manual hostPath PVC is repave-safe).
+# Persist user uploads + generated images. The `librechat-uploads` PVC comes
+# from platform.yaml's storage map (platform chart 2.0 named volumes; it used
+# to live in a standalone uploads.yaml). Same PVC mounted at both LibreChat
+# asset dirs via subPath. Without this they're lost on every pod restart
+# (imageVolume stays off; this manual hostPath PVC is repave-safe).
 volumes:
   - name: uploads
     persistentVolumeClaim:
@@ -79,9 +87,14 @@ librechat:
   # generating its own.
   existingSecretName: librechat-credentials-env
 
-  # No persistent upload volume in v1 — keeps it simple. Uploaded images live
-  # in the container fs and are lost on restart. Give it a manual hostPath PVC
-  # when we go public (don't rely on local-path: lost on repave).
+  # The chart's OWN imageVolume stays off — we provide persistence ourselves.
+  # (This comment used to claim there was no persistent upload volume at all,
+  # which the `volumes:`/`volumeMounts:` block above has contradicted since
+  # the librechat-uploads PVC was added.) Uploads and generated images live on
+  # the manual hostPath PVC `librechat-uploads`, declared in platform.yaml's
+  # storage map and mounted above at /app/uploads and
+  # /app/client/public/images via subPath. Deliberately not local-path: that
+  # SC is wiped on a repave.
   imageVolume:
     enabled: false
 

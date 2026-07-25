@@ -1,26 +1,23 @@
 ---
 # k3s Role - Default Variables
-
-# Version
-k3s_version: "v1.35.1+k3s1"
-
-# Directories
-k3s_config_dir: "/etc/rancher/k3s"
-k3s_data_dir: "/var/lib/rancher/k3s"
+#
+# Config a human is expected to change (version, directories, node IP) lives
+# in playbooks/group_vars/all.yml — that file is the visible config surface.
+# Role defaults are only for values that should not normally be touched, and
+# k3s_version is deliberately NOT duplicated here: two copies of a version
+# pin is a silent-drift trap.
+#
+# Also deliberately absent, after grepping the repo for consumers:
+#   - k3s_cluster_cidr / k3s_service_cidr — never rendered into the config
+#     template, and their values (10.42.0.0/16, 10.43.0.0/16) are k3s's own
+#     defaults, so dropping them changes nothing.
+#   - k3s_tls_san / k3s_disable_components / k3s_extra_args — nothing in this
+#     repo ever set them. The TLS SAN list is now built directly in
+#     templates/config.yaml.j2 from the node + Tailscale facts.
 
 # Token - generated once and stored in config file
 # Leave empty for auto-generation on first install
 k3s_token: ""
-
-# Network configuration
-k3s_node_ip: "{{ ansible_default_ipv4.address }}"
-k3s_cluster_cidr: "10.42.0.0/16"
-k3s_service_cidr: "10.43.0.0/16"
-
-# Server configuration
-k3s_tls_san: []
-k3s_disable_components: []
-k3s_extra_args: []
 
 # Service
 k3s_service_enabled: true

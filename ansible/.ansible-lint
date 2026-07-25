@@ -1,0 +1,28 @@
+---
+# ansible-lint configuration
+#
+# CI runs `ansible-lint playbooks/` from the `ansible/` directory
+# (.github/workflows/validate.yaml), so this file is picked up from the cwd.
+#
+# Profile `production` is the strictest built-in tier. It is achievable here
+# because this repo is a small, single-target playbook set — if a rule ever
+# becomes genuinely wrong for this setup, skip it below WITH A REASON rather
+# than dropping the profile.
+profile: production
+
+exclude_paths:
+  - .github/
+  - kubernetes/
+  - pulumi/
+
+skip_list:
+  # This repo drives one node imperatively (helm/kubectl on the host). A large
+  # number of steps genuinely have no module equivalent and their idempotency
+  # is expressed via changed_when, which we do set.
+  - command-instead-of-shell # `shell` is used where set -o pipefail / loops are needed
+  - no-changed-when # explicitly handled everywhere it matters; the rest are probes
+  # Long single-line helm invocations are more readable than folded YAML here.
+  - yaml[line-length]
+
+warn_list:
+  - experimental

@@ -5,17 +5,29 @@
 # drop `private` and lean on LibreChat's own auth (registration is disabled
 # below in helm.yaml until then).
 #
-# The `storage` block provisions the hostPath PV/PVC `librechat-data`
-# (/var/lib/k8s-data/librechat). It backs the standalone MongoDB in
-# mongodb.yaml. We use this `manual` hostPath PVC (not the default
-# `local-path` SC) on purpose: /var/lib/k8s-data is the dir that survives a
-# `pulumi destroy` repave; local-path volumes do not.
+# The `storage` map provisions both hostPath PV/PVC pairs. We use `manual`
+# hostPath PVCs (not the default `local-path` SC) on purpose:
+# /var/lib/k8s-data is the dir that survives a `pulumi destroy` repave;
+# local-path volumes do not.
+#
+# `uploads` used to live in a hand-written uploads.yaml (deleted): the
+# platform chart gained a named-volume map in 2.0, so LibreChat's two volumes
+# are now declared in one place. Object names and hostPath paths are
+# unchanged — librechat-data / librechat-uploads, mounting
+# /var/lib/k8s-data/librechat/{mongo,uploads}.
 name: librechat
 host: chat.jterrazz.com
 port: 3080
 private: true
 storage:
-  size: 3Gi
-  # Nest the MongoDB volume under librechat/ so the on-disk layout is
-  # 1 dir = 1 app (sibling: librechat/uploads from uploads.yaml).
-  pathSuffix: mongo
+  # Backs the standalone MongoDB in mongodb.yaml (users, logins, chat
+  # history). Nested under librechat/ so the on-disk layout is 1 dir = 1 app.
+  data:
+    size: 3Gi
+    pathSuffix: mongo
+  # User-uploaded files and generated images. Mounted by helm.yaml at both
+  # /app/uploads and /app/client/public/images via subPath. Without it these
+  # live on the container's ephemeral fs and are lost on every pod restart.
+  uploads:
+    size: 5Gi
+    pathSuffix: uploads

@@ -3,6 +3,28 @@
 {{- $envVars := fromYaml (include "app.envVars" .) -}}
 {{- $platformEnv := fromYaml (include "app.platformEnv" .) -}}
 {{- $platformClientLabels := fromYaml (include "app.platformClientLabels" .) -}}
+{{- /*
+Container-level securityContext (pod-level runAsUser/runAsGroup/fsGroup 1000
+are set further down). Shape copied from cloudflared's deployment, which is
+the gold standard in this repo.
+
+readOnlyRootFilesystem is deliberately NOT set: every app here is a Next.js
+or Node service that writes caches (.next/cache, /tmp) at runtime, and
+flipping it would crash-loop them.
+
+Escape hatch: `spec.securityContext` is merged OVER these defaults, so an app
+that genuinely needs a capability back can ask for it without forking the
+chart. Note mergeOverwrite mutates its first argument, hence deepCopy.
+*/ -}}
+{{- $secDefaults := dict
+      "allowPrivilegeEscalation" false
+      "capabilities" (dict "drop" (list "ALL"))
+      "seccompProfile" (dict "type" "RuntimeDefault") -}}
+{{- /* runAsNonRoot would contradict an explicit spec.runAsRoot opt-out. */ -}}
+{{- if not .Values.spec.runAsRoot -}}
+{{- $_ := set $secDefaults "runAsNonRoot" true -}}
+{{- end -}}
+{{- $securityContext := mergeOverwrite (deepCopy $secDefaults) (.Values.spec.securityContext | default dict) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -45,8 +67,22 @@ spec:
         - name: fix-permissions
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
           command: ["sh", "-c", "chown -R 1000:1000 /data"]
+          # Must stay root: hostPath directories are created root-owned and
+          # only root can chown them to the app's uid. It still gets the rest
+          # of the hardening — no privilege escalation, seccomp on, and every
+          # capability dropped except the three `chown -R` actually needs:
+          # CHOWN to change ownership, FOWNER + DAC_OVERRIDE to traverse and
+          # modify directories root does not own (root bypasses file
+          # permission checks only by virtue of DAC_OVERRIDE).
           securityContext:
             runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: data
               mountPath: /data
@@ -55,6 +91,8 @@ spec:
         - name: {{ include "app.name" . }}
           image: {{ include "app.image" . }}
           imagePullPolicy: Always
+          securityContext:
+            {{- toYaml $securityContext | nindent 12 }}
           ports:
             - containerPort: {{ .Values.spec.port }}
           env:

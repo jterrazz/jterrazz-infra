@@ -12,11 +12,12 @@ import { MachineOutputs } from "./types";
 export function createHetznerMachine(config: pulumi.Config): MachineOutputs {
     // Stack config with defaults. cax21 is the smallest ARM box that fits
     // the current platform's footprint; nbg1 (Nuremberg) is the closest
-    // ARM-capable region; ubuntu-24.04 mirrors the OrbStack default for
-    // parity.
+    // ARM-capable region; debian-13 mirrors the OrbStack default (trixie)
+    // for parity. Hetzner image names are major-only ("debian-13", not
+    // "debian-13.0") and resolve per-architecture automatically.
     const serverType = config.get("serverType") || "cax21";
     const location = config.get("location") || "nbg1";
-    const image = config.get("image") || "ubuntu-24.04";
+    const image = config.get("image") || "debian-13";
 
     // API token from the `hcloud:token` Pulumi-encrypted stack config.
     // We construct an explicit Provider because the default provider

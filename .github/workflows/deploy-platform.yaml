@@ -27,6 +27,13 @@ on:
       - 'kubernetes/infrastructure/**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  # `environment: production` below makes the runner's GITHUB_TOKEN create
+  # and update a Deployment record (in_progress → success/failure) — that
+  # needs the deployments scope, not just contents:read.
+  deployments: write
+
 concurrency:
   group: deploy-platform
   cancel-in-progress: false
@@ -35,6 +42,9 @@ jobs:
   deploy:
     name: Apply platform via Ansible
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
     # Records a GitHub Deployment under the `production` environment and
     # auto-updates its status (in_progress → success/failure) as this job
     # runs, so the repo's Environments/Deployments view stays live. (The old
@@ -42,11 +52,17 @@ jobs:
     # workflow was retired post-Hetzner-destroy and never re-added here.)
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Fetch CI secrets (Tailscale OAuth, docker registry creds) + join
       # the tailnet as tag:ci. After this step the runner can reach the
       # OrbStack VM at jterrazz-infrastructure.tail77a797.ts.net.
+      #
+      # Left at @main deliberately: this is jterrazz's own first-party
+      # action (owner-controlled, not a third-party supply-chain risk in
+      # the same sense as the pinned actions below), and floating on @main
+      # is how it's meant to pick up changes across the fleet of app repos
+      # that also consume it.
       - name: Setup infrastructure
         uses: jterrazz/jterrazz-actions/actions/infra-connect@main
         with:
@@ -54,7 +70,7 @@ jobs:
           infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
@@ -83,7 +99,9 @@ jobs:
       # produces locally. Shared/core secrets live at /jterrazz-infrastructure; per-service
       # secrets in subfolders with de-prefixed keys (grafana + portainer both
       # ADMIN_PASSWORD), so each path is fetched EXPLICITLY (not recursively) to
-      # avoid collisions. Mirrors fetch_secrets_file() in deploy.sh — keep in sync.
+      # avoid collisions. Mirrors fetch_secrets_file() in scripts/deploy.sh —
+      # same hard-fail on missing secrets, same `\`/`"`/`\n` escaping. The two
+      # are kept in sync by hand; if you change one, change the other.
       - name: Build extra-vars file
         env:
           INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -150,7 +168,7 @@ jobs:
           ansible-playbook playbooks/platform.yml \
             -i inventories/ci/hosts.yml \
             -e "@$EXTRA_VARS_FILE" \
-            -e ansible_ssh_private_key_file=$CI_DEPLOY_KEY_FILE
+            -e "ansible_ssh_private_key_file=$CI_DEPLOY_KEY_FILE"
 
       - name: Wipe temp secrets
         if: always()

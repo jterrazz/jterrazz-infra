@@ -21,5 +21,6 @@ subsection() { echo -e "\n${BLUE}  $1${NC}"; }
 
 # Project root directory (two levels up from lib/)
 if [[ -z "${PROJECT_DIR:-}" ]]; then
-    export PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    export PROJECT_DIR
 fi

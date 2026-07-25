@@ -1,0 +1,95 @@
+---
+# 7. LibreChat (private AI chat UI, wired to gateway-intelligence)
+# Platform resources first (Cert + private IngressRoute + the hostPath PVCs:
+# `librechat-data` backing the standalone MongoDB, and the uploads volume for
+# user uploads / generated images — both are named volumes under `storage` in
+# librechat's platform.yaml, so the platform chart creates them here and there
+# is no separate uploads manifest to apply).
+- name: Deploy LibreChat platform resources
+  ansible.builtin.command: >
+    helm upgrade --install librechat-platform {{ platform_chart }}
+    --namespace platform-ai
+    --values {{ manifest_dest }}/kubernetes/platform/librechat/platform.yaml
+    --set infrastructure.nodeName={{ inventory_hostname }}
+    --wait
+    --timeout 2m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_platform_result
+  changed_when: "'has been upgraded' in librechat_platform_result.stdout or 'has been installed' in librechat_platform_result.stdout"
+
+# Sync LibreChat secrets from Infisical (/jterrazz-infrastructure/librechat) before the app so its
+# `existingSecretName` resolves on first boot.
+- name: Apply LibreChat Infisical secret
+  ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/secret.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_secret_apply
+  changed_when: "'created' in librechat_secret_apply.stdout or 'configured' in librechat_secret_apply.stdout"
+
+- name: Wait for librechat-credentials-env to be materialized by the Infisical operator
+  ansible.builtin.command: kubectl get secret librechat-credentials-env -n platform-ai
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_secret_check
+  until: librechat_secret_check.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+# Standalone MongoDB (mongo:7) — replaces the chart's broken Bitnami
+# subchart. Uses the librechat-data PVC from the platform chart above.
+- name: Deploy LibreChat MongoDB
+  ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/mongodb.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_mongo_apply
+  changed_when: "'created' in librechat_mongo_apply.stdout or 'configured' in librechat_mongo_apply.stdout"
+
+- name: Wait for LibreChat MongoDB to be ready
+  ansible.builtin.command: kubectl rollout status deployment/librechat-mongodb -n platform-ai --timeout=120s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  changed_when: false
+
+# Additive NetworkPolicy so LibreChat (platform-ai) can reach the gateway
+# Service — the gateway's own policy doesn't list platform namespaces.
+# On a fresh cluster the gateway app (and its namespace) isn't deployed
+# yet — the app CI creates it later — so ensure the namespace exists first;
+# the policy then just waits for the gateway pods to appear. Helm adopts
+# the pre-created namespace when the app deploys.
+#
+# `create --dry-run=client | apply` rather than `get || create`: idempotent in
+# one step and it reports created/unchanged instead of leaking a "not found"
+# error into the log on every first run.
+- name: Ensure gateway namespace exists (for the additive NetworkPolicy on a fresh cluster)
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      kubectl create namespace prod-gateway-intelligence \
+        --dry-run=client -o yaml | kubectl apply -f -
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: gateway_ns_ensure
+  changed_when: "'created' in gateway_ns_ensure.stdout"
+
+- name: Allow LibreChat to reach the gateway
+  ansible.builtin.command: kubectl apply -f {{ manifest_dest }}/kubernetes/platform/librechat/gateway-netpol.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_netpol_apply
+  changed_when: "'created' in librechat_netpol_apply.stdout or 'configured' in librechat_netpol_apply.stdout"
+
+- name: Install LibreChat via Helm
+  ansible.builtin.command: >
+    helm upgrade --install librechat oci://ghcr.io/danny-avila/librechat-chart/librechat
+    --namespace platform-ai
+    --version 2.0.6
+    --values {{ manifest_dest }}/kubernetes/platform/librechat/helm.yaml
+    --wait
+    --timeout 5m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: librechat_result
+  changed_when: "'has been upgraded' in librechat_result.stdout or 'has been installed' in librechat_result.stdout"

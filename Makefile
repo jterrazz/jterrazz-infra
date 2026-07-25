@@ -6,7 +6,7 @@
 # `scripts/deploy.sh` is the canonical entry point.
 
 .DEFAULT_GOAL := help
-.PHONY: help deploy deploy-local destroy-local apps deps
+.PHONY: help deploy deploy-local destroy-local apps deps lint
 
 GREEN := \033[32m
 YELLOW := \033[33m
@@ -35,6 +35,38 @@ deps: ## Check required tools
 	@command -v node    >/dev/null 2>&1 && echo "✓ Node.js"   || echo "✗ Node.js"
 	@command -v kubectl >/dev/null 2>&1 && echo "✓ kubectl"   || echo "✗ kubectl"
 	@command -v orbctl  >/dev/null 2>&1 && echo "✓ orbctl"    || echo "✗ orbctl (only needed for `make deploy-local`)"
+
+##@ Lint
+
+lint: ## Run the same local checks CI runs (shellcheck, ansible-lint, helm lint) — best-effort
+	@echo "== shellcheck scripts/ =="
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck scripts/*.sh scripts/lib/*.sh && echo "✓ shellcheck clean"; \
+	else \
+		echo "✗ shellcheck not installed (brew install shellcheck) — skipped"; \
+	fi
+	@echo ""
+	@echo "== ansible-lint ansible/ =="
+	@if command -v ansible-lint >/dev/null 2>&1; then \
+		ansible-lint ansible/ && echo "✓ ansible-lint clean"; \
+	else \
+		echo "✗ ansible-lint not installed (pip install ansible-core ansible-lint) — skipped"; \
+	fi
+	@echo ""
+	@echo "== helm lint (app, platform) =="
+	@if command -v helm >/dev/null 2>&1; then \
+		for chart in app platform; do \
+			fixture="kubernetes/charts/$$chart/ci/test-values.yaml"; \
+			if [ -f "$$fixture" ]; then \
+				helm lint "kubernetes/charts/$$chart" -f "$$fixture"; \
+			else \
+				echo "⚠ $$fixture missing — linting kubernetes/charts/$$chart with chart defaults only (won't catch as much)"; \
+				helm lint "kubernetes/charts/$$chart"; \
+			fi; \
+		done; \
+	else \
+		echo "✗ helm not installed — skipped"; \
+	fi
 
 ##@ Help
 

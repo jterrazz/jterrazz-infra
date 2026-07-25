@@ -11,17 +11,27 @@ concurrency:
   group: publish-chart
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   publish:
     name: Package and Push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-helm@v3
+      - uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3.5
         with:
-          version: v3.17.3
+          version: v3.20.0
 
+      # Left at @main deliberately: this is jterrazz's own first-party
+      # action (owner-controlled, not a third-party supply-chain risk in
+      # the same sense as the pinned actions above), and floating on @main
+      # is how it's meant to pick up changes across the fleet of app repos
+      # that also consume it.
       - name: Setup infrastructure
         uses: jterrazz/jterrazz-actions/actions/infra-connect@main
         with:
@@ -32,6 +42,28 @@ jobs:
         run: |
           echo "${{ env.DOCKER_REGISTRY_PASSWORD }}" | helm registry login registry.jterrazz.com \
             --username ${{ env.DOCKER_REGISTRY_USERNAME }} --password-stdin
+
+      # This chart is pulled UNVERSIONED by every app's deploy
+      # (`oci://…/charts/app`, no explicit version pin — see CLAUDE.md), so
+      # a push here reaches every app on its next deploy. Silently
+      # overwriting an already-published version would mean two different
+      # sets of templates answering to the same tag depending on which
+      # ones an app happened to pull before/after the overwrite — fail the
+      # build instead and force an explicit version bump in Chart.yaml.
+      - name: Check chart version isn't already published
+        run: |
+          set -euo pipefail
+          VERSION="$(awk -F': *' '/^version:/ {print $2; exit}' kubernetes/charts/app/Chart.yaml)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read version: from kubernetes/charts/app/Chart.yaml"
+            exit 1
+          fi
+          echo "Chart.yaml version: $VERSION"
+          if helm pull oci://registry.jterrazz.com/charts/app --version "$VERSION" --destination /tmp/chart-version-check >/dev/null 2>&1; then
+            echo "::error::app chart version $VERSION is already published at oci://registry.jterrazz.com/charts/app — bump version in kubernetes/charts/app/Chart.yaml before merging (the chart is consumed unversioned, so overwriting a published version silently changes what every app deploys next)."
+            exit 1
+          fi
+          echo "Version $VERSION not yet published — proceeding."
 
       - name: Package and push chart
         run: |

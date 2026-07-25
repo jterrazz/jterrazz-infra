@@ -10,11 +10,17 @@ labels:
       app.kubernetes.io/part-of: jterrazz-infrastructure
     includeSelectors: false
 
+# Flat file list — the former single-file `storage/` and `network-policies/`
+# kustomization wrappers, and the `environments/production` overlay (which
+# only stamped a cosmetic `environment: production` label), have been removed.
+# This is now the one and only kustomize entry point; apply it directly:
+#   kubectl apply -k kubernetes/infrastructure/base
 resources:
-  - storage/
+  - storage/static-volumes.yaml
   - platform-namespaces.yaml
-  - network-policies/
+  - network-policies/platform-networking.yaml
+  - network-policies/platform-management.yaml
+  - network-policies/platform-registry.yaml
   - traefik/traefik-config.yaml
   - traefik/middleware.yaml
-  - traefik/global-https-redirect.yaml
   - traefik/tls-options.yaml

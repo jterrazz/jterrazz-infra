@@ -1,6 +1,6 @@
 # Ingress for OpenPanel — the split-exposure crux.
 #
-# PRIVATE host  openpanel.jterrazz.com  (Tailscale, private-access middleware):
+# PRIVATE host  openpanel.jterrazz.com  (Tailscale, cluster-internal-access):
 #   /api/*  -> op-api      (dashboard's tRPC + realtime /api/live/*, admin)
 #   /*      -> op-dashboard (the UI)
 #   Admin creation and dashboard browsing happen here. WebSocket upgrade for
@@ -66,7 +66,14 @@ spec:
     - match: Host(`openpanel.jterrazz.com`) && PathPrefix(`/api`)
       kind: Rule
       middlewares:
-        - name: private-access
+        # cluster-internal-access, NOT private-access: op-dashboard's SSR
+        # fetches openpanel.jterrazz.com from inside its own pod (CoreDNS maps
+        # that host to Traefik's ClusterIP), so the source Traefik sees is a
+        # plain pod IP in the pod CIDR. `cluster-internal-access` is a strict
+        # superset of `private-access` — same tailnet humans, plus the
+        # in-cluster ranges. The two are never chained: Traefik ANDs chained
+        # ipAllowLists, so chaining would allow strictly less.
+        - name: cluster-internal-access
           namespace: platform-networking
         - name: openpanel-strip-api
       services:
@@ -75,7 +82,14 @@ spec:
     - match: Host(`openpanel.jterrazz.com`)
       kind: Rule
       middlewares:
-        - name: private-access
+        # cluster-internal-access, NOT private-access: op-dashboard's SSR
+        # fetches openpanel.jterrazz.com from inside its own pod (CoreDNS maps
+        # that host to Traefik's ClusterIP), so the source Traefik sees is a
+        # plain pod IP in the pod CIDR. `cluster-internal-access` is a strict
+        # superset of `private-access` — same tailnet humans, plus the
+        # in-cluster ranges. The two are never chained: Traefik ANDs chained
+        # ipAllowLists, so chaining would allow strictly less.
+        - name: cluster-internal-access
           namespace: platform-networking
       services:
         - name: op-dashboard

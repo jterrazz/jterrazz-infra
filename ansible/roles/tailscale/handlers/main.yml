@@ -1,7 +1,7 @@
 ---
 # Tailscale Role Handlers
 
-- name: Restart Tailscale
-  ansible.builtin.systemd:
-    name: tailscaled
+- name: Restart systemd-resolved
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
     state: restarted

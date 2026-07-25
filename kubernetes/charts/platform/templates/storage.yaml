@@ -1,15 +1,52 @@
-{{- if .Values.storage }}
+{{- /*
+Storage is a MAP of named volumes: `storage.<key>` -> { size, pathSuffix }.
+
+Chart 2.0 breaking change. The previous single-object shape
+(`storage: {size, pathSuffix}`) is gone; all four in-repo consumers
+(n8n, portainer, grafana, librechat) were migrated in the same commit, and
+this chart is not published anywhere external, so there is no back-compat
+branch worth carrying.
+
+Naming is `<name>-<key>`, which reproduces the old `<name>-data` exactly for
+the `data` key — so n8n-data, portainer-data and librechat-data keep their
+existing object names — and lets librechat declare its second volume
+(librechat-uploads) here instead of in a hand-written manifest.
+
+hostPath paths are LIVE DATA and must not move:
+  /var/lib/k8s-data/<name>[/<pathSuffix>]
+e.g. librechat + pathSuffix `mongo`   -> /var/lib/k8s-data/librechat/mongo
+     librechat + pathSuffix `uploads` -> /var/lib/k8s-data/librechat/uploads
+     n8n       + no pathSuffix        -> /var/lib/k8s-data/n8n
+
+Also removed in 2.0: the `selector`-mode PVC branch and the `hostPathType`
+value — no consumer ever set either. The PVC always binds by volumeName, and
+hostPath.type is now unconditionally DirectoryOrCreate to match the app
+chart. (hostPath.type is an immutable PV field, so this only takes effect on
+freshly created PVs — fine, the cluster is being repaved.)
+*/ -}}
+{{- $name := include "platform.name" . -}}
+{{- /*
+nodeAffinity pins each hostPath PV to the node holding the data. Emitted only
+when a node name is supplied — the previous version emitted the block
+unconditionally, so an empty infrastructure.nodeName produced `values: [""]`:
+a PV that matches no node and can never bind. Ansible always passes
+--set infrastructure.nodeName=<inventory_hostname>.
+*/ -}}
+{{- $nodeName := .Values.infrastructure.nodeName | default "" -}}
+{{- range $key, $volume := .Values.storage }}
+{{- $size := $volume.size | required (printf "storage.%s.size is required" $key) }}
+---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: {{ include "platform.name" . }}-data
-{{- if .Values.storage.selector }}
+  name: {{ $name }}-{{ $key }}
   labels:
-    app: {{ include "platform.name" . }}
-{{- end }}
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: helm
 spec:
   capacity:
-    storage: {{ .Values.storage.size }}
+    storage: {{ $size }}
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
@@ -17,10 +54,9 @@ spec:
   hostPath:
     # pathSuffix nests a multi-component app's volume under one dir
     # (e.g. librechat/mongo) so the on-disk convention stays 1 dir = 1 app.
-    path: /var/lib/k8s-data/{{ include "platform.name" . }}{{ with .Values.storage.pathSuffix }}/{{ . }}{{ end }}
-{{- if .Values.storage.hostPathType }}
-    type: {{ .Values.storage.hostPathType }}
-{{- end }}
+    path: /var/lib/k8s-data/{{ $name }}{{ with $volume.pathSuffix }}/{{ . }}{{ end }}
+    type: DirectoryOrCreate
+  {{- if $nodeName }}
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -28,24 +64,23 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values:
-                - {{ .Values.infrastructure.nodeName }}
+                - {{ $nodeName }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "platform.name" . }}-data
+  name: {{ $name }}-{{ $key }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/managed-by: helm
 spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: manual
   resources:
     requests:
-      storage: {{ .Values.storage.size }}
-{{- if .Values.storage.selector }}
-  selector:
-    matchLabels:
-      app: {{ include "platform.name" . }}
-{{- else }}
-  volumeName: {{ include "platform.name" . }}-data
-{{- end }}
+      storage: {{ $size }}
+  volumeName: {{ $name }}-{{ $key }}
 {{- end }}

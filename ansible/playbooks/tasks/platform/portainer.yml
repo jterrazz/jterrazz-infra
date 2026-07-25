@@ -1,0 +1,78 @@
+---
+# 6. Portainer cluster dashboard
+# Same PV-before-app ordering as n8n above.
+- name: Deploy Portainer platform resources
+  ansible.builtin.command: >
+    helm upgrade --install portainer-platform {{ platform_chart }}
+    --namespace platform-management
+    --values {{ manifest_dest }}/kubernetes/platform/portainer/platform.yaml
+    --set infrastructure.nodeName={{ inventory_hostname }}
+    --wait
+    --timeout 2m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: portainer_platform_result
+  changed_when: "'has been upgraded' in portainer_platform_result.stdout or 'has been installed' in portainer_platform_result.stdout"
+
+# Version-pinned like every other chart here — an unpinned `helm upgrade
+# --install` silently adopts whatever the repo's latest is at deploy time,
+# which turns an unrelated deploy into an uncontrolled Portainer upgrade.
+# Bump deliberately, together with the image tag in portainer/helm.yaml.
+- name: Install Portainer via Helm
+  ansible.builtin.command: >
+    helm upgrade --install portainer portainer/portainer
+    --namespace platform-management
+    --version 1.0.69
+    --values {{ manifest_dest }}/kubernetes/platform/portainer/helm.yaml
+    --wait
+    --timeout 5m
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: portainer_result
+  changed_when: "'has been upgraded' in portainer_result.stdout or 'has been installed' in portainer_result.stdout"
+
+- name: Wait for Portainer to be ready
+  ansible.builtin.command: kubectl rollout status deployment/portainer -n platform-management --timeout=60s
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  changed_when: false
+
+- name: Get Portainer service ClusterIP
+  ansible.builtin.command: kubectl get svc portainer -n platform-management -o jsonpath='{.spec.clusterIP}'
+  environment:
+    KUBECONFIG: "{{ kubeconfig_remote }}"
+  register: portainer_ip
+  changed_when: false
+
+# Bootstraps the admin account on a fresh install. 409 = an admin already
+# exists, which is the normal outcome on every redeploy.
+#
+# This used to carry `failed_when: false` ON TOP OF `no_log: true`, so a
+# genuine failure (most commonly HTTP 403: Portainer closes the
+# initial-admin window a few minutes after first boot) produced literally no
+# output and left the instance with no admin user. The no_log stays — it
+# protects the password in the request body — but the rescue below reports
+# the status code, which carries no secret.
+- name: Initialize Portainer admin user
+  block:
+    - name: POST the Portainer admin bootstrap
+      ansible.builtin.uri:
+        url: "http://{{ portainer_ip.stdout }}:9000/api/users/admin/init"
+        method: POST
+        body_format: json
+        body:
+          Username: admin
+          Password: "{{ portainer_admin_password }}"
+        status_code: [200, 409]
+      register: portainer_init
+      changed_when: portainer_init.status == 200
+      no_log: true
+  rescue:
+    - name: Report the Portainer admin bootstrap failure
+      ansible.builtin.fail:
+        msg: >-
+          Portainer admin bootstrap failed with HTTP
+          {{ portainer_init.status | default('(no response)') }} (expected 200 on
+          first install, 409 when an admin already exists). HTTP 403 means
+          Portainer's initial-admin window has closed — restart the Portainer
+          deployment and re-run this play with --tags portainer to reopen it.
