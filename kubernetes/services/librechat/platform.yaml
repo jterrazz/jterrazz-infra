@@ -3,7 +3,7 @@
 # means `access: public` plus leaning on LibreChat's own auth — registration is
 # disabled in helm.yaml until then.
 name: librechat
-host: chat.jterrazz.com
+host: chat.internal.jterrazz.com
 port: 3080
 access: private
 storage:

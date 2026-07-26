@@ -3,10 +3,10 @@ name: app
 description: Standard application chart for jterrazz infrastructure
 type: application
 # BUMP THIS in the same commit as any template change. App CI pulls the chart
-# UNVERSIONED (oci://registry.jterrazz.com/charts/app), and both publishers
+# UNVERSIONED (oci://registry.internal.jterrazz.com/charts/app), and both publishers
 # (.github/workflows/publish-chart.yaml and
 # ansible/roles/platform/tasks/publish-app-chart.yml) refuse to overwrite an
 # already-published version — so an unbumped template change publishes nothing
 # and every app keeps rendering the old templates.
-version: 2.4.1
+version: 2.5.0
 appVersion: "1.17.1"

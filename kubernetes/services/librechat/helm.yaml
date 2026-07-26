@@ -42,7 +42,7 @@ service:
 # │ served.                                                                  │
 # │                                                                          │
 # │ The real route is the IngressRoute the SERVICE chart renders from         │
-# │ platform.yaml (chat.jterrazz.com, `access: private`).                    │
+# │ platform.yaml (chat.internal.jterrazz.com, `access: private`).                    │
 # └──────────────────────────────────────────────────────────────────────────┘
 ingress:
   enabled: false
@@ -113,7 +113,7 @@ librechat:
     # native endpoint is the only one that can trigger server-side web_search.
     ANTHROPIC_REVERSE_PROXY: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local"
 
-  # Always the gateway's in-cluster Service, never gateway.jterrazz.com: that
+  # Always the gateway's in-cluster Service, never gateway.internal.jterrazz.com: that
   # hostname resolves to the node's own tailnet IP and a pod cannot hairpin to
   # the node's ServiceLB (the connection times out). The matching ingress hole
   # is kubernetes/cluster/network-policies/prod-gateway-intelligence.yaml.

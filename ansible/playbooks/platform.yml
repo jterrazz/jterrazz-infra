@@ -45,6 +45,6 @@
           kube-state-metrics + node-exporter + otel-collector,
           librechat, openpanel, registry.
 
-          App chart published to: oci://registry.jterrazz.com/charts/app
+          App chart published to: oci://registry.internal.jterrazz.com/charts/app
           Installed versions:     helm list -A --kubeconfig {{ kubeconfig }}
       tags: [always]

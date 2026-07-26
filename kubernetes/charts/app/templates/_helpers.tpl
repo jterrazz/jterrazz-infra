@@ -65,7 +65,7 @@ fromYamlArray.
 {{- if $spec.image -}}
 {{- $spec.image -}}
 {{- else -}}
-registry.jterrazz.com/{{ include "app.name" . }}:latest
+registry.internal.jterrazz.com/{{ include "app.name" . }}:latest
 {{- end -}}
 {{- end -}}
 

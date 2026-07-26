@@ -4,7 +4,7 @@
 # The registry holds every application image and its push credentials are
 # htpasswd-only, so it is the crown jewel of the cluster. Nothing but Traefik
 # legitimately reaches port 5000: containerd on the node and CI runners on the
-# tailnet both resolve registry.jterrazz.com and terminate at Traefik, which
+# tailnet both resolve registry.internal.jterrazz.com and terminate at Traefik, which
 # then dials the registry Service.
 
 apiVersion: networking.k8s.io/v1

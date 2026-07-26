@@ -5,6 +5,13 @@ name: ""
 host: ""
 port: 80
 
+# Additional hostnames answered by the same IngressRoute, and carried as extra
+# SANs on the same certificate. Their reason to exist is renames: a service
+# serves its old and new name simultaneously, so no consumer breaks while it
+# migrates. Not a place to park unrelated hostnames — one service, one canonical
+# `host`, aliases only ever transitional.
+aliases: []
+
 # Network visibility of the IngressRoute. Chooses which Traefik ipAllowList
 # middleware is attached (the two are never chained — Traefik ANDs chained
 # ipAllowLists, so chaining allows strictly less, not more):

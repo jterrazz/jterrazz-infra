@@ -136,7 +136,7 @@ spec:
     - Ingress
   ingress:
     # Traefik (kube-system) -> grafana POD port 3000: the private IngressRoute
-    # from kubernetes/services/grafana/platform.yaml (grafana.jterrazz.com,
+    # from kubernetes/services/grafana/platform.yaml (grafana.internal.jterrazz.com,
     # `access: private`). Every other pod in this namespace is excluded by the
     # podSelector and stays same-namespace only.
     #

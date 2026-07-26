@@ -118,9 +118,9 @@ spec:
 #
 # Flows that need it:
 #   * openpanel-private — the op-dashboard pod SSRs against
-#     openpanel.jterrazz.com, which CoreDNS maps to Traefik's ClusterIP, so
+#     openpanel.internal.jterrazz.com, which CoreDNS maps to Traefik's ClusterIP, so
 #     the source is a plain pod IP (kubernetes/services/openpanel/ingress.yaml).
-#   * registry — containerd on the NODE pulls registry.jterrazz.com, which
+#   * registry — containerd on the NODE pulls registry.internal.jterrazz.com, which
 #     CoreDNS maps to the node's own tailnet IP; that hairpins through
 #     hostPort -> svclb -> Traefik, so the source is a pod-CIDR or node
 #     address (kubernetes/services/registry/platform.yaml, `access:

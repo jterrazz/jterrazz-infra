@@ -24,11 +24,6 @@ DESIGN NOTES
   exotic than that in those files should fail loudly here rather than be
   silently half-parsed. Hence `_block_list` / `_block_map` raise on a missing
   key rather than returning empty.
-* The TypeScript is read with a regex over the array literal. That is fragile
-  BY DESIGN: if `PRIVATE_HOSTS` is renamed, moved into a function, or turned
-  into a computed value, this script fails with "array literal not found"
-  rather than quietly passing on zero entries. A rename is meant to force
-  someone to look at this file — that is the whole point of a sync assertion.
 * infisical-vars.py is read with `ast`, not regex: it is Python, so the real
   parser is free and exact.
 """
@@ -41,7 +36,6 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GROUP_VARS = "ansible/inventories/group_vars/all.yml"
-DNS_TS = "pulumi/src/dns.ts"
 INFISICAL_VARS = "scripts/infisical-vars.py"
 PREFLIGHT = "ansible/roles/platform/tasks/preflight.yml"
 TRAEFIK_CONFIG = "kubernetes/cluster/traefik/traefik-config.yaml"
@@ -265,73 +259,6 @@ def ts_string_array(text, name, source):
 # ---------------------------------------------------------------------------
 # Checks. Each returns a list of human-readable problems (empty == pass).
 # ---------------------------------------------------------------------------
-
-def check_private_hosts():
-    """(a) Cloudflare CNAMEs (Pulumi) vs the CoreDNS override list (Ansible).
-
-    pulumi/src/dns.ts creates the PUBLIC CNAME `<host>.jterrazz.com` ->
-    tailnet FQDN. group_vars' `private_hostnames` (+ the `_via_traefik`
-    variant, which differs only in what CoreDNS points them AT) drives the
-    in-cluster split-DNS override. A host in one list and not the other is
-    either a name that resolves publicly but not in-cluster, or an in-cluster
-    override for a name that does not resolve at all.
-    """
-    problems = []
-    gv = read(GROUP_VARS)
-    ts = read(DNS_TS)
-
-    direct = block_list(gv, "private_hostnames", GROUP_VARS)
-    via_traefik = block_list(gv, "private_hostnames_via_traefik", GROUP_VARS)
-    ansible_fqdns = direct + via_traefik
-
-    suffix = ".jterrazz.com"
-    bad = [h for h in ansible_fqdns if not h.endswith(suffix)]
-    if bad:
-        problems.append(
-            f"{GROUP_VARS}: private hostname(s) not under {suffix}: "
-            f"{', '.join(sorted(bad))}. dns.ts can only create records in the "
-            f"jterrazz.com zone, so this check cannot compare them."
-        )
-    ansible_hosts = {h[: -len(suffix)] for h in ansible_fqdns if h.endswith(suffix)}
-
-    pulumi_private = set(ts_string_array(ts, "PRIVATE_HOSTS", DNS_TS))
-    pulumi_public = set(ts_string_array(ts, "PUBLIC_TUNNEL_HOSTS", DNS_TS))
-
-    only_pulumi = sorted(pulumi_private - ansible_hosts)
-    only_ansible = sorted(ansible_hosts - pulumi_private)
-
-    if only_pulumi:
-        problems.append(
-            f"in PRIVATE_HOSTS ({DNS_TS}) but NOT in {GROUP_VARS}: "
-            f"{', '.join(only_pulumi)}.\n"
-            f"        FIX: either add {', '.join(h + suffix for h in only_pulumi)} "
-            f"to `private_hostnames` (in-cluster lookups must be short-circuited "
-            f"to the node's tailnet IP; CoreDNS cannot chase the public CNAME "
-            f"into the tailnet zone) or `private_hostnames_via_traefik` (if the "
-            f"host must resolve to Traefik's ClusterIP in-cluster) — or delete "
-            f"the entry from PRIVATE_HOSTS if the service is gone (a CNAME "
-            f"pointing at a host that 404s reads as an outage, not an absence)."
-        )
-    if only_ansible:
-        problems.append(
-            f"in {GROUP_VARS} but NOT in PRIVATE_HOSTS ({DNS_TS}): "
-            f"{', '.join(only_ansible)}.\n"
-            f"        FIX: add {', '.join(repr(h) for h in only_ansible)} to "
-            f"PRIVATE_HOSTS in {DNS_TS} (nothing creates the public CNAME for "
-            f"it today, so the name does not resolve off-cluster), or remove it "
-            f"from the group_vars list."
-        )
-
-    overlap = sorted(pulumi_private & pulumi_public)
-    if overlap:
-        problems.append(
-            f"{DNS_TS}: {', '.join(overlap)} appear(s) in BOTH PRIVATE_HOSTS "
-            f"and PUBLIC_TUNNEL_HOSTS. Pulumi would declare two CNAMEs for one "
-            f"name (one proxied at the edge, one straight to the tailnet); the "
-            f"second apply wins nondeterministically. Pick one."
-        )
-    return problems
-
 
 def check_secret_keys():
     """(b) The Infisical var map (Python) vs the Ansible preflight assert.
@@ -1038,7 +965,6 @@ def check_private_hosts_smoked():
 
 
 CHECKS = [
-    ("dns.ts PRIVATE_HOSTS == group_vars private hostnames", check_private_hosts),
     ("infisical-vars.py vars == preflight.yml asserts", check_secret_keys),
     ("traefik trustedIPs == rate-limit excludedIPs", check_traefik_trusted_ips),
     ("platform_chart_versions pins are all consumed", check_chart_version_pins),

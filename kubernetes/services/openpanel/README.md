@@ -1,6 +1,6 @@
 # OpenPanel (self-hosted product analytics)
 
-Private dashboard on **`openpanel.jterrazz.com`** (Tailscale-only) + public
+Private dashboard on **`openpanel.internal.jterrazz.com`** (Tailscale-only) + public
 event ingest on **`analytics.jterrazz.com/api/track`** (cloudflared tunnel).
 Namespace **`platform-analytics`**.
 
@@ -20,7 +20,7 @@ integrates OpenPanel's browser snippet itself. Other origins listed in
         ▼                                                          ▼
    op-api (/track only, public IngressRoute, stripPrefix /api) ◄─ Traefik
         │                                                          ▲
-   me on tailnet ──► openpanel.jterrazz.com (private IngressRoute) ┘
+   me on tailnet ──► openpanel.internal.jterrazz.com (private IngressRoute) ┘
         │  /api/*  → op-api (dashboard tRPC + realtime /api/live/*)
         │  /*      → op-dashboard (UI)
         ▼
@@ -189,12 +189,12 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
   no CNAME never resolves. Both are required.
 - **ClickHouse hostPath perms**: the pod runs as uid 101; an init container
   chowns `/var/lib/clickhouse` because hostPath dirs are created root-owned.
-- **Dashboard SSR resolves `openpanel.jterrazz.com` to Traefik's ClusterIP,
+- **Dashboard SSR resolves `openpanel.internal.jterrazz.com` to Traefik's ClusterIP,
   in-cluster.** op-dashboard's server-side rendering fetches its own public URL
   from inside the pod. Resolving that to the node tailnet IP hairpins through
   the ServiceLB and times out (→ `/onboarding` throws
   `[tRPC SSR Error] fetch failed`). Fix: the `coredns-custom` block maps
-  `openpanel.jterrazz.com` → Traefik ClusterIP (a separate hosts line from the
+  `openpanel.internal.jterrazz.com` → Traefik ClusterIP (a separate hosts line from the
   other private hosts, which use the node tailnet IP). The browser is
   unaffected (public DNS → node tailnet IP).
 
@@ -204,7 +204,7 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
   was not observed to honor it (the override landed on `main` after the 2.2
   cut). **To verify after the next repave: if `API_URL_SSR` is honored by
   image 2.2, the CoreDNS Traefik-ClusterIP special case can be removed.** Test
-  by deleting `openpanel.jterrazz.com` from `private_hostnames_via_traefik` in
+  by deleting `openpanel.internal.jterrazz.com` from `private_hostnames_via_traefik` in
   `ansible/inventories/group_vars/all.yml` (the list the `coredns-custom`
   ConfigMap is rendered from — see
   `ansible/roles/platform/tasks/coredns.yml`), restarting CoreDNS and

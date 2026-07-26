@@ -70,21 +70,27 @@ PRIVATE_CHECKS=(
     # Grafana redirects an unauthenticated browser to /login (302). A 200 is
     # also acceptable: it is what an already-anonymous-allowed instance or a
     # future auth change would serve. Anything else means Grafana is down.
-    "GET|https://grafana.jterrazz.com/|302,200|Grafana"
+    "GET|https://grafana.internal.jterrazz.com/|302,200|Grafana"
     # The registry's own API root. 401 is the CORRECT answer — /v2/ demands a
     # bearer token, and containerd relies on that challenge to authenticate.
     # A 200 would mean the registry became anonymous-readable.
-    "GET|https://registry.jterrazz.com/v2/|401|Docker registry API"
-    "GET|https://chat.jterrazz.com/|200|LibreChat"
+    "GET|https://registry.internal.jterrazz.com/v2/|401|Docker registry API"
+    # TEMPORARY, and deliberately a probe rather than an exclusion: while the
+    # registry answers on both names (the `aliases` entry in
+    # kubernetes/services/registry/platform.yaml), the OLD name working is a
+    # precondition for the rename being safe — every not-yet-redeployed pod
+    # still pulls through it. Remove this line together with the alias.
+    "GET|https://registry.jterrazz.com/v2/|401|Docker registry API (legacy name, during the rename)"
+    "GET|https://chat.internal.jterrazz.com/|200|LibreChat"
     # OpenPanel's dashboard SSRs and bounces an unauthenticated visitor to
     # /login or /onboarding, so 307 is the normal answer and 200 is the
     # already-rendered one.
-    "GET|https://openpanel.jterrazz.com/|307,200|OpenPanel dashboard"
+    "GET|https://openpanel.internal.jterrazz.com/|307,200|OpenPanel dashboard"
     # gateway-intelligence is an OpenAI-compatible API with no route mounted at
     # `/`, so upstream answers 404 — which still proves DNS, the tailnet path,
     # Traefik and the pod are all alive. 200 is accepted in case a root handler
     # is ever added. The point of this entry is to exclude 000/502/503.
-    "GET|https://gateway.jterrazz.com/|200,404|gateway-intelligence (root is unrouted; 404 = alive)"
+    "GET|https://gateway.internal.jterrazz.com/|200,404|gateway-intelligence (root is unrouted; 404 = alive)"
 )
 
 # Fail a certificate that expires within this many days. Let's Encrypt renews

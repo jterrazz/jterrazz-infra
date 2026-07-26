@@ -39,64 +39,33 @@ const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 // from createMachine() in src/targets/orbstack.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
-// Pulumi owns the CNAME; the Zero Trust dashboard owns the matching
-// per-hostname tunnel ROUTE (that needs Tunnel:Edit, which the DNS token
-// lacks). A record here without a route there returns 404 from cloudflared.
-// The UUID is public — it is the CNAME target — so not a secret.
-const TUNNEL_HOSTNAME = "8f4157bb-f883-424b-8ccd-8332867cf1b2.cfargotunnel.com";
-
-/**
- * Private services, each a CNAME from `<host>.jterrazz.com` to the cluster's
- * Tailscale FQDN. Access control is the Traefik private-access middleware;
- * this layer only keeps DNS honest.
- *
- * KEEP IN SYNC with `private_hostnames` (+ `private_hostnames_via_traefik`,
- * which holds `openpanel`) in
- * ansible/inventories/group_vars/all.yml: this list creates the PUBLIC CNAME,
- * that one creates the in-cluster CoreDNS override. A host in only one of the
- * two resolves nowhere useful. Deleting a service means deleting both.
- */
-const PRIVATE_HOSTS = ["grafana", "registry", "gateway", "chat", "openpanel"];
-
-/**
- * Public services fronted by the Cloudflare tunnel. Each needs a matching
- * per-hostname route in the Zero Trust config, or cloudflared 404s it.
- */
-const PUBLIC_TUNNEL_HOSTS = ["analytics"];
-
 export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>): void {
     const fqdn = tailscaleHostname.apply((h) => `${h}.${TAILNET_DOMAIN}`);
 
-    for (const host of PRIVATE_HOSTS) {
-        new cloudflare.DnsRecord(`private-${host}`, {
-            zoneId: JTERRAZZ_ZONE_ID,
-            name: host,
-            type: "CNAME",
-            content: fqdn,
-            // Tailscale-routed services must NOT be proxied: clients reach the
-            // Tailscale IP directly, with no Cloudflare edge involvement.
-            proxied: false,
-            ttl: 1, // 1 = "Auto" in Cloudflare's API
-            comment: `Managed by Pulumi (replaces external-dns for ${host}.jterrazz.com)`,
-        });
-    }
-
-    for (const host of PUBLIC_TUNNEL_HOSTS) {
-        new cloudflare.DnsRecord(`public-${host}`, {
-            zoneId: JTERRAZZ_ZONE_ID,
-            name: host,
-            type: "CNAME",
-            content: TUNNEL_HOSTNAME,
-            // Must be proxied — cfargotunnel.com only resolves at the edge.
-            proxied: true,
-            ttl: 1, // 1 = "Auto"
-            comment: `Managed by Pulumi — ${host}.jterrazz.com → Cloudflare tunnel → Traefik`,
-        });
-    }
-
-    // Any app needing a private surface should take a subdomain here
-    // (signews.internal.jterrazz.com) rather than a new PRIVATE_HOSTS entry —
-    // this record covers it with no Pulumi change and no group_vars edit.
+    // THE ONLY DNS RECORD THIS REPO OWNS.
+    //
+    // Every private surface is `<svc>.internal.jterrazz.com` and is covered by
+    // this one wildcard, so adding or removing a private service needs no DNS
+    // change anywhere — not here, not in group_vars, not in the Cloudflare UI.
+    // That is the whole point: a per-service record here would make Pulumi (a
+    // machine provisioner) the owner of a service-level fact, which is how the
+    // previous shape ended up with the same hostname list maintained in two
+    // files and a CI assertion to stop them drifting.
+    //
+    // Public hostnames are NOT here: the tunnel's Public Hostname feature
+    // creates their CNAMEs itself, in the Zero Trust dashboard. One owner per
+    // kind — machine here, services there.
+    //
+    // external-dns would be the k8s-native way to own per-service records, and
+    // it is deliberately absent: with this wildcard there are zero per-service
+    // records to reconcile, so it would have nothing to do.
+    //
+    // Explicit records always beat a wildcard in DNS, so pre-existing names on
+    // this zone (www → Vercel, blog, mail) are unaffected.
+    //
+    // One label deep, on purpose: a wildcard TLS cert for
+    // *.internal.jterrazz.com covers `svc.internal` but not `a.b.internal`.
+    //
     // DNS-only: proxied wildcards need a paid plan, and Tailscale-routed
     // traffic must skip the Cloudflare edge anyway.
     new cloudflare.DnsRecord("private-wildcard-internal", {

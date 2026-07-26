@@ -12,4 +12,7 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - {{ include "service.host" . }}
+    {{- range .Values.aliases | default list }}
+    - {{ . }}
+    {{- end }}
 {{- end }}

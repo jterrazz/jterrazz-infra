@@ -51,6 +51,6 @@ environment: ""
 
 # Registry credentials (passed from CI via --set)
 registry:
-  server: registry.jterrazz.com
+  server: registry.internal.jterrazz.com
   username: ""
   password: ""

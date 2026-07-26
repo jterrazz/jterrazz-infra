@@ -6,11 +6,11 @@ workflow (`jterrazz/jterrazz-actions/.github/workflows/release-docker.yaml`)
 runs, in essence:
 
 ```bash
-helm upgrade --install <env>-<app> oci://registry.jterrazz.com/charts/app \
+helm upgrade --install <env>-<app> oci://registry.internal.jterrazz.com/charts/app \
   -n <env>-<app> \
   -f .infrastructure/application.yaml \
   --set environment=<env> \
-  --set spec.image=registry.jterrazz.com/<app>:<tag> \
+  --set spec.image=registry.internal.jterrazz.com/<app>:<tag> \
   --set registry.username=… --set registry.password=…
 ```
 
@@ -388,7 +388,7 @@ failed every image pull with an unhelpful auth error.
 `kubernetes/charts/app/Chart.yaml` carries the chart `version:` (currently
 **2.4.0**). Push to `main` touching `kubernetes/charts/app/**` and
 `.github/workflows/publish-chart.yaml` packages and pushes it to
-`oci://registry.jterrazz.com/charts/app`.
+`oci://registry.internal.jterrazz.com/charts/app`.
 
 Two rules follow from apps pulling the chart **unversioned**:
 

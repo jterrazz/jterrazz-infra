@@ -1,6 +1,6 @@
 # LibreChat (private AI chat UI)
 
-Private chat UI on **`chat.jterrazz.com`** (Tailscale-only), namespace
+Private chat UI on **`chat.internal.jterrazz.com`** (Tailscale-only), namespace
 **`platform-ai`**. Backed by the in-cluster AI gateway
 (`gateway-intelligence`) rather than any provider API directly, so no
 provider key is ever stored here.
@@ -11,7 +11,7 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
 ## Architecture
 
 ```
- me on tailnet ──► chat.jterrazz.com (private IngressRoute, private-access) ──► Traefik
+ me on tailnet ──► chat.internal.jterrazz.com (private IngressRoute, private-access) ──► Traefik
                                                                                   │
                                                                                   ▼
                                                                          librechat (:3080)
@@ -133,7 +133,7 @@ lists, modelSpecs, interface).
 Three things make LibreChat talk to `gateway-intelligence`, and each exists
 for a specific reason:
 
-1. **In-cluster Service URL, not `gateway.jterrazz.com`.** Both the custom
+1. **In-cluster Service URL, not `gateway.internal.jterrazz.com`.** Both the custom
    endpoint's `baseURL` and `ANTHROPIC_REVERSE_PROXY` point at
    `http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local`
    (`/v1` suffix on the custom endpoint; bare host for the Anthropic one,

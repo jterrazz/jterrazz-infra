@@ -114,7 +114,7 @@ matches the recorded render of the CI fixture:
                     secretKeyRef:
                       key: API_TOKEN
                       name: ci-test-app-secrets
-              image: registry.jterrazz.com/ci-test-app:latest
+              image: registry.internal.jterrazz.com/ci-test-app:latest
               imagePullPolicy: Always
               livenessProbe:
                 failureThreshold: 5

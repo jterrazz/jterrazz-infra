@@ -122,21 +122,33 @@ platform_chart_versions:
 # Rendered into the `coredns-custom` ConfigMap by
 # roles/platform/tasks/coredns.yml via templates/coredns-custom.yaml.j2.
 #
-# KEEP IN SYNC with `PRIVATE_HOSTS` in pulumi/src/dns.ts, which creates the
-# matching PUBLIC CNAME. A host in only one of the two resolves nowhere useful.
+# NOT paired with anything on the public-DNS side any more: every name here is
+# `<svc>.internal.jterrazz.com`, covered by the single `*.internal` wildcard in
+# pulumi/src/dns.ts. Adding a private service means adding ONE line here and
+# nothing else, anywhere. (This list used to mirror a `PRIVATE_HOSTS` array in
+# dns.ts, which needed a CI assertion to stop the two from drifting.)
+#
+# An explicit list rather than a wildcard because CoreDNS's `hosts` plugin
+# matches exact names only — expressing `*.internal` needs the `template`
+# plugin, which k3s's CoreDNS build does not include.
 private_hostnames:
+  - registry.internal.jterrazz.com
+  # TEMPORARY, paired with the `aliases` entry in
+  # kubernetes/services/registry/platform.yaml: in-cluster pulls that still
+  # reference the old name must resolve to the node too, or a pod restart
+  # during the rename ImagePullBackOffs. Remove both together.
   - registry.jterrazz.com
-  - grafana.jterrazz.com
-  - gateway.jterrazz.com
-  - chat.jterrazz.com
+  - grafana.internal.jterrazz.com
+  - gateway.internal.jterrazz.com
+  - chat.internal.jterrazz.com
 
 # Same as above, but mapped to Traefik's ClusterIP rather than the node's
 # tailnet IP — for a pod that fetches its own PUBLIC URL from inside the
-# cluster. A pod cannot hairpin to the node's ServiceLB; it times out. Members
-# also belong in `PRIVATE_HOSTS` in pulumi/src/dns.ts. openpanel is here because
+# cluster. A pod cannot hairpin to the node's ServiceLB; it times out.
+# openpanel is here because
 # the dashboard image cannot use API_URL_SSR: 2.2.1 (2026-03-21) predates the
 # upstream commit that added it (2026-07-01) and is still the newest published
 # tag, and at that tree SSR and the browser shared ONE url. Full evidence and
 # the retirement order are in kubernetes/services/openpanel/config.yaml.
 private_hostnames_via_traefik:
-  - openpanel.jterrazz.com
+  - openpanel.internal.jterrazz.com

@@ -31,7 +31,11 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`{{ include "service.host" . }}`)
+    {{/* One rule matching the canonical host plus any aliases. Aliases exist
+         for renames: a service can answer on its old and new name at once, so
+         a hostname migration needs no window in which consumers still holding
+         the old name break. Remove the alias once every consumer has moved. */}}
+    - match: Host({{ range $i, $h := (concat (list (include "service.host" .)) (.Values.aliases | default list)) }}{{ if $i }}, {{ end }}`{{ $h }}`{{ end }})
       kind: Rule
       {{- if $middleware }}
       middlewares:

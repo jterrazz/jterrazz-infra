@@ -10,7 +10,7 @@
       - helm
       - registry
       - login
-      - registry.jterrazz.com
+      - registry.internal.jterrazz.com
       - --username
       - deploy
       - --password-stdin
@@ -34,7 +34,7 @@
 # is why an unbumped kubernetes/charts/app/Chart.yaml publishes nothing.
 - name: Check whether this chart version is already published
   ansible.builtin.command: >
-    helm pull oci://registry.jterrazz.com/charts/app
+    helm pull oci://registry.internal.jterrazz.com/charts/app
     --version {{ app_chart_version }}
     --destination /tmp/app-chart-check
   register: app_chart_published
@@ -86,7 +86,7 @@
         quiet: true
 
     - name: Push the app chart to the OCI registry
-      ansible.builtin.command: "helm push {{ packaged_chart.files[0].path }} oci://registry.jterrazz.com/charts"
+      ansible.builtin.command: "helm push {{ packaged_chart.files[0].path }} oci://registry.internal.jterrazz.com/charts"
       changed_when: true
 
 - name: Clean up the chart staging directories

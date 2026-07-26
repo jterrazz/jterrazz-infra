@@ -138,7 +138,7 @@ kubectl get clusterrole otel-collector -o yaml   # pods+namespaces+replicasets r
 
 # Registry DNS is the usual suspect for a fleet-wide ImagePullBackOff.
 # On the node: must resolve to a 100.x tailnet IP.
-getent hosts registry.jterrazz.com ; tailscale status
+getent hosts registry.internal.jterrazz.com ; tailscale status
 ```
 
 **Tailscale identity collision.** If a VM with the same hostname was destroyed
@@ -189,7 +189,7 @@ every namespace in `kubernetes/cluster/namespaces.yaml` now has a
 NetworkPolicy file, and the OpenPanel `API_URL_SSR` question is settled — the
 published dashboard image cannot honour it, evidence in
 `kubernetes/services/openpanel/config.yaml`, so the CoreDNS→Traefik mapping for
-`openpanel.jterrazz.com` stays load-bearing.
+`openpanel.internal.jterrazz.com` stays load-bearing.
 
 ## Restoring from backup
 
@@ -423,7 +423,7 @@ ignored without error.
 
 ```bash
 kubectl -n platform-registry logs deploy/registry | head -5     # version 3.x
-curl -sSf -u deploy:$PW https://registry.jterrazz.com/v2/_catalog
+curl -sSf -u deploy:$PW https://registry.internal.jterrazz.com/v2/_catalog
 # then confirm a real pull still works
 kubectl -n prod-signews-api rollout restart deploy/signews-api
 ```

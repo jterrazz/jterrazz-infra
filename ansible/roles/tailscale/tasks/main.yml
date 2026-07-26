@@ -3,7 +3,7 @@
 # Without a stub resolver Tailscale writes /etc/resolv.conf itself with
 # `nameserver 100.100.100.100`, which does not chase CNAMEs from a public zone
 # into the tailnet zone — the deploy then fails at
-# "helm registry login registry.jterrazz.com".
+# "helm registry login registry.internal.jterrazz.com".
 - name: Ensure systemd-resolved is enabled (needed for CNAME chasing into tailnet)
   ansible.builtin.systemd_service:
     name: systemd-resolved
@@ -198,7 +198,7 @@
 
 # Boot-time self-heal: after a reboot tailscaled can come back "Logged out"
 # (node-key expiry) and does NOT auto-reconnect. A logged-out node cannot
-# resolve *.ts.net, so registry.jterrazz.com NXDOMAINs, every app pod
+# resolve *.ts.net, so registry.internal.jterrazz.com NXDOMAINs, every app pod
 # ImagePullBackOffs and Cloudflare 503s the public hostnames.
 #
 # The script is ALSO how this play logs in (last task in the block) — do not

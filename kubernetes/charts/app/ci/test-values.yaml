@@ -134,6 +134,6 @@ environments:
 # trips secret scanners (here and in the base64 the template derives from it),
 # and a repo where the scanner cries wolf is a repo where nobody reads it.
 registry:
-  server: registry.jterrazz.com
+  server: registry.internal.jterrazz.com
   username: ci-test
   password: 'not-a-secret"quote\backslash-fixture'

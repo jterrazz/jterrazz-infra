@@ -23,7 +23,6 @@ standing between you and the drift is this table.
 
 | A                                                     | B                                                        | Checked by | Why they must match                                                    |
 | ----------------------------------------------------- | -------------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
-| `private_hostnames` + `private_hostnames_via_traefik` (`ansible/inventories/group_vars/all.yml`) | `PRIVATE_HOSTS` (`pulumi/src/dns.ts`) | `assert-sync.py` | A creates the in-cluster CoreDNS override, B the public CNAME. One without the other = a name that resolves nowhere useful. |
 | the same two lists                                    | `PRIVATE_CHECKS` (`scripts/smoke.sh`)                     | `assert-sync.py` (one-way: config ⊆ smoke) | A private hostname nothing probes is a surface whose loss nobody notices. The status codes stay a per-service judgement call, so the check never derives them. |
 | `SCOPES` in `scripts/infisical-vars.py`               | the `assert` list in `roles/platform/tasks/preflight.yml` | `assert-sync.py` | Preflight is the second gate on the same secret set; a secret fetched but unasserted fails halfway through a deploy instead of at the start. |
 | `forwardedHeaders.trustedIPs` (`cluster/traefik/traefik-config.yaml`) | `rate-limit` `ipStrategy.excludedIPs` (`cluster/traefik/middleware.yaml`) | `assert-sync.py` | Both enumerate "hops that are ours". If they disagree, the rate limiter keys on the wrong XFF element or on nothing. |
@@ -85,7 +84,7 @@ Repo-specific, each one paid for at least once.
   stub and the loop plugin fatals on startup.
 - **buildkit needs `network=host` in CI.** `jterrazz-actions/actions/docker-build`
   sets it so buildkit sees the runner's Tailscale resolver; without it
-  `docker push registry.jterrazz.com/…` NXDOMAINs on the public CNAME chain.
+  `docker push registry.internal.jterrazz.com/…` NXDOMAINs on the public CNAME chain.
 - **Tailscale identity collision.** A VM destroyed without `tailscale logout`
   leaves its device behind; the replacement joins as `<hostname>-2` and MagicDNS
   stops resolving the canonical name, which breaks every private hostname. Fix
@@ -121,9 +120,15 @@ Repo-specific, each one paid for at least once.
 - **Namespaces**: `prod-<app>` / `next-<app>` / `staging-<app>` for apps,
   `platform-*` for infrastructure. All platform namespaces are declared in
   `kubernetes/cluster/namespaces.yaml` — never `kubectl create ns`.
-- **Adding a private hostname** = two edits (the hand-synced pair above) plus
-  `pulumi up`. An app that only needs a private surface should use the existing
-  `*.internal.jterrazz.com` wildcard CNAME instead and needs no DNS work.
+- **DNS has exactly three owners, and only one of them is this repo.**
+  *Private* = `<svc>.internal.jterrazz.com`, covered by the single `*.internal`
+  wildcard in `pulumi/src/dns.ts` — adding one needs **no DNS change at all**,
+  only a line in `private_hostnames` (group_vars) so in-cluster lookups skip the
+  public CNAME chain. *Public* = the Cloudflare Zero Trust tunnel owns the
+  record; add a Public Hostname in its UI, nothing lands in this repo. *The
+  machine* = the wildcard itself, which is the one DNS fact Pulumi legitimately
+  owns. Never add a per-service record to `dns.ts`; that is what made the
+  hostname list live in two files with a CI assertion holding them together.
 - **New public zone** = add it to both ClusterIssuers in
   `kubernetes/services/cert-manager/issuers.yaml`, add a Public Hostname in the
   Cloudflare Zero Trust tunnel UI (which auto-creates the CNAME), and set the
@@ -141,10 +146,10 @@ Repo-specific, each one paid for at least once.
 
 Each has its own README with versions, data paths, secrets and gotchas:
 
-- **LibreChat** — private AI chat at `chat.jterrazz.com`, `platform-ai`.
+- **LibreChat** — private AI chat at `chat.internal.jterrazz.com`, `platform-ai`.
   [README](kubernetes/services/librechat/README.md)
 - **OpenPanel** — product analytics; private dashboard at
-  `openpanel.jterrazz.com`, public ingest at `analytics.jterrazz.com/api/track`,
+  `openpanel.internal.jterrazz.com`, public ingest at `analytics.jterrazz.com/api/track`,
   `platform-analytics`. [README](kubernetes/services/openpanel/README.md)
 - **cloudflared** — the public-traffic tunnel, `platform-networking`.
   [README](kubernetes/services/cloudflared/README.md)
@@ -159,7 +164,7 @@ Each has its own README with versions, data paths, secrets and gotchas:
   `kubectl logs` is never the only copy. Grafana's datasource UIDs are still
   `prometheus` / `loki` / `tempo` (dashboards and app-shipped alert rules
   reference them); only the names, URLs and two of the types changed.
-- **Registry** — `registry.jterrazz.com`, `platform-registry`. Its IngressRoute
+- **Registry** — `registry.internal.jterrazz.com`, `platform-registry`. Its IngressRoute
   uses `cluster-internal-access` because containerd's hairpin pull is sourced
   from a pod-CIDR/node address, not a tailnet IP.
 - **gateway-intelligence** (an app-chart workload, deployed by its own repo)

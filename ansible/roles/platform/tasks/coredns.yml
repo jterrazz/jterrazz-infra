@@ -1,7 +1,7 @@
 ---
 # CoreDNS does not chase CNAMEs across upstream zones, so a pod resolving a
 # private hostname stops at the CNAME into *.ts.net and gets NXDOMAIN — which
-# is how containerd fails to pull from registry.jterrazz.com. This adds a
+# is how containerd fails to pull from registry.internal.jterrazz.com. This adds a
 # `jterrazz.com` server block whose hosts plugin short-circuits the private
 # names; everything else under the zone falls through to public DNS, so the
 # cloudflared-fronted public apps still resolve normally.
@@ -11,7 +11,7 @@
 
 # Looked up at deploy time, not hardcoded: the ClusterIP is dynamic per
 # cluster, so a fixed value silently breaks on the next repave.
-- name: Get Traefik ClusterIP (in-cluster target for openpanel.jterrazz.com)
+- name: Get Traefik ClusterIP (in-cluster target for openpanel.internal.jterrazz.com)
   ansible.builtin.command: kubectl get svc traefik -n kube-system -o jsonpath='{.spec.clusterIP}'
   register: traefik_cluster_ip
   changed_when: false

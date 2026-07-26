@@ -24,7 +24,7 @@ public address.
 **Apps deploy themselves.** An app repo owns one file,
 `.infrastructure/application.yaml`, and calls the shared workflow in
 `jterrazz/jterrazz-actions`, which renders it through the `app` chart pulled
-**unversioned** from `oci://registry.jterrazz.com/charts/app`. This repo does
+**unversioned** from `oci://registry.internal.jterrazz.com/charts/app`. This repo does
 not know an app exists until its Certificate shows up.
 
 **Data outlives the cluster.** Every `manual` PV is a hostPath under

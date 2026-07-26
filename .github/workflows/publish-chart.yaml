@@ -40,7 +40,7 @@ jobs:
 
       - name: Login to OCI registry
         run: |
-          echo "${{ env.DOCKER_REGISTRY_PASSWORD }}" | helm registry login registry.jterrazz.com \
+          echo "${{ env.DOCKER_REGISTRY_PASSWORD }}" | helm registry login registry.internal.jterrazz.com \
             --username ${{ env.DOCKER_REGISTRY_USERNAME }} --password-stdin
 
       # This chart is pulled UNVERSIONED by every app's deploy
@@ -68,7 +68,7 @@ jobs:
             exit 1
           fi
           echo "Chart.yaml version: $VERSION"
-          if helm pull oci://registry.jterrazz.com/charts/app --version "$VERSION" --destination /tmp/chart-version-check >/dev/null 2>&1; then
+          if helm pull oci://registry.internal.jterrazz.com/charts/app --version "$VERSION" --destination /tmp/chart-version-check >/dev/null 2>&1; then
             echo "::notice::app chart $VERSION is already published — nothing to do. If you CHANGED templates, bump version: in kubernetes/charts/app/Chart.yaml, or this run silently publishes nothing."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
@@ -81,5 +81,5 @@ jobs:
         run: |
           helm package kubernetes/charts/app --destination /tmp/
           PKG=$(ls /tmp/app-*.tgz)
-          helm push "$PKG" oci://registry.jterrazz.com/charts
+          helm push "$PKG" oci://registry.internal.jterrazz.com/charts
           echo "Published: $PKG"
