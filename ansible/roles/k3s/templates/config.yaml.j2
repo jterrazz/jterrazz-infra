@@ -42,6 +42,31 @@ kubelet-arg:
 
 kube-apiserver-arg:
   - "enable-admission-plugins=NodeRestriction,ResourceQuota"
+  # Audit trail for "who changed what". k3s writes no audit log by default, so
+  # a compromised token leaves no record at all. metadata level only: it logs
+  # request metadata, never request/response bodies, which is what keeps
+  # Secret contents out of the log file.
+  - "audit-log-path={{ k3s_data_dir }}/server/logs/audit.log"
+  - "audit-log-maxage=30"
+  - "audit-log-maxbackup=3"
+  - "audit-log-maxsize=64"
+  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+
+# Encrypts Secrets in the datastore with AES-CBC. WITHOUT this, every Secret
+# sits in plaintext in state.db, and that file is readable by any other
+# OrbStack machine through /mnt/machines/<name>/, which is not an isolation
+# boundary.
+#
+# Verify by value, never by `strings | grep -c password`: that count is
+# dominated by CRD schemas and ConfigMaps, which are not encrypted by design
+# and never were secrets. The real check is
+#   kubectl get secret <n> -o jsonpath='{.data.*}' | base64 -d
+#   grep -a "<that value>" state.db     # must find nothing
+#
+# Enabling only encrypts secrets written AFTER the restart. Existing ones stay
+# plaintext until `k3s secrets-encrypt reencrypt --force` rewrites them, which
+# roles/k3s/tasks does once the API is back.
+secrets-encryption: true
 
 # local-storage is k3s' local-path-provisioner. Every PVC here uses the
 # `manual` StorageClass with a pre-declared hostPath PV (the service and app

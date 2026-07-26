@@ -9,6 +9,11 @@ kind: Namespace
 metadata:
   name: platform-networking
   labels:
+    # hostNetwork/hostPath workloads live here (cloudflared, node-exporter);
+    # baseline forbids both, so enforcing it would evict them.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: networking
 
 ---
@@ -17,6 +22,9 @@ kind: Namespace
 metadata:
   name: platform-registry
   labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: registry
 
 ---
@@ -25,6 +33,9 @@ kind: Namespace
 metadata:
   name: platform-secrets
   labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: secrets
 
 ---
@@ -33,6 +44,9 @@ kind: Namespace
 metadata:
   name: platform-ai
   labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: ai
 
 ---
@@ -43,6 +57,11 @@ kind: Namespace
 metadata:
   name: platform-telemetry
   labels:
+    # hostNetwork/hostPath workloads live here (cloudflared, node-exporter);
+    # baseline forbids both, so enforcing it would evict them.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: telemetry
 
 ---
@@ -52,6 +71,9 @@ kind: Namespace
 metadata:
   name: platform-analytics
   labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
     app.kubernetes.io/component: analytics
 
 ---

@@ -8,10 +8,20 @@ resources:
     memory: 160Mi
   limits:
     # CPU limit is spin containment, not sizing: Grafana 13's unified-storage
-    # init once entered a lock-contention spiral on the virtiofs-backed
-    # grafana.db and ate ~9 cores until restarted (2026-07-26). Capped so a
-    # recurrence degrades Grafana instead of starving the node. If it DOES
-    # recur, the fix is moving grafana.db off virtiofs — see issue #3.
+    # enters a lock-contention spiral on grafana.db and eats every core it is
+    # given until restarted. Capped so a recurrence degrades Grafana instead
+    # of starving the node — it has already contained one.
+    #
+    # VIRTIOFS IS NOT THE CAUSE, though the first two occurrences (2026-07-26)
+    # made it look that way. It recurred on node-local btrfs with the
+    # nodeLocalPath fix in place, pegged at exactly the 1500m cap with
+    # /api/health 503ing and kubelet SIGKILLing it on liveness. The trigger is
+    # CPU starvation: lose the race once and the SQLite transactions behind
+    # dashboard.grafana.app never get their lock back —
+    #   resource-server ... error="begin: context deadline exceeded"
+    # while Grafana times out calling its own apiserver on 127.0.0.1:3000.
+    # RECOVERY: scale to 0, move grafana.db aside, scale to 1. The volume is
+    # safe to lose (see platform.yaml) — everything is provisioned from git.
     cpu: 1500m
     memory: 384Mi
 

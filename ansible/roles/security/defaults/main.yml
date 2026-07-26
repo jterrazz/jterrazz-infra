@@ -51,3 +51,13 @@ security_kernel_params:
   - { name: "net.ipv4.conf.default.accept_source_route", value: "0" }
   - { name: "net.ipv4.conf.all.rp_filter", value: "1" }
   - { name: "net.ipv4.conf.default.rp_filter", value: "1" }
+
+# Peer-isolation guard. OrbStack puts every machine on one bridge and gives
+# each one the others' filesystems at /mnt/machines; these are the ports that
+# were still answering over the network. See templates/nft-guard.conf.j2 for
+# why this is nftables and not a UFW rule.
+security_guard_interface: eth0
+security_guard_host_ip: 192.168.139.1
+security_guard_peer_subnet: 192.168.139.0/24
+security_guard_blocked_tcp: [22, 2000, 6443, 9100, 10250]
+security_guard_blocked_udp: [5355]

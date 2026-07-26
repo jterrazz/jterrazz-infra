@@ -94,6 +94,23 @@
   when: tailscale_ip is not defined
   tags: [k3s]
 
+- name: Generate the audit policy
+  ansible.builtin.template:
+    src: audit-policy.yaml.j2
+    dest: "{{ k3s_config_dir }}/audit-policy.yaml"
+    mode: "0640"
+  notify: Restart k3s
+  tags: [k3s]
+
+# Must exist before the apiserver starts: it does not create the directory for
+# audit-log-path and fails to come up at all if the parent is missing.
+- name: Ensure the audit log directory exists
+  ansible.builtin.file:
+    path: "{{ k3s_data_dir }}/server/logs"
+    state: directory
+    mode: "0700"
+  tags: [k3s]
+
 - name: Generate the k3s config
   ansible.builtin.template:
     src: config.yaml.j2
@@ -157,6 +174,25 @@
   delay: 5
   until: k3s_nodes.rc == 0
   tags: [k3s]
+
+# `secrets-encryption: true` only covers Secrets written after the restart.
+# This rewrites the ones already in the datastore; without it the plaintext
+# copies of every existing app credential stay exactly where they were.
+# Idempotent — a re-encrypt on an already-encrypted store is a no-op rewrite.
+- name: Check the secrets encryption status
+  ansible.builtin.command: k3s secrets-encrypt status
+  register: k3s_secrets_encrypt
+  changed_when: false
+  failed_when: false
+  tags: [k3s, security]
+
+- name: Re-encrypt existing secrets
+  ansible.builtin.command: k3s secrets-encrypt reencrypt --force
+  when: "'Encryption Status: Enabled' in k3s_secrets_encrypt.stdout"
+  register: k3s_reencrypt
+  changed_when: k3s_reencrypt.rc == 0
+  failed_when: false
+  tags: [k3s, security]
 
 - name: Create the kubectl symlink
   ansible.builtin.file:

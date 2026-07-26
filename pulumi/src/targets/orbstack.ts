@@ -27,10 +27,17 @@ export function createMachine(): { tailscaleHostname: pulumi.Output<string> } {
     // schedule. The dir living on the Mac is also what makes the data survive
     // `pulumi destroy && pulumi up` — the VM goes, the dir stays.
     //
-    // NO `--isolated`: isolation drops CAP_SYS_ADMIN, which breaks kubelet's
-    // tmpfs `noswap` mount for projected service-account tokens (k8s >= 1.31),
-    // and non-isolated mode is what auto-mounts the Mac at /mnt/mac that the
-    // symlink above resolves through.
+    // NO `--isolated`, for two independent reasons. CAP_SYS_ADMIN is NOT the
+    // one, despite what this comment used to say: an isolated machine has the
+    // full set (`CapEff: 000001ffffffffff`). The capability is present and the
+    // mount still fails, because isolated machines run in an unprivileged user
+    // namespace and the kernel refuses `noswap` there —
+    //   "tmpfs: Turning off swap in unprivileged tmpfs mounts unsupported"
+    // — which is exactly the mount kubelet needs for projected service-account
+    // tokens (k8s >= 1.31). Measured on OrbStack 2.2.0: k3s installed into an
+    // isolated machine restarted 18 times and never served its API.
+    // Second reason, sufficient on its own: non-isolated mode is what
+    // auto-mounts the Mac at /mnt/mac that the symlink above resolves through.
     // NO `-u root`: broken since OrbStack 2.2.0 (its setup runs
     // `usermod --uid 501 root`, which fails against PID 1). The VM keeps the
     // default macOS-named user; Ansible connects as `root@<vm>@orb`.

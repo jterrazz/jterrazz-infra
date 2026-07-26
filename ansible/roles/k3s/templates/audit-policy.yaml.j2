@@ -1,0 +1,47 @@
+# Managed by Ansible (roles/k3s).
+#
+# Metadata level everywhere, never RequestResponse: bodies would put Secret
+# and ConfigMap contents in a plaintext file on disk, which is the opposite of
+# what the encryption-at-rest setting next to it is for.
+#
+# The `None` rules are the difference between a useful log and a full disk. A
+# one-node cluster's controllers generate a continuous stream of reads and
+# leases; none of it is evidence of anything, and on this host the log shares
+# the volume with the datastore.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived
+rules:
+  # Controller chatter: leader-election leases rewrite every couple of seconds.
+  - level: None
+    resources:
+      - group: coordination.k8s.io
+        resources: ["leases"]
+
+  # Health and discovery endpoints, hit by every probe and every client.
+  - level: None
+    nonResourceURLs:
+      - /healthz*
+      - /livez*
+      - /readyz*
+      - /version
+      - /openapi/*
+      - /api*
+
+  # Reads by the cluster's own components. A human or a token doing the same
+  # read still lands in the log; this only silences the control plane watching
+  # itself.
+  - level: None
+    users:
+      - system:apiserver
+      - system:kube-scheduler
+      - system:kube-controller-manager
+      - system:kube-proxy
+    verbs: ["get", "list", "watch"]
+  - level: None
+    userGroups: ["system:nodes"]
+    verbs: ["get", "list", "watch"]
+
+  # Everything else — every write, and every read of a Secret by anyone.
+  - level: Metadata

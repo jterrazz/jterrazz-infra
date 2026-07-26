@@ -126,6 +126,53 @@
     state: enabled
   tags: [security, firewall]
 
+- name: Ensure the nftables drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+  tags: [security, firewall]
+
+- name: Install the peer-isolation nftables guard
+  ansible.builtin.template:
+    src: nft-guard.conf.j2
+    dest: /etc/nftables.d/jterrazz-guard.conf
+    mode: "0644"
+  notify: Reload the nftables guard
+  tags: [security, firewall]
+
+- name: Install the guard's systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nft-guard.service
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/security).
+      # After ufw: both write nftables, and the guard must survive `ufw reload`
+      # flushing and rebuilding its own tables.
+      [Unit]
+      Description=Peer-isolation nftables guard
+      After=network-pre.target ufw.service
+      Wants=network-pre.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/nft -f /etc/nftables.d/jterrazz-guard.conf
+      ExecStop=/usr/sbin/nft delete table inet jterrazz_guard
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload the nftables guard
+  tags: [security, firewall]
+
+- name: Enable the nftables guard
+  ansible.builtin.systemd_service:
+    name: nft-guard.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: [security, firewall]
+
 - name: Configure automatic updates
   ansible.builtin.template:
     src: 20auto-upgrades.j2
