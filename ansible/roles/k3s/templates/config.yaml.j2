@@ -42,3 +42,17 @@ kubelet-arg:
 
 kube-apiserver-arg:
   - "enable-admission-plugins=NodeRestriction,ResourceQuota"
+
+# local-storage is k3s' local-path-provisioner. Every PVC here uses the
+# `manual` StorageClass with a pre-declared hostPath PV (the service and app
+# charts emit both), so the provisioner has never provisioned anything —
+# `kubectl get pvc -A` is 14/14 `manual`.
+#
+# Disabling it is a SAFETY fix as much as a memory one: local-path ships as
+# the cluster DEFAULT StorageClass with reclaimPolicy `Delete`, so a PVC that
+# ever omits `storageClassName` lands on ephemeral node storage and its data
+# is deleted when the claim goes away — silently, and only for the one
+# service that forgot the field. With no default class, that same PVC stays
+# Pending, which is a loud, harmless failure instead.
+disable:
+  - local-storage

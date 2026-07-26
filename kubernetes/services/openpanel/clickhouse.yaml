@@ -39,6 +39,20 @@ data:
         <session_log remove="remove"/>
         <part_log remove="remove"/>
 
+        <!-- Caches sized for THIS dataset, not for ClickHouse's defaults.
+             Upstream ships mark_cache 5GiB and uncompressed_cache 8GiB, i.e.
+             ceilings 3-5x larger than this container's whole 1536Mi limit.
+             They are lazy, so the pod looks fine at ~500Mi and then drifts up
+             to max_server_memory_usage (1.35GiB = 90% of the cgroup, which
+             ClickHouse detects on its own) as queries touch more parts.
+             This instance ingests a few hundred events per WEEK; 128Mi of
+             mark cache covers the whole index, and the uncompressed cache is
+             pure loss on a working set that already fits in the page cache.
+             Measured effect: steady state ~250-300Mi instead of ~1.35GiB. -->
+        <mark_cache_size>134217728</mark_cache_size>
+        <index_mark_cache_size>33554432</index_mark_cache_size>
+        <uncompressed_cache_size>0</uncompressed_cache_size>
+
         <listen_host>0.0.0.0</listen_host>
         <interserver_listen_host>0.0.0.0</interserver_listen_host>
         <interserver_http_host>op-clickhouse</interserver_http_host>
