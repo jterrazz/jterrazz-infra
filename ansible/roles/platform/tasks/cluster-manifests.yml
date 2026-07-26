@@ -19,8 +19,12 @@
   register: traefik_config_apply
   changed_when: "'created' in traefik_config_apply.stdout or 'configured' in traefik_config_apply.stdout"
 
-# The long deadline is for a fresh VM with no image cache, where the
-# Helm-install Job needs minutes to pull.
+# Retried, because a HelmChartConfig change makes the helm-controller
+# DELETE and recreate the install job asynchronously — a bare `kubectl wait`
+# right after the apply can land in the window where the job does not exist
+# and fail instantly with NotFound instead of waiting. The long per-try
+# deadline is for a fresh VM with no image cache, where the job needs
+# minutes to pull.
 - name: Wait for Traefik to be ready
   ansible.builtin.command:
     argv:
@@ -33,7 +37,11 @@
       - -n
       - kube-system
       - --timeout=480s
+  register: traefik_wait
   changed_when: false
+  retries: 6
+  delay: 10
+  until: traefik_wait.rc == 0
 
 # A PV whose PVC was deleted goes to Released and will NOT rebind while it
 # still carries the old claimRef, so the app's new PVC stays Pending forever
