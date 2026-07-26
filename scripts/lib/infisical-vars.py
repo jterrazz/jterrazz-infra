@@ -70,11 +70,17 @@ def die(message):
     sys.exit(1)
 
 
+# eu.infisical.com sits behind Cloudflare, whose bot protection 403s the
+# default "Python-urllib/3.x" User-Agent while letting curl through — every
+# request must carry an explicit UA or login fails with a misleading 403.
+USER_AGENT = "jterrazz-infrastructure-deploy/1.0"
+
+
 def post_json(url, payload):
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=30) as response:
@@ -101,7 +107,7 @@ def fetch_path(token, secret_path):
     )
     request = urllib.request.Request(
         f"{API}/api/v3/secrets/raw?{query}",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
