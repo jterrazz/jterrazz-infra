@@ -1,6 +1,6 @@
 ---
 # Supplied as extra-vars by scripts/deploy.sh (via
-# scripts/lib/infisical-vars.py). Empty here so a run without them SKIPS the
+# scripts/infisical-vars.py). Empty here so a run without them SKIPS the
 # login block rather than failing.
 tailscale_oauth_client_id: ""
 tailscale_oauth_client_secret: ""

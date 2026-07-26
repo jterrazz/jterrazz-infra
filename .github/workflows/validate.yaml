@@ -62,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # Mirrors the shellcheck step in `make lint`. ubuntu-latest ships
+      # Mirrors the shellcheck step in `make check`. ubuntu-latest ships
       # shellcheck preinstalled, so there is nothing to set up.
       - name: ShellCheck
         run: shellcheck scripts/*.sh scripts/lib/*.sh
@@ -71,7 +71,7 @@ jobs:
         # ast.parse rather than py_compile: same check, no __pycache__ artifact.
         run: |
           set -euo pipefail
-          for f in scripts/lib/infisical-vars.py scripts/assert-sync.py; do
+          for f in scripts/infisical-vars.py scripts/assert-sync.py; do
             python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "$f"
           done
 
@@ -234,16 +234,16 @@ jobs:
         run: helm unittest --strict kubernetes/charts/app kubernetes/charts/service
 
       - name: Validate raw service manifests
-        # kubernetes/services/** mixes Helm values files (helm.yaml,
-        # service.yaml — consumed BY the service chart, not raw manifests)
-        # with actual hand-written K8s objects (openpanel's stack, LibreChat's
+        # kubernetes/services/** mixes Helm values files (helm.yaml for the
+        # upstream chart, platform.yaml for the service chart) with actual
+        # hand-written K8s objects (openpanel's stack, LibreChat's
         # mongodb/secret/netpol, cloudflared's Deployment, cert-manager
         # issuers, the registry Deployment, ...). Rather than maintain an
         # explicit file list that goes stale the moment someone adds a file,
-        # filter by the one structural property that actually distinguishes
-        # them: a real manifest has a top-level `apiVersion:` key, a values
-        # file doesn't. (roles/platform/tasks/registry.yml applies the same
-        # test for the same reason.)
+        # filter by the one structural property that distinguishes them: a
+        # real manifest has a top-level `apiVersion:` key, a values file
+        # doesn't. (roles/platform/tasks/registry.yml applies the same test
+        # for the same reason.)
         run: |
           set -euo pipefail
           mapfile -t manifests < <(grep -rl '^apiVersion:' kubernetes/services --include='*.yaml')

@@ -46,13 +46,14 @@ make deploy-platform  # ansible platform.yml only — everything above k3s
 make diff             # what a deploy would change, without changing it
 make redeploy-apps    # trigger every app's CI to rebuild + redeploy
 make destroy          # delete the VM (the Mac-side data directory stays)
-make lint             # the checks CI runs, locally
+make check            # the checks CI runs, locally (alias: make lint)
 make check-tools      # ansible / pulumi / node / kubectl / orbctl present?
+make kubeconfig       # regenerate ./kubeconfig.yaml from the VM (needs the tailnet)
 ```
 
 `scripts/deploy.sh` is the entry point behind all of them. It sources the
 tokens in `.env`, pulls the Ansible-bound secrets from Infisical through
-`scripts/lib/infisical-vars.py` into a 0600 tempfile, and runs the playbook. A
+`scripts/infisical-vars.py` into a 0600 tempfile, and runs the playbook. A
 missing secret hard-fails the run; there are no fallback defaults.
 
 ## Architecture
@@ -102,11 +103,12 @@ kubernetes/
 ├── cluster/          cluster-wide manifests, `kubectl apply -f … -R`:
 │                     namespaces, the `manual` StorageClass, Traefik config +
 │                     middlewares + TLS options, one NetworkPolicy per namespace
-└── services/<svc>/   helm.yaml (upstream chart values) + service.yaml
+└── services/<svc>/   helm.yaml (upstream chart values) + platform.yaml
                       (service-chart values) + any raw manifests it needs
 
 pulumi/src/   index.ts (one machine) · targets/orbstack.ts · dns.ts
-scripts/      deploy.sh · trigger-app-deploys.sh · lib/infisical-vars.py
+scripts/      deploy.sh · infisical-vars.py · platform-diff.sh · smoke.sh
+              assert-sync.py · trigger-app-deploys.sh · lib/common.sh
 ```
 
 ## CI

@@ -51,8 +51,8 @@
       - { name: registry, namespace: platform-registry }
 
 # `grep -rl '^apiVersion:'`, not `kubectl apply -f <dir>`: the directory also
-# holds service.yaml, a Helm VALUES file, and kubectl aborts the whole apply on
-# it with "apiVersion not set". Same structural test
+# holds platform.yaml, a Helm VALUES file, and kubectl aborts the whole apply
+# on it with "apiVersion not set". Same structural test
 # .github/workflows/validate.yaml uses to pick manifests out of kubernetes/.
 - name: Apply the registry manifests
   ansible.builtin.shell:
@@ -61,15 +61,11 @@
       grep -rl '^apiVersion:' "{{ manifest_dir }}/kubernetes/services/registry" \
         | xargs --no-run-if-empty kubectl apply -f
     executable: /bin/bash
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: registry_result
   changed_when: "'created' in registry_result.stdout or 'configured' in registry_result.stdout"
 
 - name: Wait for the registry to be ready
   ansible.builtin.command: kubectl rollout status deployment/registry -n platform-registry --timeout=60s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false
 
 # publish-app-chart.yml's `helm registry login` talks HTTPS, and on a fresh
@@ -79,6 +75,4 @@
   ansible.builtin.command: >
     kubectl wait --for=condition=Ready certificate/registry-tls
     -n platform-registry --timeout=180s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false

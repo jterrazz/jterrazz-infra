@@ -2,7 +2,7 @@
 # Every platform namespace is declared here — no imperative `kubectl create
 # ns`, no per-service namespace manifest. Applied with the rest of this
 # directory by `kubectl apply -f -R kubernetes/cluster`
-# (ansible/roles/platform/tasks/cluster-base.yml).
+# (ansible/roles/platform/tasks/cluster-manifests.yml).
 
 apiVersion: v1
 kind: Namespace
@@ -56,7 +56,7 @@ metadata:
 ---
 # The gateway app's namespace, pre-declared here (not by its CI) because
 # network-policies/prod-gateway-intelligence.yaml — applied in the same
-# cluster-base pass — must land in an existing namespace on a fresh cluster,
+# cluster-manifests pass — must land in an existing namespace on a fresh cluster,
 # before the app's first deploy. Helm's --create-namespace adopts it as-is.
 # kubectl walks this directory lexically, so namespaces.yaml sorts before
 # network-policies/ — the ordering this relies on.

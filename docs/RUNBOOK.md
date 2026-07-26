@@ -8,12 +8,13 @@ and how to rebuild from nothing. Design lives in [../README.md](../README.md).
 ```bash
 orb -m jterrazz-infrastructure -u root kubectl get pod -A   # most reliable
 ssh root@jterrazz-infrastructure@orb                        # OrbStack SSH proxy
-export KUBECONFIG=./kubeconfig.yaml                         # written by `make deploy`
+export KUBECONFIG=./kubeconfig.yaml                         # make kubeconfig
 ```
 
 `kubeconfig.yaml` is fetched by the k3s role at the end of every `make deploy`
 and rewritten to the node's MagicDNS name — it only works from a tailnet
-client. The `orb` SSH alias resolves only with `~/.orbstack/ssh/config` in play
+client. `make kubeconfig` regenerates it (fetch + rewrite) without a deploy,
+which is what `make diff` tells you to run when the file is missing or stale. The `orb` SSH alias resolves only with `~/.orbstack/ssh/config` in play
 (which is why `inventories/laptop.yml` passes it explicitly); `orb -m …` needs
 nothing but OrbStack.
 
@@ -21,7 +22,7 @@ nothing but OrbStack.
 
 ### Infisical — project `jterrazz`, environment `prod`
 
-Fetched at deploy time by `scripts/lib/infisical-vars.py` — the single
+Fetched at deploy time by `scripts/infisical-vars.py` — the single
 implementation, shared by `scripts/deploy.sh` and
 `.github/workflows/deploy-platform.yaml`. Each path is fetched **explicitly**,
 never recursively, so short key names can repeat across folders. A missing key

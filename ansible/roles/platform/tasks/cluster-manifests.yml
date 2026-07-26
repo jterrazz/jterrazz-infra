@@ -16,8 +16,6 @@
       - apply
       - -f
       - "{{ manifest_dir }}/kubernetes/cluster/traefik/traefik-config.yaml"
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: traefik_config_apply
   changed_when: "'created' in traefik_config_apply.stdout or 'configured' in traefik_config_apply.stdout"
 
@@ -35,8 +33,6 @@
       - -n
       - kube-system
       - --timeout=480s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false
 
 # A PV whose PVC was deleted goes to Released and will NOT rebind while it
@@ -54,8 +50,6 @@
             kubectl patch pv $pv -p '{"spec":{"claimRef":null}}' --type=merge
           done
         executable: /bin/bash
-      environment:
-        KUBECONFIG: "{{ kubeconfig }}"
       register: pv_clear
       changed_when: pv_clear.stdout != ''
   rescue:
@@ -72,7 +66,5 @@
 - name: Deploy the cluster-wide manifests
   ansible.builtin.command:
     cmd: kubectl apply -f {{ manifest_dir }}/kubernetes/cluster -R
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: cluster_base_result
   changed_when: "'created' in cluster_base_result.stdout or 'configured' in cluster_base_result.stdout"

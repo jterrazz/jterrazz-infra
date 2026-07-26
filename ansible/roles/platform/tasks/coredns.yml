@@ -13,8 +13,6 @@
 # cluster, so a fixed value silently breaks on the next repave.
 - name: Get Traefik ClusterIP (in-cluster target for openpanel.jterrazz.com)
   ansible.builtin.command: kubectl get svc traefik -n kube-system -o jsonpath='{.spec.clusterIP}'
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: traefik_cluster_ip
   changed_when: false
 

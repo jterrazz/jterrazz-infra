@@ -48,6 +48,12 @@ export KUBECONFIG
 # read-only preview of the same set, so the two must describe the same
 # releases. Adding a platform service means adding a line here.
 #
+# This table IS checked: scripts/assert-sync.py parses both arrays below and
+# the Ansible tasks, and fails if a release, chart ref, namespace, version key
+# or values path differs. It drifted twice before that check existed (the three
+# grafana-community charts were still listed under `grafana/`), and a stale
+# preview is worse than no preview — it diffs a chart the deploy will not use.
+#
 # UPSTREAM_RELEASES: <release>|<namespace>|<chart ref>|<version key in
 #                    group_vars platform_chart_versions>|<values file>
 # =============================================================================
@@ -55,18 +61,18 @@ UPSTREAM_RELEASES=(
     "cert-manager|platform-networking|jetstack/cert-manager|cert_manager|kubernetes/services/cert-manager/helm.yaml"
     "infisical|platform-secrets|infisical/secrets-operator|infisical|kubernetes/services/infisical/helm.yaml"
     "prometheus|platform-telemetry|prometheus-community/prometheus|prometheus|kubernetes/services/prometheus/helm.yaml"
-    "loki|platform-telemetry|grafana/loki|loki|kubernetes/services/loki/helm.yaml"
+    "loki|platform-telemetry|grafana-community/loki|loki|kubernetes/services/loki/helm.yaml"
     "alloy|platform-telemetry|grafana/alloy|alloy|kubernetes/services/alloy/helm.yaml"
-    "tempo|platform-telemetry|grafana/tempo|tempo|kubernetes/services/tempo/helm.yaml"
+    "tempo|platform-telemetry|grafana-community/tempo|tempo|kubernetes/services/tempo/helm.yaml"
     "otel-collector|platform-telemetry|open-telemetry/opentelemetry-collector|otel_collector|kubernetes/services/otel-collector/helm.yaml"
-    "grafana|platform-telemetry|grafana/grafana|grafana|kubernetes/services/grafana/helm.yaml"
+    "grafana|platform-telemetry|grafana-community/grafana|grafana|kubernetes/services/grafana/helm.yaml"
     # OCI, so no `helm repo add` is needed for this one.
     "librechat|platform-ai|oci://ghcr.io/danny-avila/librechat-chart/librechat|librechat|kubernetes/services/librechat/helm.yaml"
 )
 
 # SERVICE_RELEASES: <service name>|<namespace>
 # All installed as `<name>-platform` from kubernetes/charts/service with
-# kubernetes/services/<name>/service.yaml, exactly as service-charts.yml does.
+# kubernetes/services/<name>/platform.yaml, exactly as service-charts.yml does.
 SERVICE_RELEASES=(
     "grafana|platform-telemetry"
     "prometheus|platform-telemetry"
@@ -96,8 +102,8 @@ require_kubeconfig() {
     if [ ! -f "$KUBECONFIG" ]; then
         error "No kubeconfig at $KUBECONFIG"
         error "This tool diffs against the LIVE cluster, so it needs one."
-        error "Fetch it with:  orb -m jterrazz-infrastructure -u root cat /etc/rancher/k3s/k3s.yaml > kubeconfig.yaml"
-        error "(then replace the server address with the node's tailnet FQDN), or point KUBECONFIG at an existing one."
+        error "Generate it with:  make kubeconfig"
+        error "(or point KUBECONFIG at an existing one)."
         exit 1
     fi
     if ! kubectl version -o yaml >/dev/null 2>&1; then
@@ -148,6 +154,24 @@ require_helm_diff
 
 skipped=0
 diffed=0
+failed=0
+
+# A release whose diff errored is REPORTED and the loop moves on, rather than
+# swallowed with `|| true`. A pre-flight tool that hides a failure behind an
+# empty diff says "nothing would change" about a release it never managed to
+# render — which is the exact failure mode this script exists to prevent. The
+# run still covers every other release; the non-zero exit at the end is what
+# makes the gap impossible to miss.
+diff_release() {
+    local label="$1"
+    shift
+    if helm diff upgrade "$@"; then
+        diffed=$((diffed + 1))
+        return
+    fi
+    error "$label: helm diff FAILED (output above) — this preview does NOT cover it."
+    failed=$((failed + 1))
+}
 
 section "Upstream charts"
 for entry in "${UPSTREAM_RELEASES[@]}"; do
@@ -168,13 +192,12 @@ for entry in "${UPSTREAM_RELEASES[@]}"; do
     fi
 
     info "$release ($chart $version) in $namespace"
-    helm diff upgrade "$release" "$chart" \
+    diff_release "$release" "$release" "$chart" \
         --namespace "$namespace" \
         --version "$version" \
         --values "$PROJECT_DIR/$values" \
         --suppress-secrets \
-        --allow-unreleased || true
-    diffed=$((diffed + 1))
+        --allow-unreleased
 done
 
 section "Service chart (ingress + certificate + storage)"
@@ -183,18 +206,25 @@ for entry in "${SERVICE_RELEASES[@]}"; do
     selected "$name" || continue
 
     info "$name-platform in $namespace"
-    helm diff upgrade "$name-platform" "$SERVICE_CHART" \
+    diff_release "$name-platform" "$name-platform" "$SERVICE_CHART" \
         --namespace "$namespace" \
-        --values "$PROJECT_DIR/kubernetes/services/$name/service.yaml" \
+        --values "$PROJECT_DIR/kubernetes/services/$name/platform.yaml" \
         --set "infrastructure.nodeName=$NODE_NAME" \
         --suppress-secrets \
-        --allow-unreleased || true
-    diffed=$((diffed + 1))
+        --allow-unreleased
 done
 
 section "Summary"
 echo "  releases diffed:  $diffed"
 echo "  releases skipped: $skipped"
+echo "  releases failed:  $failed"
 echo ""
 echo "  Empty output above a release means it is already in the desired state."
 echo "  Apply with: make deploy-platform"
+
+if [ "$failed" -gt 0 ]; then
+    echo ""
+    error "$failed release(s) could not be diffed — the preview above is INCOMPLETE."
+    error "Fix those before running: make deploy-platform"
+    exit 1
+fi

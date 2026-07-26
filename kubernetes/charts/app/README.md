@@ -236,6 +236,56 @@ Map of `name -> Grafana dashboard JSON`. Renders a ConfigMap labelled
 Grafana's sidecar picks up. **Only rendered when `environment == prod`** —
 one dashboard per app, not one per environment.
 
+App CI fills this map for you: `jterrazz-actions/actions/docker-deploy` scans
+`.infrastructure/dashboards/*.json` and appends
+`--set-file spec.dashboards.<basename>=<file>` per file. Dashboards therefore
+never appear in `application.yaml` — dropping a JSON file in that directory is
+the whole workflow.
+
+### `spec.alerts`
+
+Map of `name -> Grafana alert provisioning YAML` (an `apiVersion: 1` /
+`groups:` document — the [unified alerting provisioning
+format](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/)).
+Renders **one** ConfigMap `<app>-alerts` labelled `grafana_alert: "1"`, with
+one data key `<name>.yaml` per entry, picked up by Grafana's `sidecar.alerts`
+(`searchNamespace: ALL`, so the app's own namespace is fine).
+
+```yaml
+spec:
+    alerts:
+        signews-api: |
+            apiVersion: 1
+            groups:
+              - orgId: 1
+                name: signews-api
+                folder: signews-api
+                interval: 1m
+                rules:
+                  - uid: signews-api-eventloop-lag
+                    ...
+```
+
+**Only rendered when `environment == prod`**, and for a harder reason than
+dashboards: a rule `uid:` is global in Grafana, so a staging copy of a rule
+would not sit beside the prod one — it would provision *over* it.
+
+Two deliberate differences from `spec.dashboards`:
+
+- **No `grafana_folder` annotation.** The alerts sidecar has no
+  `folderAnnotation` configured; each group carries its own `folder:` inside
+  the payload.
+- **One ConfigMap for all entries**, not one per entry, so an app's rule set is
+  replaced atomically — a renamed rule file cannot leave an orphan ConfigMap
+  behind still provisioning a rule nobody maintains.
+
+Unlike dashboards, **CI does not populate this map from a directory**:
+`docker-deploy`'s `--set-file` loop is hardcoded to `dashboards/*.json`, so
+alerts are written inline in `.infrastructure/application.yaml` today. The map
+shape is identical to what `--set-file` produces, so generalising that loop to
+also scan `alerts/*.yaml` is a jterrazz-actions-only change — this chart needs
+no edit when it happens.
+
 ### `spec.platformServices`
 
 Opt-in wiring to in-cluster platform services. The catalog is the single
@@ -325,6 +375,7 @@ For a declared environment, namespace `<environment>-<app>`:
 | InfisicalSecret           | `<app>-infisical`             | `spec.secrets.path` set         |
 | ConfigMap                 | `<app>-config`                | `spec.configFiles` set          |
 | ConfigMap                 | `<app>-dashboard-<name>`      | `spec.dashboards` set **and** env is prod |
+| ConfigMap                 | `<app>-alerts`                | `spec.alerts` set **and** env is prod |
 | PV / PVC                  | `<app>-<env>-data` / `<app>-data` | `spec.storage` set          |
 
 The `registry-credentials` `.dockerconfigjson` is built with `dict | toJson`
@@ -335,7 +386,7 @@ failed every image pull with an unhelpful auth error.
 ## Versioning and publishing
 
 `kubernetes/charts/app/Chart.yaml` carries the chart `version:` (currently
-**2.3.0**). Push to `main` touching `kubernetes/charts/app/**` and
+**2.4.0**). Push to `main` touching `kubernetes/charts/app/**` and
 `.github/workflows/publish-chart.yaml` packages and pushes it to
 `oci://registry.jterrazz.com/charts/app`.
 

@@ -31,15 +31,16 @@ make deploy-platform  # ansible platform.yml only (everything above k3s)
 make diff             # what a deploy would change
 make redeploy-apps    # trigger every app's CI to rebuild + redeploy
 make destroy          # delete the VM (Mac-side data stays)
-make lint             # the checks CI runs
+make check            # the checks CI runs (alias: make lint)
 make check-tools      # required toolchain present?
+make kubeconfig       # regenerate ./kubeconfig.yaml from the VM
 
 orb -m jterrazz-infrastructure -u root kubectl get pod -A   # cluster access
 kubectl rollout restart -n platform-networking \
   deploy/cert-manager deploy/cert-manager-webhook deploy/cert-manager-cainjector
 
-# One slice of the platform layer (tags: coredns, cluster-base, helm,
-# cluster-core, telemetry, librechat, openpanel, registry, chart-publish)
+# One slice of the platform layer (tags: coredns, cluster-manifests, helm,
+# bootstrap-services, telemetry, librechat, openpanel, registry, chart-publish)
 cd ansible && ansible-playbook playbooks/platform.yml \
   -i inventories/laptop.yml -e "@<extra-vars>" --tags telemetry
 ```

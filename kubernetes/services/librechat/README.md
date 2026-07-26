@@ -33,8 +33,8 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
 - **No Meilisearch** ⇒ `SEARCH: "false"` — conversation search is off.
 - **Private-only for now**: `ALLOW_REGISTRATION: "false"` plus the
   `private-access` middleware. Going public means flipping `access: private`
-  to `access: public` in `service.yaml` and leaning on LibreChat's own auth.
-- `fullnameOverride: librechat` — the IngressRoute in `service.yaml` targets a
+  to `access: public` in `platform.yaml` and leaning on LibreChat's own auth.
+- `fullnameOverride: librechat` — the IngressRoute in `platform.yaml` targets a
   Service literally named `librechat`, so the chart's fullname must match.
 
 ## Deployed versions (pinned)
@@ -44,7 +44,7 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
 | Helm chart     | `oci://ghcr.io/danny-avila/librechat-chart/librechat` **2.0.7** (pinned as `platform_chart_versions.librechat` in `ansible/inventories/group_vars/all.yml`) |
 | LibreChat app  | `registry.librechat.ai/danny-avila/librechat:v0.8.7`     |
 | MongoDB        | `mongo:7.0`                                                  |
-| (init) chown   | `busybox:1.37` (digest-pinned in `mongodb.yaml`)             |
+| (init) chown   | `busybox:1.38` (digest-pinned in `mongodb.yaml`)             |
 
 The image tag is pinned **explicitly** rather than inherited from the chart's
 `appVersion`: an empty tag means "whatever appVersion this chart revision
@@ -71,7 +71,7 @@ Same pattern as the app chart and OpenPanel's datastores.
 ## Where the data lives
 
 Both volumes come from the **service chart's named-volume storage map**
-declared in `service.yaml` — `uploads` used to be a hand-written
+declared in `platform.yaml` — `uploads` used to be a hand-written
 `uploads.yaml`, now deleted. Object names and hostPath paths are unchanged.
 
 | PVC / PV            | Size | Path (`/var/lib/k8s-data/...`) | Holds                                    |
@@ -146,7 +146,7 @@ for a specific reason:
    client label via the upstream chart's pod labels and delete this file.)*
 
    The `prod-gateway-intelligence` namespace is pre-declared in
-   `kubernetes/cluster/namespaces.yaml` (applied by `cluster-base.yml`, which
+   `kubernetes/cluster/namespaces.yaml` (applied by `cluster-manifests.yml`, which
    runs before this policy) — on a fresh cluster the gateway app doesn't exist
    yet, and Helm adopts the pre-created namespace when its CI deploys later.
 
@@ -226,7 +226,7 @@ CLIProxyAPI supports a `claude-opus-latest` alias in
   before this is anything but private.
 - **`strategy: Recreate` on mongod** — never run two writers against one RWO
   hostPath volume.
-- **Changing `pathSuffix` or a PV name in `service.yaml` moves live data.**
+- **Changing `pathSuffix` or a PV name in `platform.yaml` moves live data.**
   The paths are byte-identical to what the pre-2.0 manifests produced, on
   purpose. `hostPath.type` is an immutable PV field: delete and recreate the
   PV if it ever has to change.

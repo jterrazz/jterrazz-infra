@@ -78,6 +78,27 @@ spec:
     overview: |
       { "title": "ci-test-app overview", "panels": [] }
 
+  # Also prod-only. Two entries because the alerts ConfigMap is ONE object with
+  # one data key per entry (dashboards are one object each) — a single entry
+  # would not catch a template that silently emits only the last key.
+  alerts:
+    ci-test-app: |
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: ci-test-app
+          folder: ci-test-app
+          interval: 1m
+          rules: []
+    ci-test-app-extra: |
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: ci-test-app-extra
+          folder: ci-test-app
+          interval: 5m
+          rules: []
+
   ingress:
     # Public surface, sub-path -> exercises the stripPrefix middleware.
     - host: ci-test-app.jterrazz.com

@@ -47,22 +47,16 @@
     --values {{ manifest_dir }}/kubernetes/services/cert-manager/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: certmanager_result
   changed_when: "'has been upgraded' in certmanager_result.stdout or 'has been installed' in certmanager_result.stdout"
 
 - name: Wait for cert-manager webhook to be ready
   ansible.builtin.command:
     cmd: kubectl rollout status deployment/cert-manager-webhook -n platform-networking --timeout=120s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false
 
 - name: Apply cert-manager ClusterIssuers
   ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/cert-manager/issuers.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: issuers_result
   changed_when: "'created' in issuers_result.stdout or 'configured' in issuers_result.stdout"
 
@@ -74,8 +68,6 @@
     --values {{ manifest_dir }}/kubernetes/services/infisical/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: infisical_helm_result
   changed_when: "'has been upgraded' in infisical_helm_result.stdout or 'has been installed' in infisical_helm_result.stdout"
 
@@ -85,22 +77,14 @@
 # Secret first: the Deployment's env references `cloudflared-secrets`, and a
 # pod scheduled before the operator has synced it sits in
 # CreateContainerConfigError instead of retrying gracefully.
-- name: Apply the cloudflared Infisical secret
-  ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/cloudflared/secret.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
-  register: cloudflared_secret_apply
-  changed_when: "'created' in cloudflared_secret_apply.stdout or 'configured' in cloudflared_secret_apply.stdout"
-
-- name: Wait for the cloudflared tunnel token
-  ansible.builtin.include_tasks: wait-for-secret.yml
+- name: Provision the cloudflared tunnel token
+  ansible.builtin.include_tasks: infisical-secret.yml
   vars:
+    secret_manifest: "{{ manifest_dir }}/kubernetes/services/cloudflared/secret.yaml"
     wait_secret_name: cloudflared-secrets
     wait_secret_namespace: platform-networking
 
 - name: Apply the cloudflared deployment
   ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/cloudflared/deployment.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: cloudflared_result
   changed_when: "'created' in cloudflared_result.stdout or 'configured' in cloudflared_result.stdout"

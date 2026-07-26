@@ -13,6 +13,11 @@ spec:
   storage: {}
   configFiles: {}
   dashboards: {}
+  # name -> Grafana unified-alerting provisioning YAML (the `apiVersion: 1` /
+  # `groups:` document). prod-only, like dashboards. Same map shape, so the
+  # inline form used today and a future CI `--set-file spec.alerts.<name>=…`
+  # produce identical values.
+  alerts: {}
   # Escape hatch only: merged OVER the chart's hardened container defaults
   # (see templates/deployment.yaml) by an app that genuinely needs a
   # capability back, so it never has to fork the chart.

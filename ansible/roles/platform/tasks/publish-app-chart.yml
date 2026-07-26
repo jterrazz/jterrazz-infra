@@ -68,8 +68,6 @@
 
     - name: Package the app Helm chart
       ansible.builtin.command: helm package {{ manifest_dir }}/kubernetes/charts/app --destination /tmp/app-chart
-      environment:
-        KUBECONFIG: "{{ kubeconfig }}"
       changed_when: true
 
     - name: Locate the packaged chart

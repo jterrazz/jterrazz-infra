@@ -6,12 +6,19 @@
 # resurrection recipe.
 
 .DEFAULT_GOAL := help
-.PHONY: help deploy deploy-platform destroy redeploy-apps apps check-tools lint diff smoke
+.PHONY: help deploy deploy-platform destroy redeploy-apps check-tools check lint diff smoke kubeconfig
 
 GREEN := \033[32m
 YELLOW := \033[33m
 BLUE := \033[34m
 NC := \033[0m
+
+# The OrbStack VM, and the node's MagicDNS name read out of the CI inventory
+# rather than written down a third time (roles/k3s/tasks/kubeconfig.yml and
+# inventories/ci.yml are the other two places it appears).
+VM_NAME := jterrazz-infrastructure
+KUBECONFIG_FILE := kubeconfig.yaml
+NODE_FQDN = $(shell awk '/ansible_host:/ {print $$2; exit}' ansible/inventories/ci.yml)
 
 ##@ Deploy
 
@@ -27,10 +34,27 @@ destroy: ## Tear down the OrbStack VM (data on the Mac stays)
 redeploy-apps: ## Trigger every app's CI to rebuild+redeploy (bootstrap after cluster rebuild)
 	./scripts/trigger-app-deploys.sh
 
-# Kept as an alias for muscle memory; `redeploy-apps` is the real name.
-apps: redeploy-apps
-
 ##@ Utilities
+
+# `make deploy` writes kubeconfig.yaml as a side effect (roles/k3s/tasks/
+# kubeconfig.yml); this is the same two steps on their own, for the far more
+# common case of "the file is stale/gone and I only want to look at the
+# cluster". k3s writes a server address of 127.0.0.1 (0.0.0.0 here, since the
+# API server binds every interface), which is useless from the Mac — the
+# rewrite to the MagicDNS name is what makes the fetched file usable, and it is
+# the step that was easy to forget when this was two lines of prose in
+# scripts/platform-diff.sh's error path.
+kubeconfig: ## Regenerate ./kubeconfig.yaml from the VM (server = MagicDNS name)
+	@test -n "$(NODE_FQDN)" || { echo "✗ no ansible_host in ansible/inventories/ci.yml"; exit 1; }
+	@orb -m $(VM_NAME) -u root cat /etc/rancher/k3s/k3s.yaml > $(KUBECONFIG_FILE).tmp \
+		|| { rm -f $(KUBECONFIG_FILE).tmp; echo "✗ could not read k3s.yaml from $(VM_NAME) (orb list?)"; exit 1; }
+	@sed -E 's#https://(127\.0\.0\.1|0\.0\.0\.0):6443#https://$(NODE_FQDN):6443#' \
+		$(KUBECONFIG_FILE).tmp > $(KUBECONFIG_FILE)
+	@rm -f $(KUBECONFIG_FILE).tmp
+	@chmod 600 $(KUBECONFIG_FILE)
+	@grep -q 'server: https://$(NODE_FQDN):6443' $(KUBECONFIG_FILE) \
+		|| { echo "✗ server address not rewritten — k3s wrote something other than 127.0.0.1/0.0.0.0"; exit 1; }
+	@echo "✓ $(KUBECONFIG_FILE) → https://$(NODE_FQDN):6443 (needs the tailnet)"
 
 # Read-only preview against the LIVE cluster, meant to be run BEFORE
 # `make deploy-platform`: that play runs `helm upgrade --install` for every
@@ -56,24 +80,24 @@ check-tools: ## Check required tools
 	@command -v kubectl >/dev/null 2>&1 && echo "✓ kubectl"   || echo "✗ kubectl"
 	@command -v orbctl  >/dev/null 2>&1 && echo "✓ orbctl"    || echo "✗ orbctl"
 
-##@ Lint
+##@ Check
 
 # Deliberately strict: every check below is also a CI job, and a missing tool
-# used to be a soft "skipped" line, which meant `make lint` could print all
+# used to be a soft "skipped" line, which meant this target could print all
 # green on a machine where it had checked nothing. Install the tools:
 #   brew install shellcheck helm actionlint
 #   pip install ansible-core ansible-lint
 # actionlint is the ONE soft skip — it validates .github/workflows only, which
 # CI necessarily re-validates by simply running.
-lint: ## Run the checks CI runs (shellcheck, python, sync assertions, ansible-lint, helm lint + unittest, actionlint)
+check: ## Run the checks CI runs (shellcheck, python, sync assertions, ansible-lint, helm lint + unittest, actionlint)
 	@echo "== shellcheck scripts/ =="
 	shellcheck scripts/*.sh scripts/lib/*.sh
 	@echo "✓ shellcheck clean"
 	@echo ""
-	@echo "== python syntax scripts/lib/ =="
+	@echo "== python syntax scripts/ =="
 	@# ast.parse rather than py_compile: same syntax check, no __pycache__/ left
 	@# behind in the working tree.
-	@for f in scripts/lib/infisical-vars.py scripts/assert-sync.py; do \
+	@for f in scripts/infisical-vars.py scripts/assert-sync.py; do \
 		python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "$$f" || exit 1; \
 	done
 	@echo "✓ python clean"
@@ -82,8 +106,10 @@ lint: ## Run the checks CI runs (shellcheck, python, sync assertions, ansible-li
 	@# Facts this repo has to write down twice (Pulumi DNS vs CoreDNS overrides,
 	@# the Infisical var map vs the Ansible preflight assert, Traefik's
 	@# trustedIPs vs the rate-limit excludedIPs, chart-version pins vs their
-	@# consumers). Each pair carries a "keep in sync" comment; this is what
-	@# actually checks them.
+	@# consumers, the platform-diff release table vs the Ansible helm
+	@# invocations, the three Helm/ansible-core/helm-unittest version pins, the
+	@# busybox digest, private hostnames vs the smoke table). Each pair carries
+	@# a "keep in sync" comment; this is what actually checks them.
 	python3 scripts/assert-sync.py
 	@echo ""
 	@echo "== ansible-lint ansible/ =="
@@ -121,6 +147,12 @@ lint: ## Run the checks CI runs (shellcheck, python, sync assertions, ansible-li
 	else \
 		echo "⚠ actionlint not installed (brew install actionlint) — skipped"; \
 	fi
+
+# `check` is the real name — the target runs unit tests and cross-file
+# assertions, not just linters. `lint` stays as an alias: it is the name in
+# every app repo's universal CI interface (make build / lint / test), and
+# muscle memory does not need to be re-trained for a rename.
+lint: check
 
 ##@ Help
 

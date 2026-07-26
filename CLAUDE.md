@@ -15,18 +15,27 @@ history, **not** a live mode — do not reintroduce a `target` / `manageDns` /
 
 ## Hand-synced pairs
 
-Nothing enforces these at runtime; each has a CI assertion in `validate.yaml`
-because each has drifted at least once. Change one, change all.
+Nothing enforces these at runtime; each has drifted at least once. Change one,
+change all. The **Checked by** column is literal — where it says
+`assert-sync.py`, editing one side and not the other fails `make check` and the
+`scripts` job of `validate.yaml`; where it says *nothing*, the only thing
+standing between you and the drift is this table.
 
-| A                                                     | B                                                        | Why they must match                                                    |
-| ----------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `private_hostnames` (`ansible/inventories/group_vars/all.yml`) | `PRIVATE_HOSTS` (`pulumi/src/dns.ts`)             | A creates the in-cluster CoreDNS override, B the public CNAME. One without the other = a name that resolves nowhere useful. |
-| `helm_version` (`group_vars/all.yml`)                 | `azure/setup-helm` version in `validate.yaml` **and** `publish-chart.yaml` | Three machines, one Helm. A chart packaged by one version and rendered by another is a silent behaviour difference. |
-| `SCOPES` in `scripts/lib/infisical-vars.py`           | the `assert` list in `roles/platform/tasks/preflight.yml` | Preflight is the second gate on the same secret set; a secret fetched but unasserted fails halfway through a deploy instead of at the start. |
-| `forwardedHeaders.trustedIPs` (`cluster/traefik/traefik-config.yaml`) | `rate-limit` `ipStrategy.excludedIPs` (`cluster/traefik/middleware.yaml`) | Both enumerate "hops that are ours". If they disagree, the rate limiter keys on the wrong XFF element or on nothing. |
-| `security_ci_deploy_pubkey` (`roles/security/defaults/main.yml`) | GitHub secret `CI_DEPLOY_SSH_PRIVATE`              | Split keypair. Rotating needs both plus a `make deploy` to roll the pubkey onto the VM. |
-| `version:` in `charts/app/Chart.yaml`                 | the published OCI chart                                   | The chart is pulled **unversioned** by every app. Two publish guards exist (`publish-chart.yaml` and `roles/platform/tasks/publish-app-chart.yml`) and both skip rather than overwrite — so forgetting the bump publishes nothing, silently. |
-| `ci/test-values.yaml` fixtures                        | the chart templates                                       | Both charts render near-zero objects with default values. A branch no fixture reaches is a branch CI does not check. |
+| A                                                     | B                                                        | Checked by | Why they must match                                                    |
+| ----------------------------------------------------- | -------------------------------------------------------- | ---------- | ---------------------------------------------------------------------- |
+| `private_hostnames` + `private_hostnames_via_traefik` (`ansible/inventories/group_vars/all.yml`) | `PRIVATE_HOSTS` (`pulumi/src/dns.ts`) | `assert-sync.py` | A creates the in-cluster CoreDNS override, B the public CNAME. One without the other = a name that resolves nowhere useful. |
+| the same two lists                                    | `PRIVATE_CHECKS` (`scripts/smoke.sh`)                     | `assert-sync.py` (one-way: config ⊆ smoke) | A private hostname nothing probes is a surface whose loss nobody notices. The status codes stay a per-service judgement call, so the check never derives them. |
+| `SCOPES` in `scripts/infisical-vars.py`               | the `assert` list in `roles/platform/tasks/preflight.yml` | `assert-sync.py` | Preflight is the second gate on the same secret set; a secret fetched but unasserted fails halfway through a deploy instead of at the start. |
+| `forwardedHeaders.trustedIPs` (`cluster/traefik/traefik-config.yaml`) | `rate-limit` `ipStrategy.excludedIPs` (`cluster/traefik/middleware.yaml`) | `assert-sync.py` | Both enumerate "hops that are ours". If they disagree, the rate limiter keys on the wrong XFF element or on nothing. |
+| `platform_chart_versions` (`group_vars/all.yml`)      | the `--version` on every `helm upgrade --install` in `roles/platform/tasks/` | `assert-sync.py` | An orphan pin reads as "this chart is pinned" while the install it was written for is unpinned — i.e. the next deploy adopts whatever upstream's latest is that day. |
+| the `helm upgrade --install` set in `roles/platform/tasks/` | `UPSTREAM_RELEASES` / `SERVICE_RELEASES` (`scripts/platform-diff.sh`) | `assert-sync.py` (release, chart ref, namespace, version key, values file) | `make diff` is the pre-flight for `make deploy-platform`. A stale table previews a chart the deploy will not install and reports "no changes" about the one it will. |
+| `helm_version` (`group_vars/all.yml`)                 | `azure/setup-helm` version in `validate.yaml` **and** `publish-chart.yaml` | `assert-sync.py` | Three machines, one Helm. A chart packaged by one version and rendered by another is a silent behaviour difference. |
+| `ansible-core==` in `validate.yaml`                   | `ansible-core==` in `deploy-platform.yaml`                | `assert-sync.py` | One lints the playbooks, the other applies them. Different minors, and a green lint proves nothing about the run. |
+| helm-unittest version in `validate.yaml`              | the same version in the `Makefile`                        | `assert-sync.py` | The plugin embeds its own renderer, so the committed `__snapshot__` files only reproduce against the version that wrote them. |
+| every `busybox@sha256:` in the tree                   | each other (7 references today)                           | `assert-sync.py` | Digest pins only work if a bump touches every copy; the one that was missed is the one nobody re-rendered. |
+| `security_ci_deploy_pubkey` (`roles/security/defaults/main.yml`) | GitHub secret `CI_DEPLOY_SSH_PRIVATE`              | **nothing** — B lives outside the repo | Split keypair. Rotating needs both plus a `make deploy` to roll the pubkey onto the VM. |
+| `version:` in `charts/app/Chart.yaml`                 | the published OCI chart                                   | **nothing** at PR time — B lives in the registry | The chart is pulled **unversioned** by every app. Two publish guards exist (`publish-chart.yaml` and `roles/platform/tasks/publish-app-chart.yml`) and both skip rather than overwrite — so forgetting the bump publishes nothing, silently. |
+| `ci/test-values.yaml` fixtures                        | the chart templates                                       | **nothing** — no equality to assert | Both charts render near-zero objects with default values, so CI only *exercises* the fixtures (`helm lint` / `template` / `unittest`); it cannot tell that a new template branch went unfixtured. |
 
 ## Gotchas
 
@@ -68,7 +77,7 @@ Repo-specific, each one paid for at least once.
   `app.kubernetes.io/managed-by=Helm`, or the install fails on conflict.
 - **Immutable fields mean delete-and-recreate**: Deployment selectors, PV
   `hostPath.type`, PVC `spec.selector`. Changing a `pathSuffix` or a PV name in
-  a `service.yaml` moves live data — the current paths are byte-identical to
+  a `platform.yaml` moves live data — the current paths are byte-identical to
   what the pre-chart manifests produced, on purpose.
 - **Never chain `private-access` and `cluster-internal-access`.** Traefik ANDs
   chained ipAllowLists, so chaining allows strictly *less*, not more. The

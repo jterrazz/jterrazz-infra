@@ -2,15 +2,15 @@
 # Provision the cluster via Pulumi and configure it with Ansible.
 #
 # Ansible's secrets are pulled live from Infisical by
-# scripts/lib/infisical-vars.py using the universal-auth credentials in
+# scripts/infisical-vars.py using the universal-auth credentials in
 # `.env`. Nothing sensitive lands on disk beyond the temp extra-vars file —
 # 0600, deleted on exit by the trap below.
 #
 # Usage:
-#   ./scripts/deploy.sh              # full: pulumi up + site.yml
-#   ./scripts/deploy.sh --skip-up    # ansible only, assume the VM exists
-#   ./scripts/deploy.sh --platform   # platform.yml only (no host layer)
-#   ./scripts/deploy.sh --destroy    # tear down the stack
+#   ./scripts/deploy.sh                 # full: pulumi up + site.yml
+#   ./scripts/deploy.sh --ansible-only  # site.yml only, assume the VM exists
+#   ./scripts/deploy.sh --platform      # platform.yml only (no host layer)
+#   ./scripts/deploy.sh --destroy       # tear down the stack
 
 set -euo pipefail
 
@@ -61,7 +61,7 @@ pulumi_destroy() {
 fetch_secrets_file() {
     local scope="$1"
     secrets_file=$(mktemp -t jterrazz-infrastructure-vars-XXXXXX.yml)
-    "$SCRIPT_DIR/lib/infisical-vars.py" "$scope" "$secrets_file"
+    "$SCRIPT_DIR/infisical-vars.py" "$scope" "$secrets_file"
 }
 
 # Without this a fresh machine silently uses whatever collections the local
@@ -93,7 +93,14 @@ case "${1:-}" in
     --destroy)
         pulumi_destroy
         ;;
+    --ansible-only)
+        run_site
+        ;;
+    # Deprecated spelling of --ansible-only, accepted for one release. "skip-up"
+    # named the thing it does NOT do (pulumi up), which read as "skip the
+    # deploy" often enough to be worth renaming.
     --skip-up)
+        echo "warning: --skip-up is deprecated, use --ansible-only" >&2
         run_site
         ;;
     --platform)
@@ -105,7 +112,7 @@ case "${1:-}" in
         ;;
     *)
         error "Unknown flag: $1"
-        error "Usage: $0 [--skip-up | --platform | --destroy]"
+        error "Usage: $0 [--ansible-only | --platform | --destroy]"
         exit 1
         ;;
 esac

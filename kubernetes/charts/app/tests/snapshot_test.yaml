@@ -28,6 +28,7 @@ suite: full fixture render (snapshot)
 # the payload and matches the whole document — so nothing is unwatched here.
 # ---------------------------------------------------------------------------
 templates:
+  - templates/alert-configmap.yaml
   - templates/configmap.yaml
   - templates/dashboard-configmap.yaml
   - templates/deployment.yaml

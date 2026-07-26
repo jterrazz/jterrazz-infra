@@ -3,32 +3,24 @@
 # op-api / op-worker / op-dashboard. The order below is dependency order —
 # config and secrets, then datastores, then op-api (which migrates on boot).
 # The namespace comes from kubernetes/cluster/namespaces.yaml via
-# cluster-base.yml, never `kubectl create ns` here.
+# cluster-manifests.yml, never `kubectl create ns` here.
 - name: Apply the OpenPanel shared config
   ansible.builtin.command: >
     kubectl apply
     -f {{ manifest_dir }}/kubernetes/services/openpanel/config.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: openpanel_base_apply
   changed_when: "'created' in openpanel_base_apply.stdout or 'configured' in openpanel_base_apply.stdout"
 
 # Before the DBs/apps, so their envFrom and POSTGRES_PASSWORD resolve on first
 # boot.
-- name: Apply the OpenPanel Infisical secret
-  ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/openpanel/secret.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
-  register: openpanel_secret_apply
-  changed_when: "'created' in openpanel_secret_apply.stdout or 'configured' in openpanel_secret_apply.stdout"
-
-- name: Wait for the OpenPanel secrets
-  ansible.builtin.include_tasks: wait-for-secret.yml
+- name: Provision the OpenPanel secrets
+  ansible.builtin.include_tasks: infisical-secret.yml
   vars:
+    secret_manifest: "{{ manifest_dir }}/kubernetes/services/openpanel/secret.yaml"
     wait_secret_name: openpanel-secrets
     wait_secret_namespace: platform-analytics
 
-# NOTE the namespace's NetworkPolicies are NOT applied here: cluster-base.yml
+# NOTE the namespace's NetworkPolicies are NOT applied here: cluster-manifests.yml
 # applies them earlier in the play, so the unauthenticated datastores are
 # firewalled before they ever come up.
 
@@ -45,15 +37,11 @@
     -f {{ manifest_dir }}/kubernetes/services/openpanel/postgres.yaml
     -f {{ manifest_dir }}/kubernetes/services/openpanel/redis.yaml
     -f {{ manifest_dir }}/kubernetes/services/openpanel/clickhouse.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: openpanel_db_apply
   changed_when: "'created' in openpanel_db_apply.stdout or 'configured' in openpanel_db_apply.stdout"
 
 - name: Wait for the OpenPanel datastores to be ready
   ansible.builtin.command: kubectl rollout status deployment/{{ item }} -n platform-analytics --timeout=180s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   loop:
     - op-postgres
     - op-redis
@@ -65,13 +53,9 @@
     kubectl apply
     -f {{ manifest_dir }}/kubernetes/services/openpanel/apps.yaml
     -f {{ manifest_dir }}/kubernetes/services/openpanel/ingress.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: openpanel_apps_apply
   changed_when: "'created' in openpanel_apps_apply.stdout or 'configured' in openpanel_apps_apply.stdout"
 
 - name: Wait for OpenPanel op-api to be ready (runs DB migrations on boot)
   ansible.builtin.command: kubectl rollout status deployment/op-api -n platform-analytics --timeout=300s
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false

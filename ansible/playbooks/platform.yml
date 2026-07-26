@@ -14,7 +14,16 @@
   gather_facts: true
 
   roles:
+    # KUBECONFIG once, here, instead of on ~36 individual tasks: every
+    # kubectl/helm command in the role runs on the node against the k3s
+    # kubeconfig, and a task that forgot the block silently talked to
+    # ~/.kube/config (i.e. nothing) instead. The role's `kubeconfig` default
+    # is in scope for its own tasks, so the value still comes from
+    # roles/platform/defaults/main.yml. Handlers do NOT inherit this — see
+    # roles/platform/handlers/main.yml, which keeps its own block.
     - role: platform
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
 
   post_tasks:
     - name: Cleanup temporary manifests

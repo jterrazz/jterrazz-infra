@@ -47,7 +47,7 @@ integrates OpenPanel's browser snippet itself. Other origins listed in
 | ClickHouse    | `clickhouse/clickhouse-server:25.10.2.65`      |
 | PostgreSQL    | `postgres:14-alpine`                           |
 | Redis         | `redis:7.4.9-alpine`                           |
-| (init) chown  | `busybox:1.37` (digest-pinned, see manifests)  |
+| (init) chown  | `busybox:1.38` (digest-pinned, see manifests)  |
 
 The namespace itself is **not** declared here — it lives with every other
 platform namespace in
@@ -86,9 +86,9 @@ One directory per app (repo convention): the three datastores nest under
 `openpanel/` even though each has its own PV/PVC.
 
 All three PV/PVC pairs come from the **service chart**, declared as the
-`storage` map in `service.yaml`. They used to be hand-written blocks at the
+`storage` map in `platform.yaml`. They used to be hand-written blocks at the
 top of `postgres.yaml` / `redis.yaml` / `clickhouse.yaml`; names, sizes and
-hostPaths are unchanged by the move. `service.yaml` sets no `host` — OpenPanel
+hostPaths are unchanged by the move. `platform.yaml` sets no `host` — OpenPanel
 is the one service whose ingress the chart cannot express (two hostnames,
 different exposure, path routing), so `ingress.yaml` stays hand-written.
 

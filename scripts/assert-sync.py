@@ -12,7 +12,7 @@ Run it:
     python3 scripts/assert-sync.py
 
 Exit status is 0 only if every check passes; a failing check prints exactly
-what to edit. It runs in `make lint` and in the `scripts` job of
+what to edit. It runs in `make check` and in the `scripts` job of
 .github/workflows/validate.yaml.
 
 DESIGN NOTES
@@ -42,11 +42,18 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GROUP_VARS = "ansible/inventories/group_vars/all.yml"
 DNS_TS = "pulumi/src/dns.ts"
-INFISICAL_VARS = "scripts/lib/infisical-vars.py"
+INFISICAL_VARS = "scripts/infisical-vars.py"
 PREFLIGHT = "ansible/roles/platform/tasks/preflight.yml"
 TRAEFIK_CONFIG = "kubernetes/cluster/traefik/traefik-config.yaml"
 MIDDLEWARE = "kubernetes/cluster/traefik/middleware.yaml"
 PLATFORM_TASKS = "ansible/roles/platform/tasks"
+PLATFORM_DIFF = "scripts/platform-diff.sh"
+SERVICE_CHARTS = "ansible/roles/platform/tasks/service-charts.yml"
+SMOKE = "scripts/smoke.sh"
+MAKEFILE = "Makefile"
+VALIDATE_WF = ".github/workflows/validate.yaml"
+PUBLISH_WF = ".github/workflows/publish-chart.yaml"
+DEPLOY_WF = ".github/workflows/deploy-platform.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +143,107 @@ def block_map(text, key, source):
         name, _, value = stripped.partition(":")
         out[name.strip()] = _unquote(_strip_comment(value))
     return out
+
+
+def block_scalar(text, key, source):
+    """Read a top-level `key: value` scalar out of a YAML file."""
+    match = re.search(rf"^{re.escape(key)}\s*:\s*(\S.*)$", text, re.MULTILINE)
+    if not match:
+        raise SyncError(
+            f"{source}: no top-level `{key}:` scalar. It was renamed or moved "
+            f"— update scripts/assert-sync.py alongside it."
+        )
+    return _unquote(_strip_comment(match.group(1)))
+
+
+def bash_array(text, name, source):
+    """Read a `NAME=( "a|b" ... )` bash array of quoted strings."""
+    match = re.search(
+        rf"^{re.escape(name)}=\((?P<body>.*?)^\)\s*$", text, re.MULTILINE | re.DOTALL
+    )
+    if not match:
+        raise SyncError(
+            f"{source}: no `{name}=( ... )` array literal. It was renamed or "
+            f"restructured — update scripts/assert-sync.py so the two files "
+            f"stay verifiably in sync."
+        )
+    entries = []
+    for line in match.group("body").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        item = re.match(r'^"(?P<value>[^"]*)"$', stripped)
+        if not item:
+            raise SyncError(
+                f"{source}: `{name}` entry is not a single double-quoted "
+                f"string ({stripped!r}). assert-sync.py's parser is "
+                f"deliberately narrow — keep the table flat."
+            )
+        entries.append(item.group("value"))
+    return entries
+
+
+def _collapse_jinja(text):
+    """`{{ manifest_dir }}/x` -> `{{manifest_dir}}/x`, so it survives split()."""
+    return re.sub(r"\{\{\s*(.*?)\s*\}\}", r"{{\1}}", text)
+
+
+def ansible_commands(text):
+    """Flatten every ansible.builtin.command/shell in a task file to one line.
+
+    Handles the three shapes this role uses: an inline `command: helm ...`, a
+    folded `command: >` block, and the `argv:` list form (used where a secret
+    must never touch a shell). Everything else is ignored — the callers only
+    look for `helm upgrade --install` in the result.
+    """
+    lines = _collapse_jinja(text).splitlines()
+    out = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        folded = re.match(r"^(?P<indent>\s*)ansible\.builtin\.(command|shell):\s*>-?\s*$", line)
+        argv = re.match(r"^(?P<indent>\s*)argv:\s*$", line)
+        inline = re.match(
+            r"^\s*ansible\.builtin\.(command|shell):\s*(?P<body>\S.*)$", line
+        )
+        if folded:
+            base = len(folded.group("indent"))
+            parts = []
+            index += 1
+            while index < len(lines):
+                nxt = lines[index]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= base:
+                    break
+                parts.append(nxt.strip())
+                index += 1
+            out.append(" ".join(p for p in parts if p))
+            continue
+        if argv:
+            base = len(argv.group("indent"))
+            parts = []
+            index += 1
+            while index < len(lines):
+                nxt = lines[index]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip())) <= base:
+                    break
+                item = re.match(r"^\s*-\s+(?P<value>.*)$", nxt)
+                if item:
+                    parts.append(_unquote(item.group("value").strip()))
+                index += 1
+            out.append(" ".join(parts))
+            continue
+        if inline and inline.group("body") not in (">", ">-", "|"):
+            out.append(inline.group("body").strip())
+        index += 1
+    return out
+
+
+def _flag_value(tokens, flag):
+    """The token after `flag`, unquoted; None if the flag is absent."""
+    for position, token in enumerate(tokens):
+        if token == flag and position + 1 < len(tokens):
+            return _unquote(tokens[position + 1])
+    return None
 
 
 def ts_string_array(text, name, source):
@@ -500,11 +608,446 @@ def check_chart_version_pins():
     return problems
 
 
+def _task_files():
+    tasks_dir = os.path.join(REPO, PLATFORM_TASKS)
+    if not os.path.isdir(tasks_dir):
+        raise SyncError(f"{PLATFORM_TASKS}: directory not found.")
+    return [
+        os.path.join(PLATFORM_TASKS, name)
+        for name in sorted(os.listdir(tasks_dir))
+        if name.endswith((".yml", ".yaml"))
+    ]
+
+
+def _ansible_upstream_releases():
+    """Every `helm upgrade --install` in roles/platform, as a comparable tuple.
+
+    -> {release: (chart, namespace, version key, values path relative to the
+    repo root)}. The service chart's own release is excluded: it is a loop over
+    `service_chart_releases`, handled by _ansible_service_releases().
+    """
+    releases = {}
+    for relpath in _task_files():
+        if relpath.endswith("service-charts.yml"):
+            continue
+        for command in ansible_commands(read(relpath)):
+            tokens = command.split()
+            if "helm" not in tokens or "--install" not in tokens:
+                continue
+            marker = tokens.index("--install")
+            if tokens[:marker].count("upgrade") == 0 or len(tokens) < marker + 3:
+                continue
+            release = _unquote(tokens[marker + 1])
+            chart = _unquote(tokens[marker + 2])
+            namespace = _flag_value(tokens, "--namespace")
+            version = _flag_value(tokens, "--version")
+            values = _flag_value(tokens, "--values")
+            if not namespace or not values:
+                raise SyncError(
+                    f"{relpath}: `helm upgrade --install {release}` has no "
+                    f"--namespace and/or --values. assert-sync.py cannot "
+                    f"compare it with {PLATFORM_DIFF}."
+                )
+            key = None
+            if version:
+                match = re.search(
+                    r"platform_chart_versions(?:\.(\w+)|\[\s*['\"](\w+)['\"]\s*\])",
+                    version,
+                )
+                if not match:
+                    raise SyncError(
+                        f"{relpath}: `--version {version}` for release "
+                        f"{release} does not come from "
+                        f"`platform_chart_versions` — see check (d)."
+                    )
+                key = match.group(1) or match.group(2)
+            values = values.replace("{{manifest_dir}}/", "")
+            releases[release] = (chart, namespace, key, values)
+    if not releases:
+        raise SyncError(
+            f"{PLATFORM_TASKS}: no `helm upgrade --install` found at all. The "
+            f"tasks were restructured — update scripts/assert-sync.py."
+        )
+    return releases
+
+
+def _ansible_service_releases():
+    """The `service_chart_releases` entries every caller passes to the loop."""
+    found = {}
+    for relpath in _task_files():
+        for name, namespace in re.findall(
+            r"-\s*\{\s*name:\s*([\w.-]+)\s*,\s*namespace:\s*([\w.-]+)\s*\}",
+            read(relpath),
+        ):
+            found[name] = namespace
+    if not found:
+        raise SyncError(
+            f"{PLATFORM_TASKS}: no `service_chart_releases` entries of the form "
+            f"`- {{ name: x, namespace: y }}` found — the callers of "
+            f"service-charts.yml were restructured; update assert-sync.py."
+        )
+    return found
+
+
+def check_platform_diff_table():
+    """(e) scripts/platform-diff.sh's release table vs what Ansible installs.
+
+    platform-diff.sh hand-copies the release inventory so it can preview a
+    deploy without running one. Nothing links the two files, and the copy HAS
+    drifted: the three charts that moved to the `grafana-community` repo were
+    still listed under `grafana/` here long after telemetry.yml was migrated —
+    so the preview rendered a chart the deploy would never install, and said
+    "no changes" about the one it would.
+    """
+    problems = []
+    diff = read(PLATFORM_DIFF)
+
+    # --- upstream charts -----------------------------------------------------
+    table = {}
+    for entry in bash_array(diff, "UPSTREAM_RELEASES", PLATFORM_DIFF):
+        fields = entry.split("|")
+        if len(fields) != 5:
+            raise SyncError(
+                f"{PLATFORM_DIFF}: UPSTREAM_RELEASES entry {entry!r} has "
+                f"{len(fields)} fields, expected 5 "
+                f"(release|namespace|chart|version key|values)."
+            )
+        release, namespace, chart, version_key, values = fields
+        table[release] = (chart, namespace, version_key, values)
+
+    ansible = _ansible_upstream_releases()
+
+    only_table = sorted(set(table) - set(ansible))
+    only_ansible = sorted(set(ansible) - set(table))
+    if only_table:
+        problems.append(
+            f"in UPSTREAM_RELEASES ({PLATFORM_DIFF}) but installed by nothing "
+            f"in {PLATFORM_TASKS}/: {', '.join(only_table)}.\n"
+            f"        FIX: delete the line (the release is gone, and `make "
+            f"diff` is diffing a chart no deploy installs) or restore the "
+            f"`helm upgrade --install`."
+        )
+    if only_ansible:
+        problems.append(
+            f"installed by {PLATFORM_TASKS}/ but missing from "
+            f"UPSTREAM_RELEASES ({PLATFORM_DIFF}): {', '.join(only_ansible)}.\n"
+            f"        FIX: add "
+            f"`<release>|<namespace>|<chart>|<version key>|<values file>` to "
+            f"the table. Until then `make diff` silently previews less than "
+            f"`make deploy-platform` applies."
+        )
+
+    for release in sorted(set(table) & set(ansible)):
+        labels = ("chart ref", "namespace", "version key", "values file")
+        for label, want, got in zip(labels, ansible[release], table[release]):
+            if want != got:
+                problems.append(
+                    f"{release}: {label} is {got!r} in {PLATFORM_DIFF} but "
+                    f"{want!r} in {PLATFORM_TASKS}/.\n"
+                    f"        FIX: Ansible is the deployer — make "
+                    f"{PLATFORM_DIFF} match it."
+                )
+
+    # --- the service chart ---------------------------------------------------
+    # platform-diff.sh reconstructs these release names and values paths from
+    # the service name alone. If the loop's own template changes shape, the
+    # table's assumption is wrong in a way no name-by-name comparison sees.
+    loop = read(SERVICE_CHARTS)
+    expected = [
+        "helm upgrade --install {{item.name}}-platform {{service_chart}}",
+        "--namespace {{item.namespace}}",
+        "--values {{manifest_dir}}/kubernetes/services/{{item.name}}/platform.yaml",
+    ]
+    loop_command = " ".join(ansible_commands(loop))
+    for fragment in expected:
+        if fragment not in loop_command:
+            raise SyncError(
+                f"{SERVICE_CHARTS}: the service-chart install no longer "
+                f"contains {fragment!r}. {PLATFORM_DIFF} rebuilds the release "
+                f"name and values path from the service name on exactly that "
+                f"shape — update both together."
+            )
+
+    service_table = {}
+    for entry in bash_array(diff, "SERVICE_RELEASES", PLATFORM_DIFF):
+        fields = entry.split("|")
+        if len(fields) != 2:
+            raise SyncError(
+                f"{PLATFORM_DIFF}: SERVICE_RELEASES entry {entry!r} has "
+                f"{len(fields)} fields, expected 2 (name|namespace)."
+            )
+        service_table[fields[0]] = fields[1]
+
+    service_ansible = _ansible_service_releases()
+    only_table = sorted(set(service_table) - set(service_ansible))
+    only_ansible = sorted(set(service_ansible) - set(service_table))
+    if only_table:
+        problems.append(
+            f"in SERVICE_RELEASES ({PLATFORM_DIFF}) but no task passes it to "
+            f"service-charts.yml: {', '.join(only_table)}."
+        )
+    if only_ansible:
+        problems.append(
+            f"passed to service-charts.yml but missing from SERVICE_RELEASES "
+            f"({PLATFORM_DIFF}): {', '.join(only_ansible)}."
+        )
+    for name in sorted(set(service_table) & set(service_ansible)):
+        if service_table[name] != service_ansible[name]:
+            problems.append(
+                f"{name}-platform: namespace is {service_table[name]!r} in "
+                f"{PLATFORM_DIFF} but {service_ansible[name]!r} in "
+                f"{PLATFORM_TASKS}/."
+            )
+
+    # --- the values files both sides name must exist -------------------------
+    for release, (_, _, _, values) in sorted(ansible.items()):
+        if not os.path.isfile(os.path.join(REPO, values)):
+            problems.append(
+                f"{release}: `--values {values}` names a file that does not "
+                f"exist. The deploy fails at that task; `make diff` fails at "
+                f"the same one."
+            )
+    for name in sorted(service_ansible):
+        values = f"kubernetes/services/{name}/platform.yaml"
+        if not os.path.isfile(os.path.join(REPO, values)):
+            problems.append(
+                f"{name}-platform: {values} does not exist, but "
+                f"service-charts.yml renders that path from the release name."
+            )
+    return problems
+
+
+def _setup_helm_versions(relpath):
+    """Every `version:` given to an `azure/setup-helm` step in a workflow."""
+    versions = []
+    lines = read(relpath).splitlines()
+    for index, line in enumerate(lines):
+        if not re.search(r"uses:\s*azure/setup-helm@", line):
+            continue
+        for follower in lines[index + 1 : index + 10]:
+            if re.match(r"^\s*-\s", follower):  # next step
+                break
+            match = re.match(r"^\s*version:\s*(\S+)\s*$", follower)
+            if match:
+                versions.append(_unquote(match.group(1)))
+                break
+    if not versions:
+        raise SyncError(
+            f"{relpath}: an `azure/setup-helm` step with a `version:` was "
+            f"expected and not found. If the workflow stopped installing Helm, "
+            f"drop it from this check; otherwise the pin is now floating."
+        )
+    return versions
+
+
+def check_helm_version():
+    """(f) `helm_version` in group_vars vs the Helm CI installs.
+
+    Three machines, one Helm: the node (where roles/platform runs `helm
+    upgrade`), the validate runner (which renders and unit-tests the charts)
+    and the publish runner (which PACKAGES the app chart every app then pulls).
+    A chart packaged by one version and rendered by another is a silent
+    behaviour difference, which is the worst kind to debug from a rendered
+    manifest.
+    """
+    problems = []
+    wanted = block_scalar(read(GROUP_VARS), "helm_version", GROUP_VARS)
+    for relpath in (VALIDATE_WF, PUBLISH_WF):
+        for got in _setup_helm_versions(relpath):
+            if got != wanted:
+                problems.append(
+                    f"{relpath}: azure/setup-helm installs {got}, but "
+                    f"`helm_version` in {GROUP_VARS} is {wanted}.\n"
+                    f"        FIX: set both to the same version. The node runs "
+                    f"one Helm and CI must render with it."
+                )
+    return problems
+
+
+def check_ansible_core_version():
+    """(g) The ansible-core pin in the linting workflow vs the deploying one.
+
+    validate.yaml lints and syntax-checks the playbooks; deploy-platform.yaml
+    APPLIES them. If those two interpreters differ, a green lint proves nothing
+    about the run — and ansible-core minors do change module and templating
+    behaviour.
+    """
+    problems = []
+    pins = {}
+    for relpath in (VALIDATE_WF, DEPLOY_WF):
+        found = set(re.findall(r"ansible-core==([\w.]+)", read(relpath)))
+        if not found:
+            raise SyncError(
+                f"{relpath}: no `ansible-core==<version>` pin found. An "
+                f"unpinned install resolves to whatever is latest that day — "
+                f"restore the pin or drop this check."
+            )
+        if len(found) > 1:
+            problems.append(
+                f"{relpath}: pins ansible-core to more than one version "
+                f"({', '.join(sorted(found))})."
+            )
+        pins[relpath] = sorted(found)[0]
+    if len(set(pins.values())) > 1:
+        problems.append(
+            "ansible-core is pinned differently per workflow: "
+            + "; ".join(f"{path} == {version}" for path, version in sorted(pins.items()))
+            + ".\n        FIX: make them identical. The thing that lints a "
+            "playbook and the thing that applies it must be one interpreter."
+        )
+    return problems
+
+
+def check_helm_unittest_version():
+    """(h) The helm-unittest plugin version in CI vs the one `make check` names.
+
+    The plugin embeds its own rendering library, so the committed snapshots in
+    charts/*/tests/__snapshot__ are reproducible only against the version that
+    wrote them. A laptop installing a different one gets snapshot diffs that
+    have nothing to do with the change under test.
+    """
+    problems = []
+    validate = read(VALIDATE_WF)
+    makefile = read(MAKEFILE)
+
+    ci = re.search(r"HELM_UNITTEST_VERSION=(\S+)", validate)
+    if not ci:
+        raise SyncError(
+            f"{VALIDATE_WF}: no `HELM_UNITTEST_VERSION=` assignment — the "
+            f"install step was rewritten; update scripts/assert-sync.py."
+        )
+    # Bounded character class, not \S+: in the Makefile the version sits inside
+    # a quoted `echo`, so \S+ would swallow the closing `";`.
+    local = re.search(r"helm-unittest\s+--version\s+([\w.+-]+)", makefile)
+    if not local:
+        raise SyncError(
+            f"{MAKEFILE}: the helm-unittest install hint no longer contains "
+            f"`--version <version>`; update scripts/assert-sync.py."
+        )
+    if ci.group(1) != local.group(1):
+        problems.append(
+            f"helm-unittest is {ci.group(1)} in {VALIDATE_WF} but "
+            f"{local.group(1)} in {MAKEFILE}.\n"
+            f"        FIX: same version in both, or the committed chart "
+            f"snapshots stop matching locally."
+        )
+    return problems
+
+
+# Directories with no hand-written content to keep in sync.
+_SKIP_DIRS = {".git", "node_modules", ".ansible", "__pycache__", ".venv"}
+
+
+def _repo_files():
+    for root, dirs, files in os.walk(REPO):
+        dirs[:] = sorted(d for d in dirs if d not in _SKIP_DIRS)
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            yield os.path.relpath(path, REPO), path
+
+
+def check_busybox_digest():
+    """(i) One busybox digest, repo-wide.
+
+    busybox is the init container that chowns a hostPath volume before the real
+    workload starts — the app chart's, LibreChat's mongo, Prometheus' and all
+    three OpenPanel datastores'. They are pinned by digest so the tag cannot be
+    re-pointed under us, which only works if a bump touches every copy: a tree
+    with two digests is a tree where one manifest was missed, and the one that
+    was missed is exactly the one nobody rendered afterwards.
+    """
+    problems = []
+    digests = {}
+    pattern = re.compile(r"busybox(?::[\w.-]+)?@(sha256:[0-9a-f]{64})")
+    for relpath, path in _repo_files():
+        if os.path.splitext(relpath)[1] not in (
+            ".yaml", ".yml", ".json", ".md", ".tpl", ".snap", ".sh", ".ts",
+        ):
+            continue
+        try:
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for digest in pattern.findall(text):
+            digests.setdefault(digest, set()).add(relpath)
+
+    if not digests:
+        raise SyncError(
+            "no `busybox@sha256:` reference found anywhere in the repo. Every "
+            "hostPath volume used to get chowned by one; if that is gone on "
+            "purpose, drop this check."
+        )
+    if len(digests) > 1:
+        detail = "\n".join(
+            f"          {digest}  <- {', '.join(sorted(files))}"
+            for digest, files in sorted(digests.items())
+        )
+        problems.append(
+            f"{len(digests)} different busybox digests are in use:\n{detail}\n"
+            f"        FIX: pin every copy to the same digest. A bump that "
+            f"missed a file leaves one workload on an image nobody reviewed."
+        )
+    return problems
+
+
+def check_private_hosts_smoked():
+    """(j) Every private hostname is actually probed by smoke.sh.
+
+    group_vars' two private-hostname lists are the definition of "this name is
+    served, tailnet-only". scripts/smoke.sh is the only thing that goes in the
+    front door and finds out. A host in the config and not in the table is a
+    surface nothing would notice the loss of — which is how a service stays
+    down between two deploys.
+
+    ONE-WAY on purpose: smoke.sh legitimately probes more than these lists
+    (public hosts through the tunnel, plus app surfaces this repo does not
+    declare), and the accepted status codes are a judgement call per service
+    that no config file should try to express.
+    """
+    problems = []
+    gv = read(GROUP_VARS)
+    configured = set(block_list(gv, "private_hostnames", GROUP_VARS)) | set(
+        block_list(gv, "private_hostnames_via_traefik", GROUP_VARS)
+    )
+
+    smoke = read(SMOKE)
+    probed = set()
+    for entry in bash_array(smoke, "PRIVATE_CHECKS", SMOKE):
+        fields = entry.split("|")
+        if len(fields) != 4:
+            raise SyncError(
+                f"{SMOKE}: PRIVATE_CHECKS entry {entry!r} has {len(fields)} "
+                f"fields, expected 4 (method|url|codes|label)."
+            )
+        url = fields[1]
+        host = url.split("://", 1)[-1].split("/", 1)[0]
+        probed.add(host)
+
+    missing = sorted(configured - probed)
+    if missing:
+        problems.append(
+            f"private hostname(s) in {GROUP_VARS} with no probe in "
+            f"PRIVATE_CHECKS ({SMOKE}): {', '.join(missing)}.\n"
+            f"        FIX: add "
+            f"`GET|https://<host>/|<codes>|<what it is>` for each. Pick the "
+            f"codes from what the service actually serves an unauthenticated "
+            f"caller (a redirect to a login page is a pass; 000/5xx never is)."
+        )
+    return problems
+
+
 CHECKS = [
     ("dns.ts PRIVATE_HOSTS == group_vars private hostnames", check_private_hosts),
     ("infisical-vars.py vars == preflight.yml asserts", check_secret_keys),
     ("traefik trustedIPs == rate-limit excludedIPs", check_traefik_trusted_ips),
     ("platform_chart_versions pins are all consumed", check_chart_version_pins),
+    ("platform-diff.sh release table == ansible helm installs", check_platform_diff_table),
+    ("helm_version == the Helm both workflows install", check_helm_version),
+    ("ansible-core pinned identically in validate + deploy", check_ansible_core_version),
+    ("helm-unittest pinned identically in validate + Makefile", check_helm_unittest_version),
+    ("one busybox digest repo-wide", check_busybox_digest),
+    ("private hostnames are all probed by smoke.sh", check_private_hosts_smoked),
 ]
 
 

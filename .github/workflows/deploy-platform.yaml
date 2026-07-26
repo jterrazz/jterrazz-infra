@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           EXTRA="$(mktemp -t platform-vars-XXXXXX.yml)"
-          python3 scripts/lib/infisical-vars.py platform "$EXTRA"
+          python3 scripts/infisical-vars.py platform "$EXTRA"
           echo "EXTRA_VARS_FILE=$EXTRA" >> "$GITHUB_ENV"
 
       # Scope: platform.yml only (Helm-managed services + manifests).

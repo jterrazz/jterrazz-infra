@@ -75,3 +75,29 @@ tests:
       - equal:
           path: metadata.annotations.grafana_folder
           value: ci-test-app
+
+  - it: drops the prod-only alert ConfigMap in another environment
+    # alert-configmap.yaml is gated on environment == prod for a stricter
+    # reason than dashboards: Grafana rule `uid:`s are global, so a staging
+    # copy would not sit beside the prod rule — it would provision over it.
+    values:
+      - ../ci/test-values.yaml
+    templates:
+      - templates/alert-configmap.yaml
+    set:
+      environment: staging
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the alert ConfigMap in prod
+    values:
+      - ../ci/test-values.yaml
+    templates:
+      - templates/alert-configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.labels.grafana_alert
+          value: "1"

@@ -20,6 +20,11 @@ sidecar:
       foldersFromFilesStructure: true
   # Rules fire and show in the Alerting UI, but no contact point is wired, so
   # nothing is delivered anywhere. Deliberate — delivery is a later step.
+  #
+  # The RULES themselves live with the app that emits the metric: the app chart
+  # renders `spec.alerts` into a ConfigMap labelled grafana_alert=1, which this
+  # sidecar picks up from any namespace. Nothing in THIS repo applies app alert
+  # rules — one that did would outlive the app it watches.
   alerts:
     enabled: true
     searchNamespace: ALL
@@ -56,6 +61,6 @@ datasources:
           tracesToMetrics:
             datasourceUid: prometheus
 
-# The IngressRoute comes from the service chart (service.yaml) instead.
+# The IngressRoute comes from the service chart (platform.yaml) instead.
 ingress:
   enabled: false

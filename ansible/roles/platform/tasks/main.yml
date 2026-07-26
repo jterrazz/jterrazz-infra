@@ -19,16 +19,16 @@
   tags: [coredns, dns]
 
 - name: Deploy the cluster-wide manifests
-  ansible.builtin.import_tasks: cluster-base.yml
-  tags: [cluster-base, namespaces]
+  ansible.builtin.import_tasks: cluster-manifests.yml
+  tags: [cluster-manifests, namespaces]
 
 - name: Install the Helm CLI and repositories
   ansible.builtin.import_tasks: helm-cli.yml
   tags: [helm]
 
-- name: Deploy the cluster core services
-  ansible.builtin.import_tasks: cluster-core.yml
-  tags: [cluster-core, secrets, certmanager, infisical, cloudflared]
+- name: Deploy the cluster bootstrap services
+  ansible.builtin.import_tasks: bootstrap-services.yml
+  tags: [bootstrap-services, secrets, certmanager, infisical, cloudflared]
 
 - name: Deploy the telemetry stack
   ansible.builtin.import_tasks: telemetry.yml

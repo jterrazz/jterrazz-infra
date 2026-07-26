@@ -1,6 +1,6 @@
 ---
 # The platform-telemetry namespace comes from
-# kubernetes/cluster/namespaces.yaml via cluster-base.yml, never `kubectl
+# kubernetes/cluster/namespaces.yaml via cluster-manifests.yml, never `kubectl
 # create ns` here.
 
 # Storage for all four stateful members first — each upstream `helm --wait`
@@ -22,8 +22,6 @@
     --values {{ manifest_dir }}/kubernetes/services/prometheus/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: prometheus_result
   changed_when: "'has been upgraded' in prometheus_result.stdout or 'has been installed' in prometheus_result.stdout"
 
@@ -35,8 +33,6 @@
     --values {{ manifest_dir }}/kubernetes/services/loki/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: loki_result
   changed_when: "'has been upgraded' in loki_result.stdout or 'has been installed' in loki_result.stdout"
 
@@ -49,8 +45,6 @@
     --values {{ manifest_dir }}/kubernetes/services/alloy/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: alloy_result
   changed_when: "'has been upgraded' in alloy_result.stdout or 'has been installed' in alloy_result.stdout"
 
@@ -62,21 +56,13 @@
     --values {{ manifest_dir }}/kubernetes/services/tempo/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: tempo_result
   changed_when: "'has been upgraded' in tempo_result.stdout or 'has been installed' in tempo_result.stdout"
 
-- name: Apply the OTel Collector Infisical secret
-  ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/otel-collector/secret.yaml
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
-  register: otel_secret_apply
-  changed_when: "'created' in otel_secret_apply.stdout or 'configured' in otel_secret_apply.stdout"
-
-- name: Wait for the OTel Collector credentials
-  ansible.builtin.include_tasks: wait-for-secret.yml
+- name: Provision the OTel Collector credentials
+  ansible.builtin.include_tasks: infisical-secret.yml
   vars:
+    secret_manifest: "{{ manifest_dir }}/kubernetes/services/otel-collector/secret.yaml"
     wait_secret_name: otel-collector-secrets
     wait_secret_namespace: platform-telemetry
 
@@ -88,8 +74,6 @@
     --values {{ manifest_dir }}/kubernetes/services/otel-collector/helm.yaml
     --wait
     --timeout 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: otel_result
   changed_when: "'has been upgraded' in otel_result.stdout or 'has been installed' in otel_result.stdout"
 
@@ -114,8 +98,6 @@
       - --wait
       - --timeout
       - 5m
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   register: grafana_result
   changed_when: "'has been upgraded' in grafana_result.stdout or 'has been installed' in grafana_result.stdout"
   no_log: true
@@ -139,17 +121,11 @@
         kubectl apply -f -
       done
     executable: /bin/bash
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
   changed_when: true
 
-- name: Deploy Grafana alert rules
-  ansible.builtin.command:
-    argv:
-      - kubectl
-      - apply
-      - -f
-      - "{{ manifest_dir }}/kubernetes/services/grafana/alerts/signews-api-alerts.yaml"
-  environment:
-    KUBECONFIG: "{{ kubeconfig }}"
-  changed_when: true
+# APP alert rules are deliberately NOT applied here: they ship with the app
+# that emits the metric, through the app chart's `spec.alerts` (which renders
+# the same grafana_alert=1 ConfigMap the sidecar in grafana/helm.yaml watches).
+# An alert living in this repo outlives the app it watches and goes stale
+# invisibly. Only the infrastructure dashboards above, which describe the
+# cluster itself, belong here.
