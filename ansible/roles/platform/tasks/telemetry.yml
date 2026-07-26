@@ -10,54 +10,70 @@
   vars:
     service_chart_releases:
       - { name: grafana, namespace: platform-telemetry }
-      - { name: prometheus, namespace: platform-telemetry }
-      - { name: loki, namespace: platform-telemetry }
-      - { name: tempo, namespace: platform-telemetry }
+      - { name: victoria-metrics, namespace: platform-telemetry }
+      - { name: victoria-logs, namespace: platform-telemetry }
+      - { name: victoria-traces, namespace: platform-telemetry }
 
-- name: Install Prometheus via Helm
+- name: Install VictoriaMetrics via Helm
   ansible.builtin.command: >
-    helm upgrade --install prometheus prometheus-community/prometheus
+    helm upgrade --install victoria-metrics vm/victoria-metrics-single
     --namespace platform-telemetry
-    --version {{ platform_chart_versions.prometheus }}
-    --values {{ manifest_dir }}/kubernetes/services/prometheus/helm.yaml
+    --version {{ platform_chart_versions.victoria_metrics }}
+    --values {{ manifest_dir }}/kubernetes/services/victoria-metrics/helm.yaml
     --wait
     --timeout 5m
-  register: prometheus_result
-  changed_when: "'has been upgraded' in prometheus_result.stdout or 'has been installed' in prometheus_result.stdout"
+  register: victoria_metrics_result
+  changed_when: "'has been upgraded' in victoria_metrics_result.stdout or 'has been installed' in victoria_metrics_result.stdout"
 
-- name: Install Loki via Helm
+- name: Install VictoriaLogs via Helm
   ansible.builtin.command: >
-    helm upgrade --install loki grafana-community/loki
+    helm upgrade --install victoria-logs vm/victoria-logs-single
     --namespace platform-telemetry
-    --version {{ platform_chart_versions.loki }}
-    --values {{ manifest_dir }}/kubernetes/services/loki/helm.yaml
+    --version {{ platform_chart_versions.victoria_logs }}
+    --values {{ manifest_dir }}/kubernetes/services/victoria-logs/helm.yaml
     --wait
     --timeout 5m
-  register: loki_result
-  changed_when: "'has been upgraded' in loki_result.stdout or 'has been installed' in loki_result.stdout"
+  register: victoria_logs_result
+  changed_when: "'has been upgraded' in victoria_logs_result.stdout or 'has been installed' in victoria_logs_result.stdout"
 
-# After Loki: Alloy pushes to it, so an earlier install has nowhere to write.
-- name: Install Grafana Alloy via Helm
+- name: Install VictoriaTraces via Helm
   ansible.builtin.command: >
-    helm upgrade --install alloy grafana/alloy
+    helm upgrade --install victoria-traces vm/victoria-traces-single
     --namespace platform-telemetry
-    --version {{ platform_chart_versions.alloy }}
-    --values {{ manifest_dir }}/kubernetes/services/alloy/helm.yaml
+    --version {{ platform_chart_versions.victoria_traces }}
+    --values {{ manifest_dir }}/kubernetes/services/victoria-traces/helm.yaml
     --wait
     --timeout 5m
-  register: alloy_result
-  changed_when: "'has been upgraded' in alloy_result.stdout or 'has been installed' in alloy_result.stdout"
+  register: victoria_traces_result
+  changed_when: "'has been upgraded' in victoria_traces_result.stdout or 'has been installed' in victoria_traces_result.stdout"
 
-- name: Install Tempo via Helm
+# kube-state-metrics and node-exporter used to be subcharts of the `prometheus`
+# release. They are standalone releases now because the VictoriaMetrics chart
+# bundles no equivalent — but both dashboards still depend on them, so they are
+# not optional. Position in this file is arbitrary: VictoriaMetrics finds them
+# by Service annotation whenever they appear, so there is no ordering
+# constraint in either direction.
+- name: Install kube-state-metrics via Helm
   ansible.builtin.command: >
-    helm upgrade --install tempo grafana-community/tempo
+    helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics
     --namespace platform-telemetry
-    --version {{ platform_chart_versions.tempo }}
-    --values {{ manifest_dir }}/kubernetes/services/tempo/helm.yaml
+    --version {{ platform_chart_versions.kube_state_metrics }}
+    --values {{ manifest_dir }}/kubernetes/services/kube-state-metrics/helm.yaml
     --wait
     --timeout 5m
-  register: tempo_result
-  changed_when: "'has been upgraded' in tempo_result.stdout or 'has been installed' in tempo_result.stdout"
+  register: ksm_result
+  changed_when: "'has been upgraded' in ksm_result.stdout or 'has been installed' in ksm_result.stdout"
+
+- name: Install node-exporter via Helm
+  ansible.builtin.command: >
+    helm upgrade --install node-exporter prometheus-community/prometheus-node-exporter
+    --namespace platform-telemetry
+    --version {{ platform_chart_versions.node_exporter }}
+    --values {{ manifest_dir }}/kubernetes/services/node-exporter/helm.yaml
+    --wait
+    --timeout 5m
+  register: node_exporter_result
+  changed_when: "'has been upgraded' in node_exporter_result.stdout or 'has been installed' in node_exporter_result.stdout"
 
 - name: Provision the OTel Collector credentials
   ansible.builtin.include_tasks: infisical-secret.yml
@@ -66,6 +82,9 @@
     wait_secret_name: otel-collector-secrets
     wait_secret_namespace: platform-telemetry
 
+# After VictoriaLogs: the collector now owns pod-log shipping too (the filelog
+# receiver that replaced the Alloy DaemonSet), so an earlier install has nowhere
+# to write. It also exports to VictoriaMetrics and VictoriaTraces, both above.
 - name: Install the OpenTelemetry Collector via Helm
   ansible.builtin.command: >
     helm upgrade --install otel-collector open-telemetry/opentelemetry-collector

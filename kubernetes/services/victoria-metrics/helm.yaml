@@ -1,0 +1,354 @@
+# VictoriaMetrics single-node — the metrics store, replacing Prometheus.
+#
+# Chart: vm/victoria-metrics-single (see platform_chart_versions.victoria_metrics).
+# Two ingest paths, both on :8428 —
+#   * it SCRAPES, using `-promscrape.config` (server.scrape below), which is a
+#     Prometheus-compatible scrape config: the same kubernetes_sd jobs the
+#     prometheus chart shipped;
+#   * it RECEIVES Prometheus remote-write at /api/v1/write from the OTel
+#     collector. Unlike Prometheus, no `web.enable-remote-write-receiver`
+#     equivalent exists — the path is always on.
+#     https://docs.victoriametrics.com/victoriametrics/url-examples/#apiv1write
+#
+# All three Victoria charts ship the server as a StatefulSet whose Service is
+# HEADLESS (`clusterIP: None`) — it doubles as the StatefulSet's governing
+# service. Unlike prometheus/loki/tempo, `kubectl get svc` shows no ClusterIP;
+# the name still resolves, to the pod IP directly. Left at the chart default:
+# giving it a ClusterIP would break the per-pod DNS a StatefulSet guarantees.
+
+server:
+  # Without this the objects are named <release>-victoria-metrics-single-server.
+  # Every consumer (Grafana datasource, the collector's remote-write exporter)
+  # addresses the Service by name, so keep it short and stable.
+  fullnameOverride: victoria-metrics
+
+  # DATA LOSS IF CHANGED. Names the PVC that kubernetes/services/victoria-metrics/
+  # platform.yaml creates (<name>-<key> = victoria-metrics-data) over a hostPath
+  # PV at /var/lib/k8s-data/victoria-metrics.
+  #
+  # `existingClaim` is load-bearing beyond the name: this chart runs the server
+  # as a StatefulSet, and setting existingClaim makes the template drop its
+  # volumeClaimTemplate entirely and mount the named PVC instead. Unset it and
+  # the StatefulSet provisions server-volume-victoria-metrics-0 from the default
+  # StorageClass and starts on an empty TSDB.
+  persistentVolume:
+    existingClaim: victoria-metrics-data
+
+  # Age-based only, matching what Prometheus kept. Do NOT add
+  # `-retention.maxDiskSpaceUsageBytes`: a size cap silently clips the window
+  # (the same trap the prometheus `retentionSize` had — a 2GB cap gave ~7d).
+  retentionPeriod: "30d"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 640Mi
+    limits:
+      memory: 896Mi
+
+  extraArgs:
+    # The Victoria-family equivalent of the GOMEMLIMIT this repo set on every
+    # Go telemetry component. VictoriaMetrics does not size its caches from the
+    # Go heap; it budgets them from `-memory.allowedPercent` of the detected
+    # cgroup memory limit (i.e. of resources.limits.memory above), and shrinks
+    # them under pressure. Written out explicitly even though 60 is the upstream
+    # default: this is a deliberate bound, and a percentage tracks the limit
+    # instead of going stale the way an absolute `-memory.allowedBytes` would.
+    memory.allowedPercent: 60
+
+  # Reproduces the scrape surface of prometheus-community/prometheus 29.19.0's
+  # default `serverFiles."prometheus.yml"`, which is what this cluster scraped
+  # until the migration. Rendering that chart against the old values file is how
+  # this was derived — it is not a hand-written approximation.
+  #
+  # Enabling this also makes the chart render the ClusterRole/Binding that
+  # kubernetes_sd needs (pods, services, endpointslices, nodes, nodes/metrics,
+  # ingresses, /metrics) and mount the config at /scrapeconfig/scrape.yml.
+  #
+  # DROPPED from the upstream set, deliberately, because both scraped exactly
+  # nothing here:
+  #   * `kubernetes-services`  — blackbox-exporter probe job. It keeps only
+  #     Services carrying `prometheus.io/probe`, of which this cluster has none,
+  #     and its targets are rewritten to the address `blackbox`, which does not
+  #     resolve. Dead config.
+  #   * `prometheus-pushgateway` — the pushgateway subchart is disabled (it was
+  #     `prometheus-pushgateway.enabled: false` before too).
+  # The `*-slow` variants are KEPT even though nothing sets
+  # `prometheus.io/scrape_slow` today: they are half of the annotation contract
+  # an app opts into, and the `drop` rules in the fast jobs reference them.
+  scrape:
+    enabled: true
+    config:
+      global:
+        # 1m, not the chart's 15s default — Prometheus scraped at 1m here and a
+        # 4x resolution bump is a 4x sample-rate bump on a memory-bound node.
+        scrape_interval: 1m
+        scrape_timeout: 10s
+
+      scrape_configs:
+        # VictoriaMetrics' own metrics, on the port it listens on. (The upstream
+        # prometheus chart's equivalent job was `prometheus` -> localhost:9090.)
+        - job_name: victoriametrics
+          static_configs:
+            - targets: ["localhost:8428"]
+
+        - job_name: kubernetes-api-servers
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          kubernetes_sd_configs:
+            - role: endpointslice
+          relabel_configs:
+            - action: keep
+              regex: default;kubernetes;https
+              source_labels:
+                - __meta_kubernetes_namespace
+                - __meta_kubernetes_service_name
+                - __meta_kubernetes_endpointslice_port_name
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+        - job_name: kubernetes-nodes
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          kubernetes_sd_configs:
+            - role: node
+          relabel_configs:
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+
+        # cadvisor. Both Grafana dashboards depend on this job:
+        # container_cpu_usage_seconds_total / container_memory_working_set_bytes
+        # / container_network_*_bytes_total come from nowhere else.
+        - job_name: kubernetes-nodes-cadvisor
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          kubernetes_sd_configs:
+            - role: node
+          metrics_path: /metrics/cadvisor
+          relabel_configs:
+            - action: labelmap
+              regex: __meta_kubernetes_node_label_(.+)
+            - source_labels:
+                - __metrics_path__
+              target_label: metrics_path
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            insecure_skip_verify: true
+
+        - job_name: kubernetes-pods
+          honor_labels: true
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+            - action: drop
+              regex: true
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_scrape_slow
+            - action: replace
+              regex: (https?)
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+              target_label: __scheme__
+            - action: replace
+              regex: (.+)
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_path
+              target_label: __metrics_path__
+            - action: replace
+              regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+              replacement: "[$2]:$1"
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_port
+                - __meta_kubernetes_pod_ip
+              target_label: __address__
+            - action: replace
+              regex: (\d+);((([0-9]+?)(\.|$)){4})
+              replacement: $2:$1
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_port
+                - __meta_kubernetes_pod_ip
+              target_label: __address__
+            - action: labelmap
+              regex: __meta_kubernetes_pod_annotation_prometheus_io_param_(.+)
+              replacement: __param_$1
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_namespace
+              target_label: namespace
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_name
+              target_label: pod
+            - action: drop
+              regex: Pending|Succeeded|Failed|Completed
+              source_labels:
+                - __meta_kubernetes_pod_phase
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_node_name
+              target_label: node
+
+        - job_name: kubernetes-pods-slow
+          honor_labels: true
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_scrape_slow
+            - action: replace
+              regex: (https?)
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+              target_label: __scheme__
+            - action: replace
+              regex: (.+)
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_path
+              target_label: __metrics_path__
+            - action: replace
+              regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+              replacement: "[$2]:$1"
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_port
+                - __meta_kubernetes_pod_ip
+              target_label: __address__
+            - action: replace
+              regex: (\d+);((([0-9]+?)(\.|$)){4})
+              replacement: $2:$1
+              source_labels:
+                - __meta_kubernetes_pod_annotation_prometheus_io_port
+                - __meta_kubernetes_pod_ip
+              target_label: __address__
+            - action: labelmap
+              regex: __meta_kubernetes_pod_annotation_prometheus_io_param_(.+)
+              replacement: __param_$1
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_namespace
+              target_label: namespace
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_name
+              target_label: pod
+            - action: drop
+              regex: Pending|Succeeded|Failed|Completed
+              source_labels:
+                - __meta_kubernetes_pod_phase
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_node_name
+              target_label: node
+          scrape_interval: 5m
+          scrape_timeout: 30s
+
+        # This is the job that picks up kube-state-metrics and node-exporter:
+        # both charts annotate their own Service with prometheus.io/scrape=true.
+        # They are separate Helm releases now (they used to be subcharts of the
+        # prometheus release) — discovery does not care, which is why no
+        # install-order constraint exists between them and this release.
+        - job_name: kubernetes-service-endpoints
+          honor_labels: true
+          kubernetes_sd_configs:
+            - role: endpointslice
+          relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_scrape
+            - action: drop
+              regex: true
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+            - action: replace
+              regex: (https?)
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_scheme
+              target_label: __scheme__
+            - action: replace
+              regex: (.+)
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_path
+              target_label: __metrics_path__
+            - action: replace
+              regex: (.+?)(?::\d+)?;(\d+)
+              replacement: $1:$2
+              source_labels:
+                - __address__
+                - __meta_kubernetes_service_annotation_prometheus_io_port
+              target_label: __address__
+            - action: labelmap
+              regex: __meta_kubernetes_service_annotation_prometheus_io_param_(.+)
+              replacement: __param_$1
+            - action: labelmap
+              regex: __meta_kubernetes_service_label_(.+)
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_namespace
+              target_label: namespace
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_service_name
+              target_label: service
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_node_name
+              target_label: node
+
+        - job_name: kubernetes-service-endpoints-slow
+          honor_labels: true
+          kubernetes_sd_configs:
+            - role: endpointslice
+          relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+            - action: replace
+              regex: (https?)
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_scheme
+              target_label: __scheme__
+            - action: replace
+              regex: (.+)
+              source_labels:
+                - __meta_kubernetes_service_annotation_prometheus_io_path
+              target_label: __metrics_path__
+            - action: replace
+              regex: (.+?)(?::\d+)?;(\d+)
+              replacement: $1:$2
+              source_labels:
+                - __address__
+                - __meta_kubernetes_service_annotation_prometheus_io_port
+              target_label: __address__
+            - action: labelmap
+              regex: __meta_kubernetes_service_annotation_prometheus_io_param_(.+)
+              replacement: __param_$1
+            - action: labelmap
+              regex: __meta_kubernetes_service_label_(.+)
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_namespace
+              target_label: namespace
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_service_name
+              target_label: service
+            - action: replace
+              source_labels:
+                - __meta_kubernetes_pod_node_name
+              target_label: node
+          scrape_interval: 5m
+          scrape_timeout: 30s

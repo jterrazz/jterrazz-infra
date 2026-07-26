@@ -37,8 +37,10 @@ storage:
     pathSuffix: uploads
   # claimName override (chart 2.1): the PV stays ci-test-service-metrics and
   # the PVC's volumeName still points at it, but the PVC itself is named
-  # storage-ci-test-0 — the shape a StatefulSet volumeClaimTemplate imposes
-  # (loki, tempo).
+  # storage-ci-test-0 — the shape a StatefulSet volumeClaimTemplate imposes.
+  # No live service needs it today (loki and tempo did, and are gone; the
+  # Victoria charts take `existingClaim` and drop their volumeClaimTemplate
+  # instead) — the fixture keeps the branch covered for the next one that does.
   metrics:
     size: 1Gi
     pathSuffix: metrics

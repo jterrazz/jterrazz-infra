@@ -31,9 +31,28 @@ sidecar:
     label: grafana_alert
     labelValue: "1"
 
+# VictoriaLogs is not a core Grafana datasource — it ships as a plugin, signed
+# by VictoriaMetrics and served from the Grafana catalog, so grafana-cli installs
+# it with no unsigned-plugin allowlisting. Grafana installs plugins at pod start,
+# which means the pod needs egress to grafana.com on every restart.
+# https://docs.victoriametrics.com/victorialogs/integrations/grafana/
+#
+# Metrics and traces need NO plugin: VictoriaMetrics speaks the Prometheus query
+# API and VictoriaTraces speaks the Jaeger one, both core datasource types.
+plugins:
+  - victoriametrics-logs-datasource
+
 datasources:
   datasources.yaml:
     apiVersion: 1
+    # Provisioning applies these BEFORE the datasources below, which is what
+    # makes the UID reuse work: the rows are matched by NAME, so deleting
+    # "Prometheus"/"Loki"/"Tempo" frees the uids `prometheus`/`loki`/`tempo`
+    # for the renamed entries that follow. Without the delete, the insert
+    # collides on the unique uid index and Grafana logs a provisioning error.
+    #
+    # Keep the old names here even after the live rows are gone: this file is
+    # also what a from-scratch Grafana on a restored grafana.db reads.
     deleteDatasources:
       - name: Prometheus
         orgId: 1
@@ -41,21 +60,50 @@ datasources:
         orgId: 1
       - name: Tempo
         orgId: 1
+      - name: VictoriaMetrics
+        orgId: 1
+      - name: VictoriaLogs
+        orgId: 1
+      - name: VictoriaTraces
+        orgId: 1
     datasources:
-      - name: Prometheus
+      # THE UIDs ARE THE STABLE IDENTIFIERS, and they deliberately keep their
+      # pre-migration values — `prometheus`, `loki`, `tempo` — even though the
+      # names and (for traces) the type changed. Every dashboard JSON in
+      # kubernetes/services/grafana/dashboards/ and every app-shipped alert rule
+      # (the app chart's `spec.alerts`) references a datasource by uid, and those
+      # live in other repos. Renaming a uid silently breaks all of them.
+      - name: VictoriaMetrics
+        # Unchanged type: VictoriaMetrics serves the Prometheus HTTP API
+        # (/api/v1/query, /api/v1/query_range, /api/v1/labels …) on :8428, so
+        # Grafana's core prometheus datasource talks to it directly. MetricsQL is
+        # a superset of PromQL — every existing panel expression still parses.
         type: prometheus
         uid: prometheus
-        url: http://prometheus-server.platform-telemetry.svc:80
+        url: http://victoria-metrics.platform-telemetry.svc:8428
         isDefault: true
-      - name: Loki
-        type: loki
+      - name: VictoriaLogs
+        # Type CHANGED (loki -> victoriametrics-logs-datasource) on the same uid.
+        # Nothing in this repo queries uid `loki` from a dashboard — the OTel
+        # collector writes to it and humans read it in Explore — so the change
+        # is invisible here. Query language is LogsQL, not LogQL.
+        type: victoriametrics-logs-datasource
         uid: loki
-        url: http://loki.platform-telemetry.svc:3100
-      - name: Tempo
-        type: tempo
+        url: http://victoria-logs.platform-telemetry.svc:9428
+      - name: VictoriaTraces
+        # Type CHANGED (tempo -> jaeger) on the same uid. VictoriaTraces exposes
+        # a Jaeger-compatible query API under /select/jaeger; the path is part of
+        # the URL, not a jsonData option.
+        # https://docs.victoriametrics.com/victoriatraces/querying/grafana/
+        type: jaeger
         uid: tempo
-        url: http://tempo.platform-telemetry.svc:3100
+        url: http://victoria-traces.platform-telemetry.svc:10428/select/jaeger
         jsonData:
+          # Correlations carried over unchanged. They point at the uids above,
+          # which is why keeping the uids stable mattered twice over. The jaeger
+          # datasource supports both options; the logs side now lands on the
+          # VictoriaLogs plugin rather than Loki, which is untested — nothing
+          # depends on it.
           tracesToLogsV2:
             datasourceUid: loki
           tracesToMetrics:

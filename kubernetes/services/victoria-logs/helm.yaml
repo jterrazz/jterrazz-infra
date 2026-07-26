@@ -1,0 +1,73 @@
+# VictoriaLogs single-node — the log store, replacing Loki.
+#
+# Chart: vm/victoria-logs-single (see platform_chart_versions.victoria_logs).
+# Two write paths, both on :9428, both always on (no receiver flag to enable):
+#   * OTLP/HTTP from the OTel collector
+#       /insert/opentelemetry/v1/logs
+#       https://docs.victoriametrics.com/victorialogs/data-ingestion/opentelemetry/
+#   * Loki push — VictoriaLogs also implements Loki's `/loki/api/v1/push` under
+#       /insert/loki/api/v1/push
+#       https://docs.victoriametrics.com/victorialogs/data-ingestion/promtail/
+#     NOTHING WRITES TO IT TODAY. It is the reason the Alloy DaemonSet could
+#     have survived this migration on a one-line URL change; it did not, because
+#     pod-log shipping moved into the OTel collector's filelog receiver instead
+#     (see kubernetes/services/otel-collector/helm.yaml). Left documented
+#     because it is the cheapest possible fallback if that ever needs undoing.
+#
+# Query language is LogsQL, not LogQL. Stream filters look the same
+# (`{k8s.namespace.name="x"}`); the pipe operators do not — see docs/RUNBOOK.md.
+
+server:
+  # Without this the objects are named <release>-victoria-logs-single-server.
+  fullnameOverride: victoria-logs
+
+  # DATA LOSS IF CHANGED — see the matching note in platform.yaml. `existingClaim`
+  # also makes the chart drop its StatefulSet volumeClaimTemplate and mount this
+  # PVC by name, which is why no `claimName` override is needed here (loki did
+  # need one: storage-loki-0).
+  persistentVolume:
+    existingClaim: victoria-logs-data
+
+  # Same 90d window Loki's limits_config.retention_period had — but this one is
+  # enforced: VictoriaLogs actually DELETES data past it (and rejects ingestion
+  # of entries outside it), whereas Loki's compactor retention-delete was off, so
+  # 90d was only a query-lookback bound and chunks accumulated forever.
+  retentionPeriod: "90d"
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  extraArgs:
+    # Victoria-family equivalent of the GOMEMLIMIT this repo set on Loki: the
+    # cache budget is a percentage of the detected cgroup memory limit (i.e. of
+    # resources.limits.memory above), so it tracks the limit instead of going
+    # stale the way an absolute `-memory.allowedBytes` would. 60 is also the
+    # upstream default; it is written out because it is a deliberate bound.
+    memory.allowedPercent: 60
+
+  # The chart runs the server as uid 1000 / fsGroup 2000 with a read-only root
+  # filesystem (podSecurityContext defaults, left alone). fsGroup does NOT apply
+  # to hostPath volumes — the kubelet's ownership management skips that plugin —
+  # so the DirectoryOrCreate hostPath arrives root-owned on a fresh node and the
+  # server cannot write to it. Same class of problem as the prometheus chown,
+  # except here it bites on FIRST boot: /var/lib/k8s-data/victoria-logs is a new
+  # directory, not an inherited one.
+  #
+  # runAsUser 0 + runAsNonRoot false are required: the pod-level context forbids
+  # root, and a container-level context overrides it.
+  initContainers:
+    - name: fix-permissions
+      image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
+      command: ["sh", "-c", "chown -R 1000:2000 /storage"]
+      securityContext:
+        runAsUser: 0
+        runAsNonRoot: false
+      volumeMounts:
+        # `server-volume` is the chart's fixed internal name for the data
+        # volume, not something these values can rename.
+        - name: server-volume
+          mountPath: /storage

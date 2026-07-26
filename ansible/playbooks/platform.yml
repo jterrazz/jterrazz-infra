@@ -41,7 +41,8 @@
           Platform deployment complete.
 
           Deployed: cert-manager, infisical secrets-operator, cloudflared,
-          grafana + loki + tempo + prometheus + otel-collector + alloy,
+          grafana + victoria-metrics + victoria-logs + victoria-traces +
+          kube-state-metrics + node-exporter + otel-collector,
           librechat, openpanel, registry.
 
           App chart published to: oci://registry.jterrazz.com/charts/app

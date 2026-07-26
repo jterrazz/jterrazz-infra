@@ -1,18 +1,74 @@
 image:
   repository: otel/opentelemetry-collector-contrib
 
+# DEPLOYMENT, not daemonset — even though this now tails the node's container
+# logs off a hostPath. One node, so one collector sees every pod's log file, and
+# a Deployment keeps the OTLP Service backed by exactly one endpoint.
+#
+# THE DAY A SECOND NODE EXISTS this must become `mode: daemonset`: a Deployment
+# lands on one node and would silently collect only that node's logs (the same
+# failure the alloy DaemonSet existed to avoid). Switching also means adding
+# `filter.node_from_env_var: K8S_NODE_NAME` to the k8sattributes processor and
+# rethinking where the OTLP receiver lives.
 mode: deployment
 replicaCount: 1
 
 # No manual GOMEMLIMIT: this chart auto-injects it at 80% of
 # resources.limits.memory.
-
+#
+# +64Mi on both numbers versus the pre-filelog collector: the filelog receiver
+# holds a reader plus a recombine buffer per tailed file (~25 pods here) and the
+# k8sattributes processor keeps an informer cache of every pod in the cluster.
+# That is roughly what the alloy DaemonSet this replaced was given (128Mi limit)
+# and this pod absorbs its job.
 resources:
   requests:
     cpu: 25m
-    memory: 128Mi
+    memory: 192Mi
   limits:
-    memory: 256Mi
+    memory: 320Mi
+
+# ROOT, deliberately, and only since pod-log collection moved here. The
+# container log files under /var/log/pods are created by containerd owned by
+# root with group-restricted permissions; the collector image's default
+# 10001:10001 cannot open them, and a collector that starts fine and ships
+# nothing is the worst possible outcome of this migration. The host mount below
+# is read-only, so what root buys is read access and nothing else.
+#
+# If this is ever tightened, verify by CONTENT, not by pod status:
+#   kubectl logs -n platform-telemetry deploy/otel-collector | grep -i 'permission denied'
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+
+# The node's container logs. /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log
+# is where containerd actually writes; /var/log/containers/*.log are symlinks
+# into it, so mounting /var/log covers both and no /var/lib/containerd mount is
+# needed. Read-only — nothing here should ever write to the host.
+extraVolumes:
+  - name: varlog
+    hostPath:
+      path: /var/log
+      type: Directory
+extraVolumeMounts:
+  - name: varlog
+    mountPath: /var/log
+    readOnly: true
+
+# k8sattributes needs to watch pods (to map a pod uid to its labels and owner)
+# and replicasets (to walk ReplicaSet -> Deployment). These are exactly the
+# rules the chart's `presets.kubernetesAttributes` would create; the preset
+# itself is NOT used because it also injects the processor into EVERY pipeline,
+# including traces/langfuse, which must stay byte-for-byte what it was.
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "namespaces"]
+      verbs: ["get", "watch", "list"]
+    - apiGroups: ["apps"]
+      resources: ["replicasets"]
+      verbs: ["get", "list", "watch"]
 
 # Pins the Service DNS name every consumer's OTEL_EXPORTER_OTLP_ENDPOINT uses
 # (see app.platformCatalog in kubernetes/charts/app/templates/_helpers.tpl).
@@ -56,10 +112,81 @@ config:
         http:
           endpoint: 0.0.0.0:4318
 
+    # Every pod's stdout/stderr, tailed off the node. This replaces the Grafana
+    # Alloy DaemonSet, which existed only because the log store was Loki-family;
+    # with VictoriaLogs there is no affinity left to pay a second agent for.
+    #
+    # /var/log/pods/*/*/*.log, NOT /var/log/containers/*.log: the `container`
+    # operator's add_metadata_from_filepath (on by default) derives
+    # k8s.pod.name / k8s.pod.uid / k8s.namespace.name / k8s.container.name by
+    # PARSING the path, and it only recognises the /var/log/pods layout. The
+    # /var/log/containers symlink names carry the same facts in a different
+    # shape and would yield no metadata at all — which then breaks the
+    # k8sattributes pod_association below, which keys on k8s.pod.uid.
+    # https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/stanza/docs/operators/container.md
+    filelog:
+      include: [/var/log/pods/*/*/*.log]
+      # No feedback loop: the collector's own stdout would otherwise be tailed,
+      # shipped, and logged about. Path shape is
+      # /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log; the container name
+      # is the chart name, the pod name starts with the fullnameOverride above.
+      exclude:
+        - /var/log/pods/platform-telemetry_otel-collector-*_*/opentelemetry-collector/*.log
+      # `end`, not `beginning`: on a restart this skips whatever accumulated
+      # while the collector was down rather than re-shipping a node's worth of
+      # history. Losing a restart's worth of lines beats a duplicate flood.
+      start_at: end
+      retry_on_failure:
+        enabled: true
+      # Required by add_metadata_from_filepath — the operator reads
+      # log.file.path, which only exists when this is true.
+      include_file_path: true
+      include_file_name: false
+      operators:
+        # Auto-detects docker/cri-o/containerd framing; k3s is containerd, so
+        # this un-wraps the `<ts> <stream> <F|P> <line>` CRI format, stitches
+        # partial (P) lines back together, and lifts the timestamp.
+        - type: container
+          id: container-parser
+          max_log_size: 102400
+
   processors:
     batch:
       timeout: 5s
       send_batch_size: 1024
+
+    # Enriches the filelog stream ONLY (see the logs/pods pipeline). The
+    # container operator already puts namespace/pod/container/uid on the
+    # resource from the file path; this adds what only the API server knows —
+    # the node, the owning Deployment, and the `app` pod label.
+    k8sattributes:
+      # Deployment mode, so no node filter: this collector watches every pod in
+      # the cluster. A daemonset would add filter.node_from_env_var.
+      passthrough: false
+      # ONLY k8s.pod.uid. The chart preset's default list ends with
+      # `from: connection`, which resolves the peer address of the connection
+      # the telemetry arrived on — for file-tailed logs that is the collector
+      # itself, so every pod's logs would be labelled as the collector's. The
+      # uid comes off the file path and is exact.
+      pod_association:
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+      extract:
+        metadata:
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.container.name
+          - k8s.node.name
+          - k8s.deployment.name
+        labels:
+          # `app` is carried by every workload in this repo (both charts stamp
+          # it, the raw manifests set it by hand), which is what made
+          # {app="op-api"} work across restarts under Alloy. Kept.
+          - tag_name: app
+            key: app
+            from: pod
+
     # NOTE the inversion: the filter processor DROPS what its condition
     # matches, so this condition matches everything that is NOT a GenAI span.
     # error_mode: ignore keeps a span that errors evaluating the condition
@@ -71,16 +198,48 @@ config:
           - 'not (IsMatch(name, "^ai\\..*") or attributes["gen_ai.operation.name"] != nil)'
 
   exporters:
-    otlphttp/tempo:
-      endpoint: http://tempo.platform-telemetry.svc:4318
+    otlphttp/victoria-traces:
+      # `traces_endpoint`, not `endpoint`: VictoriaTraces' ingest path is
+      # /insert/opentelemetry/v1/traces, and `endpoint` would append the
+      # standard /v1/traces to whatever is given.
+      # https://docs.victoriametrics.com/victoriatraces/data-ingestion/opentelemetry/
+      traces_endpoint: http://victoria-traces.platform-telemetry.svc:10428/insert/opentelemetry/v1/traces
       tls:
         insecure: true
-    otlphttp/loki:
-      endpoint: http://loki.platform-telemetry.svc:3100/otlp
+    otlphttp/victoria-logs:
+      # Structured OTLP logs from instrumented apps. Same reasoning as above:
+      # the path is /insert/opentelemetry/v1/logs, so it goes in logs_endpoint.
+      # https://docs.victoriametrics.com/victorialogs/data-ingestion/opentelemetry/
+      #
+      # NO VL-Stream-Fields header here: VictoriaLogs makes every resource
+      # attribute a stream field by default, and for these logs that set is
+      # small and meaningful (service.name, deployment.environment).
+      logs_endpoint: http://victoria-logs.platform-telemetry.svc:9428/insert/opentelemetry/v1/logs
       tls:
         insecure: true
+    otlphttp/victoria-logs-pods:
+      # Same destination, different stream-field policy — which is the ONLY
+      # reason this is a second exporter rather than a reuse of the one above.
+      logs_endpoint: http://victoria-logs.platform-telemetry.svc:9428/insert/opentelemetry/v1/logs
+      tls:
+        insecure: true
+      headers:
+        # Pins which resource attributes define a log STREAM. Without it every
+        # attribute qualifies — including k8s.pod.uid, which changes on every
+        # reschedule, and k8s.node.name — and stream cardinality is the one way
+        # to make a small log store miserable. This list is exactly the four
+        # labels the Alloy config promoted, for the same reason it kept them
+        # short. Everything else (uid, node, deployment, file path) is still
+        # ingested and queryable, just as a regular field.
+        VL-Stream-Fields: "k8s.namespace.name,k8s.pod.name,k8s.container.name,app"
     prometheusremotewrite:
-      endpoint: http://prometheus-server.platform-telemetry.svc:80/api/v1/write
+      # VictoriaMetrics accepts Prometheus remote-write v1 on /api/v1/write with
+      # no receiver flag to turn on (Prometheus needed
+      # --web.enable-remote-write-receiver). Kept as remote-write rather than
+      # switched to VM's OTLP endpoint precisely because it changes nothing:
+      # same wire format, same label semantics, same conversion below.
+      # https://docs.victoriametrics.com/victoriametrics/url-examples/#apiv1write
+      endpoint: http://victoria-metrics.platform-telemetry.svc:8428/api/v1/write
       tls:
         insecure: true
       # Promotes service.name / deployment.environment to Prometheus labels.
@@ -100,8 +259,8 @@ config:
       traces:
         receivers: [otlp]
         processors: [batch]
-        exporters: [otlphttp/tempo]
-      # Fan-out, in addition to the traces->Tempo pipeline above.
+        exporters: [otlphttp/victoria-traces]
+      # Fan-out, in addition to the traces->VictoriaTraces pipeline above.
       traces/langfuse:
         receivers: [otlp]
         processors: [filter/genai, batch]
@@ -109,7 +268,15 @@ config:
       logs:
         receivers: [otlp]
         processors: [batch]
-        exporters: [otlphttp/loki]
+        exporters: [otlphttp/victoria-logs]
+      # Pod stdout/stderr, the job the Alloy DaemonSet used to do. A SEPARATE
+      # pipeline, not extra receivers on `logs` above: k8sattributes is
+      # meaningless for app OTLP logs (its pod_association keys on a uid only
+      # the filelog path carries) and the stream-field policy differs.
+      logs/pods:
+        receivers: [filelog]
+        processors: [k8sattributes, batch]
+        exporters: [otlphttp/victoria-logs-pods]
       metrics:
         receivers: [otlp]
         processors: [batch]

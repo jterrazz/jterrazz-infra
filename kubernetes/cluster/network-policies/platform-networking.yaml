@@ -25,8 +25,8 @@ spec:
         # available for service cert-manager-webhook".
         - protocol: TCP
           port: 10250
-        # Prometheus (platform-telemetry) -> cert-manager controller + webhook
-        # metrics on 9402.
+        # VictoriaMetrics (platform-telemetry) -> cert-manager controller +
+        # webhook metrics on 9402.
         - protocol: TCP
           port: 9402
   egress:

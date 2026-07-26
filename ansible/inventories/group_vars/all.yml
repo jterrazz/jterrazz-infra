@@ -72,24 +72,40 @@ k3s_node_ip: "{{ ansible_default_ipv4.address }}"
 #
 # REPO MIGRATION (2026-01): Grafana moved its OSS charts out of
 # `grafana/helm-charts` into `grafana-community/helm-charts` and restarted the
-# version numbering. grafana/loki, grafana/tempo and grafana/grafana are now
-# FROZEN at the last pre-migration release (7.1.0 / 1.24.4 / 10.5.15), and
-# `grafana/loki` 7.x is Grafana Enterprise Logs ONLY — following the old repo
-# would silently swap the OSS chart for the enterprise one. loki/tempo/grafana
-# below are therefore versions from the `grafana-community` repo (added in
-# roles/platform/tasks/helm-cli.yml, consumed in tasks/telemetry.yml). ALLOY
-# did NOT migrate and still comes from `grafana/helm-charts`.
+# version numbering. grafana/grafana in the old repo is FROZEN at the last
+# pre-migration release (10.5.15), so `grafana` below is a version from the
+# `grafana-community` repo (added in roles/platform/tasks/helm-cli.yml,
+# consumed in tasks/telemetry.yml).
+#
+# TELEMETRY MIGRATION (2026-07): Prometheus, Loki and Tempo were replaced by the
+# VictoriaMetrics family, and Grafana Alloy was retired outright — its only job
+# (pod-log shipping) folded into the OTel collector's filelog receiver, and its
+# only reason to exist here was Loki-family affinity. That removed the last
+# consumer of the `grafana` helm repo. kube-state-metrics and node-exporter used
+# to ride along as subcharts of the prometheus release and are now pinned and
+# installed on their own, at the same chart majors that release depended on
+# (8.0.* / 4.56.*), so nothing about what they scrape changes.
 platform_chart_versions:
   cert_manager: "v1.21.0"
   infisical: "0.11.5"
-  prometheus: "29.19.0"
-  # grafana-community repo — see REPO MIGRATION above. 6.53.0 -> 18.5.4 spans
-  # 12 chart majors; the values keys this repo sets were re-verified by
-  # rendering, and `lokiCanary` had to move to the top level (see loki/helm.yaml).
-  loki: "18.5.4"
-  # grafana-community repo. Only values removal across the range is
-  # `tempo.receivers.opencensus`, which is not set here.
-  tempo: "2.2.3"
+  # vm repo (https://victoriametrics.github.io/helm-charts/). Chart 0.43.0 ships
+  # VictoriaMetrics v1.148.0. The chart's minor version moves fast; the app
+  # version is the one to read.
+  victoria_metrics: "0.43.0"
+  # vm repo. Chart 0.13.9 ships VictoriaLogs v1.52.0.
+  victoria_logs: "0.13.9"
+  # vm repo. Chart 0.1.10 ships VictoriaTraces v0.9.4 — PRE-1.0, KNOWINGLY. See
+  # the boxed comment in kubernetes/services/victoria-traces/helm.yaml: no
+  # production traffic depends on trace history and trace history is the one
+  # stream this cluster can afford to lose. Do not extend that tolerance to the
+  # two 1.x pins above.
+  victoria_traces: "0.1.10"
+  # prometheus-community repo, unchanged from what the prometheus chart pulled
+  # in as a subchart (its dependency range is `8.0.*`).
+  kube_state_metrics: "8.0.0"
+  # prometheus-community repo, same story (dependency range `4.56.*`). The chart
+  # is named prometheus-node-exporter; the RELEASE is named node-exporter.
+  node_exporter: "4.56.1"
   otel_collector: "0.165.0"
   # grafana-community repo. Chart 10.5.15 -> 12.8.0 = Grafana app 12.3.1 ->
   # 13.1.1; grafana.db schema migrates itself on first boot and is NOT
@@ -99,8 +115,6 @@ platform_chart_versions:
   # what it really carries is appVersion v0.8.7-rc1 -> v0.8.7. The image tag is
   # pinned separately in librechat/helm.yaml — bump the two together.
   librechat: "2.0.7"
-  # Already the latest release (chart 1.11.0 / app v1.18.0) as of 2026-07-26.
-  alloy: "1.11.0"
 
 # Private hostnames, short-circuited IN-CLUSTER to the node's own tailnet IP.
 # Needed because CoreDNS cannot chase a CNAME from a public zone into the

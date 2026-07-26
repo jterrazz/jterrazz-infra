@@ -1,0 +1,20 @@
+# Service-chart values for VictoriaTraces — storage only. `host` is deliberately
+# unset (Grafana and the OTel collector both reach it in-cluster), and with no
+# host the chart emits neither IngressRoute nor Certificate.
+#
+# The PVC name is load-bearing: victoria-traces/helm.yaml pins
+# `server.persistentVolume.existingClaim: victoria-traces-data`, which is
+# <name>-<key> = victoria-traces-data.
+#
+# No `claimName` override, unlike tempo's storage-tempo-0: `existingClaim` makes
+# the chart drop its StatefulSet volumeClaimTemplate entirely.
+name: victoria-traces
+storage:
+  # No pathSuffix — the PV lands on /var/lib/k8s-data/victoria-traces, a NEW
+  # directory. /var/lib/k8s-data/tempo is left untouched (Retain); it is not a
+  # rollback target in any useful sense, since the old traces are unreadable by
+  # VictoriaTraces and their loss is accepted (see helm.yaml).
+  #
+  # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
+  data:
+    size: 10Gi

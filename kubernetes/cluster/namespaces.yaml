@@ -36,7 +36,8 @@ metadata:
     app.kubernetes.io/component: ai
 
 ---
-# Grafana / Prometheus / Loki / Tempo / OTel Collector / Alloy.
+# Grafana / VictoriaMetrics / VictoriaLogs / VictoriaTraces /
+# kube-state-metrics / node-exporter / OTel Collector.
 apiVersion: v1
 kind: Namespace
 metadata:

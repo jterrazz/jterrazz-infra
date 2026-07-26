@@ -114,9 +114,27 @@ POD_IP=$(kubectl get pod -n platform-networking -l app.kubernetes.io/name=cloudf
   -o jsonpath='{.items[0].status.podIP}')
 curl -s "http://$POD_IP:2000/metrics" | grep '^cloudflared_tunnel_total_requests '
 
-# Every pod's stdout is in Loki, shipped by Alloy. Query in Grafana:
-#   {namespace="platform-analytics"}   {app="op-api"}
-kubectl logs -n platform-telemetry ds/alloy | grep -i forbidden   # RBAC check
+# Every pod's stdout is in VictoriaLogs, shipped by the otel-collector's
+# filelog receiver (it tails /var/log/pods off a hostPath; there is no separate
+# log agent any more). Query in Grafana's "VictoriaLogs" datasource — the
+# language is LogsQL, NOT LogQL:
+#   {k8s.namespace.name="platform-analytics"}
+#   {app="op-api"} error
+#   {app="op-api"} | stats by (k8s.container.name) count()
+# The four stream fields are k8s.namespace.name / k8s.pod.name /
+# k8s.container.name / app — pinned by the VL-Stream-Fields header on the
+# collector's exporter. Everything else (node, deployment, pod uid, file path)
+# is a regular field: filter on it, just do not expect it to narrow the scan.
+#
+# LogQL -> LogsQL, the three that bite: `|=` "x" is just a bare word or
+# "quoted phrase"; `| json` is unnecessary (JSON bodies are parsed on ingest);
+# `| line_format` / `sum by (...) (rate(...))` become the `format` and `stats`
+# pipes. Full mapping:
+#   https://docs.victoriametrics.com/victorialogs/logsql/
+#
+# No logs arriving? Check the collector, not a DaemonSet:
+kubectl logs -n platform-telemetry deploy/otel-collector | grep -iE 'permission denied|filelog|k8sattributes'
+kubectl get clusterrole otel-collector -o yaml   # pods+namespaces+replicasets read
 
 # Registry DNS is the usual suspect for a fleet-wide ImagePullBackOff.
 # On the node: must resolve to a 100.x tailnet IP.
@@ -177,20 +195,25 @@ the consumer, replace the directory, start it again.
 ```
 data/
 ├── grafana/                    grafana.db — users, API keys, alert state
-├── prometheus/  loki/  tempo/  metrics, logs (90d), traces
+├── victoria-metrics/           metrics (30d)
+├── victoria-logs/              logs (90d)
+├── victoria-traces/            traces (720h)
 ├── registry/                   Docker registry blobs
 ├── librechat/                  mongo/ + uploads/
 ├── openpanel/                  postgres/ + clickhouse/ + redis/
 ├── signews-api-{prod,next,staging}/, gateway-intelligence-prod/
 │                               per-app volumes from the app chart
+├── prometheus/  loki/  tempo/  ORPHANED — replaced by the three above
 ├── n8n/                        ORPHANED — n8n was removed
 └── portainer/                  ORPHANED — Portainer was removed
 ```
 
-The last two have no workload and no PV any more: the services were deleted
-(their namespaces are gone from `kubernetes/cluster/namespaces.yaml`, their
-CNAMEs from `pulumi/src/dns.ts`), but the PVs were `Retain`, so either can be
-resurrected from git history plus that directory.
+The orphans have no workload and no PV any more: the services were deleted
+(namespaces, CNAMEs and manifests are gone), but the PVs were `Retain`, so any
+of them can be resurrected from git history plus that directory. The
+prometheus/loki/tempo trio is the ONLY copy of pre-migration metrics and logs —
+nothing reads it, and no Victoria component can. Keep it until the new stores
+have accumulated a window worth trusting, then delete it by hand.
 
 For consistent database dumps rather than a file copy, see the backup sections
 of [openpanel](../kubernetes/services/openpanel/README.md#backup--restore) and
@@ -259,63 +282,103 @@ that can reach the node — treat it as an incident, not a warning.
 the traefik-config change.
 `INSTALL_K3S_VERSION=v1.35.1+k3s1 sh /tmp/k3s-install.sh`
 
-### 2. Telemetry charts move to the `grafana-community` repo
+### 2. Telemetry: Prometheus + Loki + Tempo + Alloy → the VictoriaMetrics family
 
-Grafana relocated its OSS charts in Jan 2026 and renumbered them; `grafana/loki`
-7.x in the **old** repo is Grafana Enterprise Logs, so this is a repo change,
-not just a version bump. `make deploy-platform` adds the new repo and applies
-all three. Release names are unchanged, so Helm upgrades in place.
+**This is a replacement, not an upgrade.** Four Helm releases are deleted and
+five appear; the new stores start EMPTY on new hostPath directories, and no
+history is carried across (no Victoria component reads a TSDB, a Loki chunk
+store or a Tempo block). Grafana keeps its datasource UIDs, so dashboards and
+app-shipped alert rules need no edits.
 
-| Release  | Old (repo/chart)      | New (repo/chart)                   | App               |
-| -------- | --------------------- | ---------------------------------- | ----------------- |
-| loki     | grafana/loki 6.53.0   | grafana-community/loki 18.5.4      | 3.6.5 → 3.7.4     |
-| tempo    | grafana/tempo 1.24.4  | grafana-community/tempo 2.2.3      | 2.9.0 → 2.10.7    |
-| grafana  | grafana/grafana 10.5.15 | grafana-community/grafana 12.8.0 | 12.3.1 → 13.1.1   |
+| Was                                | Is                                                  |
+| ---------------------------------- | --------------------------------------------------- |
+| `prometheus` (+ 2 subcharts)       | `victoria-metrics` (vm/victoria-metrics-single 0.43.0, app v1.148.0) |
+| ↳ its kube-state-metrics subchart  | `kube-state-metrics` (standalone, 8.0.0)            |
+| ↳ its node-exporter subchart       | `node-exporter` (standalone, 4.56.1)                |
+| `loki`                             | `victoria-logs` (vm/victoria-logs-single 0.13.9, app v1.52.0) |
+| `tempo`                            | `victoria-traces` (vm/victoria-traces-single 0.1.10, app v0.9.4) |
+| `alloy`                            | *nothing* — folded into the otel-collector's `filelog` receiver |
 
-**Grafana is the one-way door here:** Grafana 13 migrates `grafana.db` (sqlite)
-on first boot and a 12.x binary will not read the migrated file afterwards.
-The pre-upgrade tar is the only way back.
+**VictoriaTraces is pre-1.0, accepted knowingly.** Trace history is the one
+stream this cluster can afford to lose. That tolerance does not extend to the
+other two, which are 1.x.
 
-**Expected downtime:** one pod restart each, under a minute per release.
-
-**Also lands with this:** the `loki-canary` DaemonSet disappears. It was never
-meant to run — `lokiCanary.enabled` was nested under `monitoring:` where the
-chart never read it — and Helm removes it automatically on upgrade.
-
-**Verify:**
-
-```bash
-helm list -n platform-telemetry           # loki 18.5.4, tempo 2.2.3, grafana 12.8.0
-kubectl get pod -n platform-telemetry     # no loki-canary; all Running
-kubectl -n platform-telemetry logs deploy/grafana | grep -i "migrat"
-# Grafana UI: dashboards, alert rules and all three datasources still resolve.
-```
-
-**Rollback:** restore `data/grafana` from the tar, then pin the previous chart
-versions in `platform_chart_versions` **and** repoint the three `helm upgrade`
-lines in `roles/platform/tasks/telemetry.yml` back at `grafana/`.
-
-### 3. Prometheus — the chown initContainer starts running for the first time
-
-`server.initContainers` was never a key this chart has (checked 28.13.0 and
-29.19.0), so the `chown -R 65534:65534 /data` never ran. It is now
-`server.extraInitContainers` and will actually execute. On the existing volume
-this is a no-op (the data dir is already correctly owned, which is why nothing
-ever broke); it matters on the next repave, where the hostPath dir is created
-root-owned.
-
-**Downtime:** one pod restart. The chown walks the whole TSDB dir — metadata
-only, expect seconds.
-
-**Verify:**
+**Order matters. `make deploy-platform` installs the new releases but does NOT
+uninstall the old ones** — Helm only manages releases it is told about. Do the
+teardown first, or two metric collectors scrape the same targets and two log
+paths write the same lines.
 
 ```bash
-kubectl -n platform-telemetry get pod -l app.kubernetes.io/name=prometheus \
-  -o jsonpath='{.items[0].spec.initContainers[*].name}'   # fix-permissions
-kubectl -n platform-telemetry logs deploy/prometheus-server -c prometheus | tail
+# 0. Back up. This is the last moment the old data is reachable in place.
+orb -m jterrazz-infrastructure -u root /usr/local/bin/k3s-killall.sh
+tar -czf ~/k8s-data-$(date +%F)-pre-victoria.tar.gz -C ~/.jterrazz-infrastructure data
+orb -m jterrazz-infrastructure -u root systemctl start k3s
+
+# 1. Stop the old writers/scrapers BEFORE uninstalling, so nothing is mid-write.
+kubectl -n platform-telemetry scale --replicas=0 \
+  deploy/prometheus-server sts/loki sts/tempo
+kubectl -n platform-telemetry delete ds alloy --ignore-not-found
+
+# 2. Uninstall the four upstream releases and their service-chart siblings.
+#    `helm uninstall` leaves the PVs (Retain) and the hostPath dirs alone.
+helm uninstall -n platform-telemetry prometheus loki tempo alloy
+helm uninstall -n platform-telemetry prometheus-platform loki-platform tempo-platform
+
+# 3. Delete the PVCs and PVs those left behind. REQUIRED: the PVs are Retain,
+#    so they linger in state `Released` and are never rebound — but their names
+#    do not collide with the new ones, so this is hygiene, not a blocker.
+kubectl -n platform-telemetry delete pvc \
+  prometheus-data storage-loki-0 storage-tempo-0 --ignore-not-found
+kubectl delete pv prometheus-data loki-data tempo-data --ignore-not-found
+
+# 4. Confirm the namespace is empty of the old stack, then deploy.
+kubectl -n platform-telemetry get all
+make deploy-platform
 ```
 
-### 4. Redis 7.2.5 → 7.4.9 (OpenPanel queue)
+**Expected first-boot behaviour, none of which is a fault:**
+
+- All three stores come up empty. Dashboards are blank until the first scrape
+  lands (~1 min for metrics) — the panels are not broken.
+- `/var/lib/k8s-data/{victoria-metrics,victoria-logs,victoria-traces}` are
+  created fresh. VictoriaLogs and VictoriaTraces run as uid 1000 and each has a
+  `fix-permissions` initContainer, because `fsGroup` is not applied to hostPath
+  volumes.
+- The otel-collector pod now runs as **root** and mounts the node's `/var/log`
+  read-only. That is what lets it read containerd's container log files; a
+  non-root collector starts fine and ships nothing.
+- Grafana pulls the `victoriametrics-logs-datasource` plugin from grafana.com on
+  every pod start. First start is slower; no egress, no logs datasource.
+- The `Prometheus` / `Loki` / `Tempo` datasource rows are deleted and re-created
+  as `VictoriaMetrics` / `VictoriaLogs` / `VictoriaTraces` **on the same UIDs**.
+  Grafana's provisioner deletes by name before it inserts, which is the only
+  reason reusing the uids works.
+
+**Verify — the last two are the ones that actually prove it:**
+
+```bash
+helm list -n platform-telemetry     # victoria-{metrics,logs,traces}, kube-state-metrics,
+                                    # node-exporter, otel-collector, grafana. No prometheus/loki/tempo/alloy.
+kubectl -n platform-telemetry get pod          # all Running, no restarts
+kubectl -n platform-telemetry logs deploy/otel-collector | grep -i 'permission denied'   # must be empty
+
+# Scrape targets: kube-state-metrics and node-exporter must BOTH be up, or half
+# of both dashboards is silently blank.
+kubectl -n platform-telemetry exec sts/victoria-metrics -- \
+  wget -qO- 'http://localhost:8428/api/v1/query?query=up' | grep -c kube-state-metrics
+
+# Pod logs actually arriving, with the four stream fields:
+kubectl -n platform-telemetry exec sts/victoria-logs -- \
+  wget -qO- --post-data='query={app!=""} | stats by (k8s.namespace.name) count()' \
+  'http://localhost:9428/select/logsql/query'
+```
+
+**Rollback:** `helm uninstall` the five new releases, delete their PVs/PVCs,
+`git revert`, `make deploy-platform`. The old hostPath directories are still
+there, so Prometheus/Loki/Tempo come back with their history intact — which is
+exactly why step 3 above does not delete `data/{prometheus,loki,tempo}`.
+
+### 3. Redis 7.2.5 → 7.4.9 (OpenPanel queue)
 
 Minor bump inside the line OpenPanel pins. Verified locally to start under this
 manifest's exact uid (`999:1000`) and args (`--maxmemory-policy noeviction
@@ -340,7 +403,7 @@ kubectl logs -n platform-analytics deploy/op-worker --tail=30   # no reconnect l
 `openpanel/redis/appendonlydir` + `dump.rdb` on the Mac (a 7.4 AOF blocks a 7.2
 start). Queue contents are lost; nothing else is.
 
-### 5. Registry 2.8 → 3.1.1
+### 4. Registry 2.8 → 3.1.1
 
 On-disk layout is unchanged (`storagePathVersion` is still `v2`), so
 `/var/lib/registry` is read in place with no migration. Safe here specifically

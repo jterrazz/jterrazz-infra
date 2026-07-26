@@ -32,7 +32,7 @@ standing between you and the drift is this table.
 | `helm_version` (`group_vars/all.yml`)                 | `azure/setup-helm` version in `validate.yaml` **and** `publish-chart.yaml` | `assert-sync.py` | Three machines, one Helm. A chart packaged by one version and rendered by another is a silent behaviour difference. |
 | `ansible-core==` in `validate.yaml`                   | `ansible-core==` in `deploy-platform.yaml`                | `assert-sync.py` | One lints the playbooks, the other applies them. Different minors, and a green lint proves nothing about the run. |
 | helm-unittest version in `validate.yaml`              | the same version in the `Makefile`                        | `assert-sync.py` | The plugin embeds its own renderer, so the committed `__snapshot__` files only reproduce against the version that wrote them. |
-| every `busybox@sha256:` in the tree                   | each other (7 references today)                           | `assert-sync.py` | Digest pins only work if a bump touches every copy; the one that was missed is the one nobody re-rendered. |
+| every `busybox@sha256:` in the tree                   | each other (8 references today)                           | `assert-sync.py` | Digest pins only work if a bump touches every copy; the one that was missed is the one nobody re-rendered. |
 | `security_ci_deploy_pubkey` (`roles/security/defaults/main.yml`) | GitHub secret `CI_DEPLOY_SSH_PRIVATE`              | **nothing** — B lives outside the repo | Split keypair. Rotating needs both plus a `make deploy` to roll the pubkey onto the VM. |
 | `version:` in `charts/app/Chart.yaml`                 | the published OCI chart                                   | **nothing** at PR time — B lives in the registry | The chart is pulled **unversioned** by every app. Two publish guards exist (`publish-chart.yaml` and `roles/platform/tasks/publish-app-chart.yml`) and both skip rather than overwrite — so forgetting the bump publishes nothing, silently. |
 | `ci/test-values.yaml` fixtures                        | the chart templates                                       | **nothing** — no equality to assert | Both charts render near-zero objects with default values, so CI only *exercises* the fixtures (`helm lint` / `template` / `unittest`); it cannot tell that a new template branch went unfixtured. |
@@ -127,9 +127,17 @@ Each has its own README with versions, data paths, secrets and gotchas:
   `platform-analytics`. [README](kubernetes/services/openpanel/README.md)
 - **cloudflared** — the public-traffic tunnel, `platform-networking`.
   [README](kubernetes/services/cloudflared/README.md)
-- Telemetry (`platform-telemetry`): Prometheus, Loki, Tempo, Grafana, OTel
-  Collector, and **Alloy**, which tails every pod's stdout into Loki via the
-  Kubernetes API — so `kubectl logs` is never the only copy.
+- Telemetry (`platform-telemetry`): the **VictoriaMetrics family** —
+  VictoriaMetrics (metrics, 30d, scrapes via `-promscrape.config` *and* receives
+  Prometheus remote-write), VictoriaLogs (logs, 90d), VictoriaTraces (traces,
+  720h, **pre-1.0 on purpose**) — plus Grafana, kube-state-metrics,
+  node-exporter and the OTel Collector. Prometheus, Loki, Tempo and Alloy are
+  **gone**; do not resurrect them when editing lists. The collector does double
+  duty: OTLP from instrumented apps *and* a `filelog` receiver tailing
+  `/var/log/pods` for every pod's stdout, which is the job Alloy used to do — so
+  `kubectl logs` is never the only copy. Grafana's datasource UIDs are still
+  `prometheus` / `loki` / `tempo` (dashboards and app-shipped alert rules
+  reference them); only the names, URLs and two of the types changed.
 - **Registry** — `registry.jterrazz.com`, `platform-registry`. Its IngressRoute
   uses `cluster-internal-access` because containerd's hairpin pull is sourced
   from a pod-CIDR/node address, not a tailnet IP.

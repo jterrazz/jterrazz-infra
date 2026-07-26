@@ -5,9 +5,11 @@ DATA-DESTROYING IF CHANGED. Object names and hostPath paths address LIVE data:
   PVC  <name>-<key>, unless `claimName` overrides metadata.name — needed when
        the consumer imposes it. A StatefulSet volumeClaimTemplate looks for
        storage-<release>-<ordinal> and silently provisions a FRESH dynamic
-       volume if it does not find one, which is how Loki/Tempo lose every
-       log/trace. Hence claimName storage-loki-0 / storage-tempo-0 over PVs
-       that stay loki-data / tempo-data.
+       volume if it does not find one, which is how Loki/Tempo lost every
+       log/trace (claimName storage-loki-0 / storage-tempo-0 over PVs that
+       stayed loki-data / tempo-data). NOTHING sets claimName today: the
+       VictoriaMetrics charts that replaced them take `existingClaim`, which
+       makes them drop their volumeClaimTemplate entirely.
   path /var/lib/k8s-data/<name>[/<pathSuffix>], e.g. librechat + `mongo` ->
        /var/lib/k8s-data/librechat/mongo. Renaming a key moves the directory
        and the pod comes up on an empty volume.

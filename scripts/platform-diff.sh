@@ -13,7 +13,7 @@
 # Usage:
 #   make diff                      # uses ./kubeconfig.yaml
 #   KUBECONFIG=/path/to/kc make diff
-#   ./scripts/platform-diff.sh grafana loki      # only these releases
+#   ./scripts/platform-diff.sh grafana victoria-logs   # only these releases
 #
 # Secrets are suppressed in the output (--suppress-secrets): the Grafana admin
 # password and the registry credentials would otherwise be printed in full.
@@ -60,10 +60,11 @@ export KUBECONFIG
 UPSTREAM_RELEASES=(
     "cert-manager|platform-networking|jetstack/cert-manager|cert_manager|kubernetes/services/cert-manager/helm.yaml"
     "infisical|platform-secrets|infisical/secrets-operator|infisical|kubernetes/services/infisical/helm.yaml"
-    "prometheus|platform-telemetry|prometheus-community/prometheus|prometheus|kubernetes/services/prometheus/helm.yaml"
-    "loki|platform-telemetry|grafana-community/loki|loki|kubernetes/services/loki/helm.yaml"
-    "alloy|platform-telemetry|grafana/alloy|alloy|kubernetes/services/alloy/helm.yaml"
-    "tempo|platform-telemetry|grafana-community/tempo|tempo|kubernetes/services/tempo/helm.yaml"
+    "victoria-metrics|platform-telemetry|vm/victoria-metrics-single|victoria_metrics|kubernetes/services/victoria-metrics/helm.yaml"
+    "victoria-logs|platform-telemetry|vm/victoria-logs-single|victoria_logs|kubernetes/services/victoria-logs/helm.yaml"
+    "victoria-traces|platform-telemetry|vm/victoria-traces-single|victoria_traces|kubernetes/services/victoria-traces/helm.yaml"
+    "kube-state-metrics|platform-telemetry|prometheus-community/kube-state-metrics|kube_state_metrics|kubernetes/services/kube-state-metrics/helm.yaml"
+    "node-exporter|platform-telemetry|prometheus-community/prometheus-node-exporter|node_exporter|kubernetes/services/node-exporter/helm.yaml"
     "otel-collector|platform-telemetry|open-telemetry/opentelemetry-collector|otel_collector|kubernetes/services/otel-collector/helm.yaml"
     "grafana|platform-telemetry|grafana-community/grafana|grafana|kubernetes/services/grafana/helm.yaml"
     # OCI, so no `helm repo add` is needed for this one.
@@ -75,9 +76,9 @@ UPSTREAM_RELEASES=(
 # kubernetes/services/<name>/platform.yaml, exactly as service-charts.yml does.
 SERVICE_RELEASES=(
     "grafana|platform-telemetry"
-    "prometheus|platform-telemetry"
-    "loki|platform-telemetry"
-    "tempo|platform-telemetry"
+    "victoria-metrics|platform-telemetry"
+    "victoria-logs|platform-telemetry"
+    "victoria-traces|platform-telemetry"
     "librechat|platform-ai"
     "openpanel|platform-analytics"
     "registry|platform-registry"

@@ -76,7 +76,8 @@ missing secret hard-fails the run; there are no fallback defaults.
 │   │     └─ private  grafana · chat · registry · openpanel · gateway│  │
 │   │                                                                │  │
 │   │  cert-manager · Infisical operator · private Docker registry   │  │
-│   │  Prometheus · Loki · Tempo · Alloy · OTel Collector · Grafana  │  │
+│   │  VictoriaMetrics · VictoriaLogs · VictoriaTraces · Grafana     │  │
+│   │  kube-state-metrics · node-exporter · OTel Collector           │  │
 │   │  LibreChat · OpenPanel                                         │  │
 │   └────────────────────────────────────────────────────────────────┘  │
 │                                                                       │

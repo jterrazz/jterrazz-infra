@@ -26,7 +26,7 @@ access: private
 # address live data — see templates/storage.yaml before changing any of them.
 #
 #   storage:
-#     data:      { size: 3Gi, pathSuffix: mongo, claimName: storage-loki-0 }
+#     data:      { size: 3Gi, pathSuffix: mongo, claimName: storage-svc-0 }
 #     uploads:   { size: 5Gi, pathSuffix: uploads }
 storage: {}
 
