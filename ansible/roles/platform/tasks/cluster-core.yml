@@ -82,6 +82,22 @@
 # Must follow the Infisical operator above: its tunnel token arrives via an
 # InfisicalSecret, so the CRD has to exist first. One-time tunnel creation is
 # in kubernetes/services/cloudflared/README.md.
+# Secret first: the Deployment's env references `cloudflared-secrets`, and a
+# pod scheduled before the operator has synced it sits in
+# CreateContainerConfigError instead of retrying gracefully.
+- name: Apply the cloudflared Infisical secret
+  ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/cloudflared/secret.yaml
+  environment:
+    KUBECONFIG: "{{ kubeconfig }}"
+  register: cloudflared_secret_apply
+  changed_when: "'created' in cloudflared_secret_apply.stdout or 'configured' in cloudflared_secret_apply.stdout"
+
+- name: Wait for the cloudflared tunnel token
+  ansible.builtin.include_tasks: wait-for-secret.yml
+  vars:
+    wait_secret_name: cloudflared-secrets
+    wait_secret_namespace: platform-networking
+
 - name: Apply the cloudflared deployment
   ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/cloudflared/deployment.yaml
   environment:
