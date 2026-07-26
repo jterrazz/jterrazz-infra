@@ -1,0 +1,59 @@
+suite: host redirects
+templates:
+  - templates/ingress.yaml
+tests:
+  - it: "preserves the path by default and emits a 301"
+    set:
+      metadata.name: web
+      environment: prod
+      spec: { image: "r/web:1", port: 3000, health: { path: / } }
+      environments:
+        prod:
+          ingress:
+            - { host: old.example.com, public: true, redirectTo: "https://new.example.com" }
+    asserts:
+      - equal:
+          path: spec.redirectRegex.replacement
+          value: "https://new.example.com/${1}"
+        documentIndex: 1
+      - equal:
+          path: spec.redirectRegex.permanent
+          value: true
+        documentIndex: 1
+  - it: "drops the path when preservePath is false"
+    set:
+      metadata.name: web
+      environment: prod
+      spec: { image: "r/web:1", port: 3000, health: { path: / } }
+      environments:
+        prod:
+          ingress:
+            - { host: old.example.com, public: true, redirectTo: "https://new.example.com/here", preservePath: false }
+    asserts:
+      - equal:
+          path: spec.redirectRegex.replacement
+          value: "https://new.example.com/here"
+        documentIndex: 1
+  - it: "refuses a redirect combined with a path"
+    set:
+      metadata.name: web
+      environment: prod
+      spec: { image: "r/web:1", port: 3000, health: { path: / } }
+      environments:
+        prod:
+          ingress:
+            - { host: old.example.com, public: true, path: /x, redirectTo: "https://new.example.com" }
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress entry 0 for web sets both `path` and `redirectTo`; a redirect answers for the whole host, so combining them silently ignores the path"
+  - it: "refuses a non-https redirect target"
+    set:
+      metadata.name: web
+      environment: prod
+      spec: { image: "r/web:1", port: 3000, health: { path: / } }
+      environments:
+        prod:
+          ingress:
+            - { host: old.example.com, public: true, redirectTo: "http://new.example.com" }
+    asserts:
+      - failedTemplate: {}

@@ -31,7 +31,10 @@ source "$SCRIPT_DIR/lib/common.sh"
 # =============================================================================
 # THE TABLE — the only thing to edit when a surface is added or moved
 # =============================================================================
-# Format:  <method>|<url>|<accepted status codes, comma-separated>|<what it is>
+# Format:  <method>|<url>|<accepted status codes, comma-separated>|<what it is>[|<expected Location>]
+#
+# The optional 5th field asserts the redirect TARGET. Use it on every redirect:
+# a 301 to the wrong host is indistinguishable from a correct one by status.
 #
 # Accepted codes are a LIST because several of these surfaces have more than
 # one legitimate answer (an app that redirects to a login page vs. one that
@@ -59,6 +62,12 @@ PUBLIC_CHECKS=(
     # and a non-JSON one 415 — both would also prove liveness, but 401 is the
     # only one that also asserts the auth check still runs.)
     "POST|https://analytics.jterrazz.com/api/track|401|OpenPanel ingest (unauthenticated POST must be rejected)"
+    # jterrazz-web. www is canonical; the other two exist only to send callers
+    # there, so each asserts its Location — a 301 to the wrong host is
+    # indistinguishable from a correct one by status alone.
+    "GET|https://www.jterrazz.com/|200|jterrazz-web (canonical host)"
+    "GET|https://jterrazz.com/|301|jterrazz-web apex -> www|https://www.jterrazz.com/"
+    "GET|https://blog.jterrazz.com/|301|jterrazz-web legacy blog subdomain -> articles|https://www.jterrazz.com/articles"
 )
 
 PRIVATE_CHECKS=(
@@ -153,12 +162,15 @@ record_fail() {
 # refused, timeout). That is always a failure — it can never be in an accepted
 # list — but it is worth naming separately in the output, because "000" and
 # "503" point at completely different things.
+# Prints "<status> <location>" — the Location header is what makes a redirect
+# check meaningful. A 301 to the WRONG place is still a 301, so asserting the
+# status alone proves the host answers, not that it sends anyone anywhere useful.
 http_status() {
     local method="$1" url="$2"
     local -a args=(
         -sS -o /dev/null
         --max-time "$CURL_TIMEOUT"
-        --write-out '%{http_code}'
+        --write-out '%{http_code} %{redirect_url}'
         --request "$method"
     )
     # A POST probe sends an empty JSON object. Without a JSON content type the
@@ -171,18 +183,33 @@ http_status() {
 }
 
 run_http_check() {
-    local method="$1" url="$2" codes="$3" label="$4"
-    local status
+    local method="$1" url="$2" codes="$3" label="$4" want_location="${5:-}"
+    local out status location
 
-    status="$(http_status "$method" "$url")"
+    out="$(http_status "$method" "$url")"
+    status="${out%% *}"
     status="${status:-000}"
+    location="${out#* }"
+    [ "$location" = "$status" ] && location=""
 
-    if [[ ",$codes," == *",$status,"* ]]; then
-        record_pass "$method $url -> $status  ($label)"
-    elif [ "$status" = "000" ]; then
-        record_fail "$method $url -> no response (DNS, connection or timeout after ${CURL_TIMEOUT}s)  ($label)"
+    if [[ ",$codes," != *",$status,"* ]]; then
+        if [ "$status" = "000" ]; then
+            record_fail "$method $url -> no response (DNS, connection or timeout after ${CURL_TIMEOUT}s)  ($label)"
+        else
+            record_fail "$method $url -> $status, expected one of [$codes]  ($label)"
+        fi
+        return
+    fi
+
+    if [ -n "$want_location" ] && [ "$location" != "$want_location" ]; then
+        record_fail "$method $url -> $status but Location is '${location:-<none>}', expected '$want_location'  ($label)"
+        return
+    fi
+
+    if [ -n "$want_location" ]; then
+        record_pass "$method $url -> $status -> $location  ($label)"
     else
-        record_fail "$method $url -> $status, expected one of [$codes]  ($label)"
+        record_pass "$method $url -> $status  ($label)"
     fi
 }
 
@@ -219,8 +246,8 @@ $want_private && selected+=("${PRIVATE_CHECKS[@]}")
 
 section "HTTP checks"
 for entry in "${selected[@]}"; do
-    IFS='|' read -r method url codes label <<<"$entry"
-    run_http_check "$method" "$url" "$codes" "$label"
+    IFS='|' read -r method url codes label want_location <<<"$entry"
+    run_http_check "$method" "$url" "$codes" "$label" "$want_location"
 done
 
 if $want_certs; then

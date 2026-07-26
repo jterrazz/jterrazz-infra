@@ -143,7 +143,7 @@ and readiness failure thresholds — is left at the Kubernetes default.
 
 ### `spec.ingress` — a list, always
 
-Each entry is `{ host, path?, public, stripPrefix? }`.
+Each entry is `{ host, path?, public, stripPrefix?, redirectTo?, preservePath? }`.
 
 ```yaml
 ingress:
@@ -163,6 +163,29 @@ ingress:
   middleware (legacy `/api` behaviour: the backend mounts routes at the
   root). Set `stripPrefix: false` on the entry to keep the prefix visible to
   the app — e.g. an MCP server registered at the literal `/mcp`.
+* `redirectTo` turns the entry into a **redirect-only host**: it answers on
+  `host` and 301s to the given absolute `https://` URL, never reaching the app.
+  The path is carried over by default (`preservePath: true`), which is what a
+  canonical-host redirect needs — dropping it would break every deep link that
+  ever pointed at the old host. Set `preservePath: false` to send every request
+  to one fixed page. Combining `redirectTo` with `path` is a render error: a
+  redirect answers for the whole host, so the path would be silently ignored.
+
+  ```yaml
+  ingress:
+    - host: www.jterrazz.com          # canonical, serves the app
+      public: true
+    - host: jterrazz.com              # apex -> www, path preserved
+      public: true
+      redirectTo: https://www.jterrazz.com
+    - host: blog.jterrazz.com         # legacy subdomain -> one fixed page
+      public: true
+      redirectTo: https://www.jterrazz.com/articles
+      preservePath: false
+  ```
+
+  A redirect host still needs its own `Certificate` and its own Public Hostname
+  on the Cloudflare tunnel — TLS terminates before the redirect is served.
 * One `Certificate` per **unique host** (`<app>-<host-slug>-tls`, DNS-01 via
   the `letsencrypt-production` ClusterIssuer); one `IngressRoute` per
   **entry** (`<app>-<idx>`), so two entries can share a host.

@@ -46,7 +46,23 @@ spec:
 {{- if hasKey $entry "stripPrefix" }}{{- $stripPrefix = $entry.stripPrefix }}{{- end }}
 {{- $emitStripPrefix := and $hasPath $stripPrefix }}
 {{- $routeName := printf "%s-%d" $appName $idx }}
-{{- if $emitStripPrefix }}
+{{- /* A redirect entry answers on its host and sends the client elsewhere; it
+       never reaches the app. `preservePath` defaults TRUE because the common
+       case is a canonical-host redirect, and dropping the path there breaks
+       every deep link and inbound URL that ever pointed at the old host —
+       silently, with a 301 that looks correct. Set it false for a redirect to
+       one fixed page. */ -}}
+{{- $redirectTo := $entry.redirectTo | default "" }}
+{{- $isRedirect := ne $redirectTo "" }}
+{{- $preservePath := true }}
+{{- if hasKey $entry "preservePath" }}{{- $preservePath = $entry.preservePath }}{{- end }}
+{{- if and $isRedirect $hasPath }}
+  {{- fail (printf "ingress entry %d for %s sets both `path` and `redirectTo`; a redirect answers for the whole host, so combining them silently ignores the path" $idx $appName) }}
+{{- end }}
+{{- if and $isRedirect (not (hasPrefix "https://" $redirectTo)) }}
+  {{- fail (printf "ingress entry %d for %s: redirectTo must be an absolute https:// URL, got %q" $idx $appName $redirectTo) }}
+{{- end }}
+{{- if and $emitStripPrefix (not $isRedirect) }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -58,6 +74,25 @@ spec:
   stripPrefix:
     prefixes:
       - {{ $path }}
+{{- end }}
+{{- if $isRedirect }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $routeName }}-redirect
+  labels:
+    {{- include "app.labels" $ | nindent 4 }}
+spec:
+  redirectRegex:
+    # Anchored on the scheme too: Traefik matches against the full URL, so an
+    # unanchored pattern would also rewrite a request whose PATH happens to
+    # contain the host.
+    regex: ^https?://{{ $entry.host | replace "." "\\." }}/(.*)
+    replacement: {{ if $preservePath }}{{ $redirectTo }}/${1}{{ else }}{{ $redirectTo }}{{ end }}
+    # 301, not 302: this host is not coming back, and a permanent redirect is
+    # what moves search rankings to the canonical host.
+    permanent: true
 {{- end }}
 ---
 apiVersion: traefik.io/v1alpha1
@@ -72,16 +107,21 @@ spec:
   routes:
     - match: Host(`{{ $entry.host }}`){{ if $hasPath }} && PathPrefix(`{{ $path }}`){{ end }}
       kind: Rule
-      {{- if or (not $isPublic) $emitStripPrefix }}
+      {{- if or (not $isPublic) $emitStripPrefix $isRedirect }}
       middlewares:
         {{- if not $isPublic }}
         - name: private-access
           namespace: platform-networking
         {{- end }}
-        {{- if $emitStripPrefix }}
+        {{- if $isRedirect }}
+        - name: {{ $routeName }}-redirect
+        {{- end }}
+        {{- if and $emitStripPrefix (not $isRedirect) }}
         - name: {{ $routeName }}-strip-prefix
         {{- end }}
       {{- end }}
+      {{- /* A redirect still needs a service: Traefik requires one on every
+             route, and the middleware answers before it is ever dialled. */}}
       services:
         - name: {{ $appName }}
           port: 80
