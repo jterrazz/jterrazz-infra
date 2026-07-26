@@ -186,7 +186,7 @@ secrets:
 ```
 
 Renders an `InfisicalSecret` (`<app>-infisical`) that syncs into Secret
-`<app>-secrets` in the app's namespace, every 60s, using the shared
+`<app>-secrets` in the app's namespace, every 5m, using the shared
 `infisical-credentials` in `platform-secrets`. The Infisical **env slug**
 defaults to the deploy environment name; an environment that has no matching
 Infisical env sets `secretsEnv:` to borrow another one (that's what `next`

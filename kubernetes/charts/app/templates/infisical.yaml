@@ -11,7 +11,18 @@ metadata:
     {{- include "app.labels" . | nindent 4 }}
 spec:
   hostAPI: https://eu.infisical.com
-  resyncInterval: 60
+  # `syncConfig`, not the top-level `resyncInterval:` — the flat field is
+  # deprecated in secrets-operator 0.11.x and every reconcile logged a
+  # deprecation banner for it (≈990 log lines per 5 minutes across the cluster,
+  # which is what made this worth changing). The value is a DURATION STRING here
+  # ("5m"), where the old field was an integer number of seconds (60).
+  #
+  # 5m, not the old 60s: nothing in this repo rotates a secret and expects it
+  # live inside a minute, and the resync is a full round trip to eu.infisical.com
+  # per InfisicalSecret. `instantUpdates` would make rotation immediate but it is
+  # a paid Enterprise feature — left off (its default) on purpose.
+  syncConfig:
+    resyncInterval: 5m
   authentication:
     universalAuth:
       secretsScope:
@@ -21,9 +32,14 @@ spec:
       credentialsRef:
         secretName: infisical-credentials
         secretNamespace: platform-secrets
-  managedSecretReference:
-    secretName: {{ include "app.secretsName" . }}
-    secretNamespace: {{ .Release.Namespace }}
-    secretType: Opaque
+  # LIST form (`managedKubeSecretReferences`), not the deprecated singular
+  # `managedSecretReference:` map. Same fields, same behaviour for one entry —
+  # and `creationPolicy` is left at its default `Orphan`, which is what the
+  # singular field always did: the managed Secret outlives the CR rather than
+  # being garbage-collected with it.
+  managedKubeSecretReferences:
+    - secretName: {{ include "app.secretsName" . }}
+      secretNamespace: {{ .Release.Namespace }}
+      secretType: Opaque
 {{- end }}
 {{- end }}

@@ -33,6 +33,7 @@ standing between you and the drift is this table.
 | `ansible-core==` in `validate.yaml`                   | `ansible-core==` in `deploy-platform.yaml`                | `assert-sync.py` | One lints the playbooks, the other applies them. Different minors, and a green lint proves nothing about the run. |
 | helm-unittest version in `validate.yaml`              | the same version in the `Makefile`                        | `assert-sync.py` | The plugin embeds its own renderer, so the committed `__snapshot__` files only reproduce against the version that wrote them. |
 | every `busybox@sha256:` in the tree                   | each other (8 references today)                           | `assert-sync.py` | Digest pins only work if a bump touches every copy; the one that was missed is the one nobody re-rendered. |
+| `platform_chart_versions.infisical` (`group_vars/all.yml`) | `kubernetes/schemas/secrets.infisical.com/infisicalsecret_v1alpha1.json` | **nothing** — a stale schema still validates | The vendored schema overrides a datreeio catalog copy that is behind the operator (it requires the deprecated flat `resyncInterval` and rejects `syncConfig`). Bump the chart, re-extract the CRD — regeneration command in `kubernetes/schemas/README.md`. Skip it and CI validates against a CRD the cluster no longer has, so the break lands at `kubectl apply`. |
 | `security_ci_deploy_pubkey` (`roles/security/defaults/main.yml`) | GitHub secret `CI_DEPLOY_SSH_PRIVATE`              | **nothing** — B lives outside the repo | Split keypair. Rotating needs both plus a `make deploy` to roll the pubkey onto the VM. |
 | `version:` in `charts/app/Chart.yaml`                 | the published OCI chart                                   | **nothing** at PR time — B lives in the registry | The chart is pulled **unversioned** by every app. Two publish guards exist (`publish-chart.yaml` and `roles/platform/tasks/publish-app-chart.yml`) and both skip rather than overwrite — so forgetting the bump publishes nothing, silently. |
 | `ci/test-values.yaml` fixtures                        | the chart templates                                       | **nothing** — no equality to assert | Both charts render near-zero objects with default values, so CI only *exercises* the fixtures (`helm lint` / `template` / `unittest`); it cannot tell that a new template branch went unfixtured. |
@@ -50,9 +51,29 @@ Repo-specific, each one paid for at least once.
   `usermod --uid 501 root`, which fails against PID 1). The VM is created with
   the default macOS-named user; Ansible connects as `root@<vm>@orb`.
 - **OrbStack DHCP hands out a bogus resolver** (`0.250.250.200`) that silently
-  drops queries. The `tailscale` role writes
-  `/etc/systemd/resolved.conf.d/upstream.conf` (1.1.1.1 + 9.9.9.9). If CoreDNS
-  is ever seen forwarding to a `0.250.x.x` address, that file is missing.
+  drops queries, and it takes **two** fixes, not one. `upstream.conf` sets the
+  *global* resolver; `UseDNS=false` removes the *per-link* one. The `tailscale`
+  role writes both:
+  `/etc/systemd/resolved.conf.d/upstream.conf` (`DNS=1.1.1.1 9.9.9.9`) and a
+  systemd-networkd drop-in at
+  `/etc/systemd/network/eth0.network.d/10-no-dhcp-dns.conf`.
+  **Do not diagnose this by looking for a missing `upstream.conf`** — that was
+  the old note here and it is wrong. `upstream.conf` was present the whole time
+  the bogus resolver was still in use, because a global `DNS=` cannot displace a
+  DHCP-supplied link server. The real check is the *uplink* file, which is the
+  one kubelet pins and therefore the one CoreDNS forwards to:
+
+  ```bash
+  orb -m jterrazz-infrastructure -u root cat /run/systemd/resolve/resolv.conf
+  # want exactly: nameserver 1.1.1.1 / nameserver 9.9.9.9 — no third line
+  orb -m jterrazz-infrastructure -u root resolvectl status eth0
+  # want: "DNS Servers:" absent under Link N (eth0)
+  ```
+
+  `/etc/resolv.conf` is useless for this: it is symlinked to `stub-resolv.conf`
+  and always shows a single `nameserver 127.0.0.53`.
+  `networkctl status eth0 | grep 'Network File'` names the file the drop-in must
+  sit beside — the role derives it rather than hardcoding `eth0.network`.
 - **cloudflared must run `hostNetwork: true`** on this target. The CNI bridge
   mangles outbound TCP/7844 to the Cloudflare edge and the tunnel handshake
   gets RSTed — while plain `curl` from the same pod IP works fine. `--protocol

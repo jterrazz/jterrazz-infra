@@ -16,6 +16,11 @@
 # `node-exporter-prometheus-node-exporter`.
 fullnameOverride: node-exporter
 
+# 3, down from the chart's 10. This one is a DaemonSet, so what it bounds is
+# ControllerRevisions rather than ReplicaSets — same objects-in-the-apiserver
+# argument, same answer.
+revisionHistoryLimit: 3
+
 # Carried over verbatim from the `prometheus-node-exporter:` block of the old
 # prometheus/helm.yaml. Everything else — hostNetwork, hostPID, the host /proc
 # and /sys mounts, the tolerations — stays at the chart defaults, which is

@@ -1,0 +1,171 @@
+---
+# platform-ai — LibreChat plus the standalone MongoDB it stores everything in.
+#
+# k3s enforces NetworkPolicy, so this is real isolation, and the reason is the
+# same one written at the top of kubernetes/services/librechat/mongodb.yaml:
+# THE DATABASE HAS NO AUTHENTICATION. mongod listens on 27017 with no user, no
+# password and no TLS, and it holds every account and every conversation. Until
+# this file existed, any pod in the cluster could read or drop that database.
+# These policies are the only thing standing in front of it.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: platform-ai
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-librechat
+  namespace: platform-ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: librechat
+      app.kubernetes.io/instance: librechat
+  policyTypes:
+    - Ingress
+  ingress:
+    # Traefik (kube-system) -> librechat POD port 3080: the private IngressRoute
+    # from kubernetes/services/librechat/platform.yaml (chat.jterrazz.com,
+    # `access: private`, tailnet-only and NOT through the Cloudflare tunnel).
+    #
+    # 3080 is both the Service port and the container port here, so unlike
+    # Grafana there is no port rewrite to trip over. The podSelector is what
+    # matters: it excludes librechat-mongodb, so no ingress rule in this file
+    # ever admits Traefik to the database.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 3080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-librechat-to-mongodb
+  namespace: platform-ai
+spec:
+  podSelector:
+    matchLabels:
+      app: librechat-mongodb
+  policyTypes:
+    - Ingress
+  ingress:
+    # LibreChat -> mongod:27017, and NOTHING else, ever. Sourced by
+    # helm.yaml's `MONGO_URI: mongodb://librechat-mongodb:27017/LibreChat`.
+    #
+    # This is the rule that substitutes for authentication (see the file header
+    # and mongodb.yaml): the pod selector on the source side is deliberately as
+    # tight as it can be — one pod label, in this namespace only — because a
+    # `namespaceSelector`-only rule would let any future pod in platform-ai read
+    # the whole database. Add MongoDB auth before adding a second tenant here.
+    #
+    # NOTE: this does NOT gate the kubelet's tcpSocket liveness/readiness probes
+    # on 27017. Those are sourced from the node, not from a pod, and k3s'
+    # NetworkPolicy enforcement does not filter them — which is why op-worker in
+    # platform-analytics stays Ready under an ingress policy that admits nothing
+    # but its own namespace.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: librechat
+              app.kubernetes.io/instance: librechat
+      ports:
+        - protocol: TCP
+          port: 27017
+
+---
+# Egress is DEFAULT-DENY for every pod in the namespace (podSelector {} +
+# policyTypes: Egress). This policy grants the namespace-wide minimum; the
+# LibreChat-only additions are the policy after it, which is what keeps mongod's
+# egress at "DNS and nothing else".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress
+  namespace: platform-ai
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # Both pods -> CoreDNS on 53; namespace-wide because a pod resolves before
+    # it can know which namespace answered. For librechat-mongodb this is the
+    # ONLY egress it gets: a database that dials out is a database doing
+    # something it was not asked to do.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-librechat
+  namespace: platform-ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: librechat
+      app.kubernetes.io/instance: librechat
+  policyTypes:
+    - Egress
+  egress:
+    # librechat -> librechat-mongodb:27017 in this same namespace (MONGO_URI).
+    # Kept to the namespace rather than the pod so the uploads/config sidecars
+    # the chart may add later do not need an edit here.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-ai
+    # librechat -> gateway-intelligence (prod-gateway-intelligence). This is
+    # both endpoints configured in helm.yaml: `ANTHROPIC_REVERSE_PROXY` and the
+    # custom endpoint's `baseURL`, both of which name the in-cluster Service —
+    # never gateway.jterrazz.com, which a pod cannot hairpin to.
+    #
+    # 8317 is the POD port (the app chart renders `Service 80 -> targetPort
+    # 8317`), and it is the port the matching ingress hole names:
+    # kubernetes/cluster/network-policies/prod-gateway-intelligence.yaml. 80 is
+    # listed alongside it purely as belt-and-braces on DNAT ordering — whether
+    # an egress filter sees the Service port or the rewritten pod port is a CNI
+    # implementation detail, and there is no other workload in that namespace
+    # for port 80 to reach.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: prod-gateway-intelligence
+      ports:
+        - protocol: TCP
+          port: 8317
+        - protocol: TCP
+          port: 80
+    # librechat -> the internet on 443. Deliberately un-narrowed: LibreChat
+    # fetches over HTTPS on paths that are not enumerable from here (model and
+    # provider metadata, avatar/OG fetches for shared links, its own update
+    # check). No `except` on RFC1918 is needed — it has no reason to reach the
+    # node LAN — so unlike platform-telemetry's egress this one keeps the
+    # exclusion, which also means it cannot be used to reach the apiserver.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

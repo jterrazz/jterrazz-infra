@@ -97,13 +97,16 @@ ansible/
                    helm_version, platform_chart_versions, private_hostnames
 
 kubernetes/
-├── charts/app/       application chart (2.3.0), published to the OCI registry.
+├── charts/app/       application chart (2.4.1), published to the OCI registry.
 │                     Reference: kubernetes/charts/app/README.md
 ├── charts/service/   platform-service chart (2.1.0): IngressRoute +
 │                     Certificate + hostPath PV/PVCs from one values file
 ├── cluster/          cluster-wide manifests, `kubectl apply -f … -R`:
 │                     namespaces, the `manual` StorageClass, Traefik config +
-│                     middlewares + TLS options, one NetworkPolicy per namespace
+│                     middlewares + TLS options, one NetworkPolicy file per
+│                     namespace (all 7 declared namespaces are covered)
+├── schemas/          vendored kubeconform CRD schemas, for the one CRD whose
+│                     public catalog copy lags the operator we run
 └── services/<svc>/   helm.yaml (upstream chart values) + platform.yaml
                       (service-chart values) + any raw manifests it needs
 

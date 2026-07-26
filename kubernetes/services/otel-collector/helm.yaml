@@ -13,6 +13,10 @@ image:
 mode: deployment
 replicaCount: 1
 
+# 3, not the chart's 10: ten ReplicaSets per Deployment is ten objects in a
+# SQLite-backed apiserver for a rollback nobody performs by hand.
+revisionHistoryLimit: 3
+
 # No manual GOMEMLIMIT: this chart auto-injects it at 80% of
 # resources.limits.memory.
 #
@@ -50,12 +54,32 @@ extraVolumes:
     hostPath:
       path: /var/log
       type: Directory
+  # Where the filelog receiver's read offsets live (the `file_storage` extension
+  # below). A hostPath and NOT an emptyDir: an emptyDir is deleted with the pod,
+  # so it would survive a container restart and lose exactly the case this is
+  # for — a pod replacement, which is what every `helm upgrade` does.
+  #
+  # DirectoryOrCreate because nothing else creates it; the kubelet makes it
+  # root-owned, which is fine here because the collector already runs as uid 0
+  # (see securityContext above). This is the ONE writable host mount the
+  # collector has.
+  #
+  # Deliberately NOT under /var/lib/k8s-data: that path is a symlink into the
+  # Mac's home over virtiofs, and a bbolt database (which file_storage is) on
+  # virtiofs is a bad trade for data that is worthless after a repave anyway.
+  # Losing these offsets costs one gap, not any stored telemetry.
+  - name: filestorage
+    hostPath:
+      path: /var/lib/otelcol-file-storage
+      type: DirectoryOrCreate
 extraVolumeMounts:
   - name: varlog
     mountPath: /var/log
     readOnly: true
+  - name: filestorage
+    mountPath: /var/lib/otelcol-file-storage
 
-# k8sattributes needs to watch pods (to map a pod uid to its labels and owner)
+# k8s_attributes needs to watch pods (to map a pod uid to its labels and owner)
 # and replicasets (to walk ReplicaSet -> Deployment). These are exactly the
 # rules the chart's `presets.kubernetesAttributes` would create; the preset
 # itself is NOT used because it also injects the processor into EVERY pipeline,
@@ -104,6 +128,20 @@ extraEnvs:
         key: LANGFUSE_BASIC_AUTH
 
 config:
+  extensions:
+    # Persists the filelog receiver's per-file read offsets to disk, which is
+    # what makes `start_at: beginning` below safe. Merged with — not replacing —
+    # the chart's own `health_check` extension, since these are maps.
+    #
+    # Named `file_storage` (canonical). The old `file_storage/...`-less alias
+    # `filestorage` is the deprecated spelling; this one is what the component
+    # registers as today.
+    file_storage:
+      directory: /var/lib/otelcol-file-storage
+      # A slow virtiofs-backed sync would otherwise stall the read loop. 10s is
+      # generous for a bbolt commit on a local ext4 dir, which this is.
+      timeout: 10s
+
   receivers:
     otlp:
       protocols:
@@ -132,10 +170,29 @@ config:
       # is the chart name, the pod name starts with the fullnameOverride above.
       exclude:
         - /var/log/pods/platform-telemetry_otel-collector-*_*/opentelemetry-collector/*.log
-      # `end`, not `beginning`: on a restart this skips whatever accumulated
-      # while the collector was down rather than re-shipping a node's worth of
-      # history. Losing a restart's worth of lines beats a duplicate flood.
-      start_at: end
+      # Offsets are checkpointed to disk by the file_storage extension above, so
+      # a restart RESUMES each file where it stopped instead of re-reading it.
+      # That is what changes the `start_at` calculus:
+      #
+      #   was `end` — the only defence against a duplicate flood when there is
+      #   no persisted position, but it silently DROPS every line written while
+      #   the collector was down. Every `helm upgrade` of this release, every
+      #   OOM, every node reboot punched a hole in the log record, and a hole is
+      #   invisible in a log store: nothing tells you the minutes are missing.
+      #
+      #   now `beginning` — with `storage:` set, this applies only to files the
+      #   collector has NEVER seen, which is what it should always have meant.
+      #   A pod that starts, logs and exits between two collector restarts is now
+      #   captured whole rather than not at all.
+      #
+      # ONE-TIME COST on the first rollout after this change: the storage
+      # directory is empty, so every currently-open log file under /var/log/pods
+      # is read from its start. That is bounded by the kubelet's per-container
+      # log rotation (containerd rotates at 10Mi, and rotated files are named
+      # *.log.<ts> which `*.log` does not match), so it is a one-off burst of at
+      # most a few tens of MB, not "a node's worth of history".
+      start_at: beginning
+      storage: file_storage
       retry_on_failure:
         enabled: true
       # Required by add_metadata_from_filepath — the operator reads
@@ -159,7 +216,26 @@ config:
     # container operator already puts namespace/pod/container/uid on the
     # resource from the file path; this adds what only the API server knows —
     # the node, the owning Deployment, and the `app` pod label.
-    k8sattributes:
+    # `k8s_attributes`, NOT `k8sattributes`. This is the one component in this
+    # file whose name is actually deprecated, and it was the source of the
+    # chart's [DEPRECATION] render warnings: opentelemetry-collector chart
+    # 0.160.0 renamed the processor, and 0.162.0's `rewriteDeprecatedComponentNames`
+    # (default true) has been silently rewriting our old spelling on every
+    # render — "auto-rewrite will be removed in a future release" per the
+    # chart's UPGRADING.md. The chart's rename table (templates/_helpers.tpl,
+    # `deprecatedComponentRenames`) contains exactly two entries:
+    # k8sattributes -> k8s_attributes, and the resourcedetection detector
+    # k8snode -> k8s_api (which this file does not use).
+    #
+    # NOT renamed, because they are not aliases: `otlphttp`,
+    # `prometheusremotewrite` and `filelog` are the canonical component types —
+    # there is no `otlp_http` / `prometheus_remote_write` / `file_log`, and
+    # renaming them would fail config load outright. `service.telemetry.resource`
+    # is a chart-owned default (the chart sets the map itself), not something
+    # this values file spells.
+    #
+    # The new name needs Collector >= 0.146.0; chart 0.165.0 ships 0.156.0.
+    k8s_attributes:
       # Deployment mode, so no node filter: this collector watches every pod in
       # the cluster. A daemonset would add filter.node_from_env_var.
       passthrough: false
@@ -255,6 +331,14 @@ config:
         Authorization: "Basic ${env:LANGFUSE_BASIC_AUTH}"
 
   service:
+    # MUST list health_check as well as file_storage. Helm merges maps but
+    # REPLACES lists, so this whole list overrides the chart's default
+    # `[health_check]` — and health_check is what backs the pod's liveness and
+    # readiness probes ("mandatory for this chart", per its values.yaml). Drop it
+    # here and the collector starts fine and then fails its probes forever.
+    extensions:
+      - health_check
+      - file_storage
     pipelines:
       traces:
         receivers: [otlp]
@@ -275,7 +359,7 @@ config:
       # the filelog path carries) and the stream-field policy differs.
       logs/pods:
         receivers: [filelog]
-        processors: [k8sattributes, batch]
+        processors: [k8s_attributes, batch]
         exporters: [otlphttp/victoria-logs-pods]
       metrics:
         receivers: [otlp]

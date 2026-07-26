@@ -18,6 +18,11 @@
 # these series. Neither dashboard in this repo selects on them; both query the
 # kube_* metric names directly.
 
+# 3, down from the chart's 10. Same reasoning everywhere it appears in this
+# tree: stale ReplicaSets are objects in a SQLite-backed apiserver, and the
+# rollback they buy is one nobody performs on a stateless exporter.
+revisionHistoryLimit: 3
+
 # Carried over verbatim from the `kube-state-metrics:` block of the old
 # prometheus/helm.yaml.
 resources:

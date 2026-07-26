@@ -13,6 +13,13 @@ global:
     leaseDuration: 15s
     renewDeadline: 10s
     retryPeriod: 2s
+  # 3, down from Kubernetes' default 10, and this ONE key covers all three
+  # Deployments (controller, webhook, cainjector) — they each render
+  # `.Values.global.revisionHistoryLimit`. Ten stale ReplicaSets per Deployment
+  # is 30 objects in a SQLite-backed apiserver in exchange for a `rollout undo`
+  # depth nobody uses; the real cert-manager recovery is the restart-all-three
+  # dance in CLAUDE.md, not a revision rollback.
+  revisionHistoryLimit: 3
 # 128Mi floor on every component: these Go processes spike well above idle RSS
 # during cert reconciliation and CRD-watch reconnects, and an OOM-killed
 # webhook flips 0/1 and times out `helm --wait` for the whole platform deploy.

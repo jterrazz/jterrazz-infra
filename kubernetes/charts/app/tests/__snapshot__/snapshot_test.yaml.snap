@@ -219,11 +219,12 @@ matches the recorded render of the CI fixture:
             projectSlug: jterrazz
             secretsPath: /jterrazz-ci/ci-test-app
       hostAPI: https://eu.infisical.com
-      managedSecretReference:
-        secretName: ci-test-app-secrets
-        secretNamespace: NAMESPACE
-        secretType: Opaque
-      resyncInterval: 60
+      managedKubeSecretReferences:
+        - secretName: ci-test-app-secrets
+          secretNamespace: NAMESPACE
+          secretType: Opaque
+      syncConfig:
+        resyncInterval: 5m
   6: |
     apiVersion: cert-manager.io/v1
     kind: Certificate

@@ -136,16 +136,29 @@ jobs:
     permissions:
       contents: read
     env:
-      # Recommended-by-upstream kubeconform schema locations: `default`
-      # covers core/built-in Kubernetes kinds; the datreeio catalog covers
-      # the CRDs this repo actually renders (traefik.io IngressRoute/
-      # Middleware, cert-manager.io Certificate/ClusterIssuer,
-      # secrets.infisical.com InfisicalSecret). Deliberately NOT paired with
-      # `-ignore-missing-schemas`: if a future manifest introduces a CRD kind
-      # with no schema in either location, this should fail loudly so the
-      # schema location list gets updated, rather than silently skipping
-      # validation of that object.
+      # Three locations, tried IN ORDER — kubeconform uses the first that
+      # resolves and falls through when a file is absent:
+      #
+      #   1. kubernetes/schemas/ — vendored, in this repo. Overrides for CRDs
+      #      whose catalog copy is behind the version we actually run. Today
+      #      that is exactly one file, secrets.infisical.com/InfisicalSecret:
+      #      the catalog schema still marks the deprecated flat
+      #      `resyncInterval` REQUIRED and rejects `syncConfig`, so a correct
+      #      manifest for secrets-operator 0.11.5 fails against it. Extracted
+      #      from the CRD the operator chart itself ships — see
+      #      kubernetes/schemas/README.md for the regeneration command and the
+      #      sync obligation.
+      #   2. `default` — core/built-in Kubernetes kinds.
+      #   3. the datreeio catalog — every other CRD this repo renders
+      #      (traefik.io IngressRoute/Middleware, cert-manager.io
+      #      Certificate/ClusterIssuer).
+      #
+      # Deliberately NOT paired with `-ignore-missing-schemas`: if a future
+      # manifest introduces a CRD kind with no schema in any location, this
+      # should fail loudly so the list gets updated, rather than silently
+      # skipping validation of that object.
       KUBECONFORM_SCHEMA_ARGS: >-
+        -schema-location kubernetes/schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
         -schema-location default
         -schema-location https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
     steps:

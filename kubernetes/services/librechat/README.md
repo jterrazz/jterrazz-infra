@@ -36,6 +36,15 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
   to `access: public` in `platform.yaml` and leaning on LibreChat's own auth.
 - `fullnameOverride: librechat` — the IngressRoute in `platform.yaml` targets a
   Service literally named `librechat`, so the chart's fullname must match.
+- **`ingress.enabled: false`** — the chart defaults it to **true** with the
+  placeholder host `chat.example.com`, and k3s' Traefik serves Ingress objects as
+  happily as IngressRoutes. So the default renders a second, middleware-free
+  route to this Service, reachable on that Host header alone. One lived in the
+  cluster until 2026-07-26. Never remove the override; the real route is the
+  IngressRoute the service chart renders.
+- **NetworkPolicy**: `kubernetes/cluster/network-policies/platform-ai.yaml`. It
+  is the substitute for MongoDB auth — mongod has none — so it admits :27017
+  from the LibreChat pod and nothing else, and gives mongod no egress beyond DNS.
 
 ## Deployed versions (pinned)
 

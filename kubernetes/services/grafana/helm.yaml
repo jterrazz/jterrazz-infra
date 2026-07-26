@@ -15,7 +15,44 @@ resources:
     cpu: 1500m
     memory: 384Mi
 
+# revisionHistoryLimit 3, not the chart's 10. Ten ReplicaSets per Deployment is
+# ten objects in a SQLite-backed apiserver for a rollback nobody performs — the
+# real rollback for Grafana is the /var/lib/k8s-data/grafana restore (see the
+# chart-version note in group_vars), not `kubectl rollout undo`. Three keeps
+# `rollout undo` working for the one-step-back case.
+revisionHistoryLimit: 3
+
 sidecar:
+  # ONE `resources` block covers EVERY sidecar the chart renders — the
+  # dashboards and alerts watchers here, plus datasources/notifiers/plugins if
+  # they are ever enabled. Verified in the chart's templates/_pod.tpl, where all
+  # five containers interpolate the same `.Values.sidecar.resources`; there is
+  # no per-sidecar override to set.
+  #
+  # Both sidecars were BestEffort until now, i.e. first in line for eviction,
+  # and evicting them is not visibly a Grafana outage — it is dashboards and
+  # alert rules silently ceasing to update while Grafana itself stays green.
+  # That is the worst shape of failure available here, which is why this is
+  # worth 2×64Mi of reservation.
+  #
+  # k8s-sidecar is a Python process holding a watch on ConfigMaps in ALL
+  # namespaces; 64Mi request / 128Mi limit is the upstream chart's own suggested
+  # sizing and matches what these two idle at.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  image:
+    # PINNED EXPLICITLY to quay.io, which is also the chart 12.8.0 default — so
+    # this changes nothing about what runs and everything about what happens on
+    # the next chart bump. The registry default has moved between docker.io and
+    # quay.io across grafana chart majors, and because the node caches by full
+    # reference, a flip leaves TWO copies of the same k8s-sidecar image on a disk
+    # that is a virtiofs share of the Mac. Naming it here means the bump cannot
+    # silently re-pull the same bytes under a different name.
+    registry: quay.io
   dashboards:
     enabled: true
     searchNamespace: ALL

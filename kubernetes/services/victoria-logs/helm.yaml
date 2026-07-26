@@ -34,10 +34,19 @@ server:
   # 90d was only a query-lookback bound and chunks accumulated forever.
   retentionPeriod: "90d"
 
+  # REQUEST right-sized down from 256Mi (2026-07-26). The 256Mi was inherited
+  # from what Loki asked for, and Loki's memory profile is not this one:
+  # VictoriaLogs' caches are budgeted from `-memory.allowedPercent` of the LIMIT
+  # (below), not from the request, so the request was buying scheduling headroom
+  # nothing used. Lowering it frees ~160Mi of the node's allocatable budget for
+  # workloads that actually touch their request.
+  #
+  # The LIMIT is deliberately UNCHANGED at 512Mi: that is the number
+  # allowedPercent tracks, so cutting it would shrink the caches for real.
   resources:
     requests:
       cpu: 25m
-      memory: 256Mi
+      memory: 96Mi
     limits:
       memory: 512Mi
 

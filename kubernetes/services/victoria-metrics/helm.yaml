@@ -106,6 +106,29 @@ server:
           scheme: https
           tls_config:
             ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          # CARDINALITY. These three histograms were ~42k active series between
+          # them — about 37% of the whole TSDB — on a node whose entire metrics
+          # budget is 896Mi. They are per-(verb × resource × subresource ×
+          # scope × le) buckets, so they grow with the API surface rather than
+          # with anything this cluster does, and NOTHING reads them: neither
+          # dashboard in kubernetes/services/grafana/dashboards/ references
+          # them, and no app ships an alert rule that does.
+          #
+          # Dropped at INGEST (metric_relabel_configs), not by a query rule —
+          # a series that is never stored costs no index, no cache and no disk.
+          # The rest of the apiserver job is kept: request rates, error rates
+          # and the _count/_sum of these same histograms all survive, because
+          # only the `_bucket` series are matched. That leaves averages
+          # computable and only the quantiles gone.
+          #
+          # Re-adding one means measuring first: check the series count with
+          #   /api/v1/status/tsdb  (topSeriesCountByMetricName)
+          # before assuming it is affordable now.
+          metric_relabel_configs:
+            - action: drop
+              source_labels:
+                - __name__
+              regex: apiserver_request_duration_seconds_bucket|apiserver_request_sli_duration_seconds_bucket|etcd_request_duration_seconds_bucket
 
         - job_name: kubernetes-nodes
           bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -272,6 +295,48 @@ server:
               regex: true
               source_labels:
                 - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+            # ┌────────────────────────────────────────────────────────────────┐
+            # │ DEDUP. Without this, every MULTI-PORT Service annotated        │
+            # │ prometheus.io/scrape=true produces one target PER endpointslice │
+            # │ port, and the __address__ rewrite three rules below collapses   │
+            # │ all of them onto the single prometheus.io/port — so N identical │
+            # │ targets, which VictoriaMetrics reports as duplicate-target      │
+            # │ errors and then scrapes N times.                                │
+            # └────────────────────────────────────────────────────────────────┘
+            # Enumerated from the live cluster, not guessed — exactly three
+            # Services carry a prometheus.io annotation at all:
+            #   kube-system/kube-dns  53/UDP + 53/TCP + 9153/TCP,
+            #                         prometheus.io/port: "9153"
+            #                         -> THE offender: 3 targets, all :9153
+            #   kube-state-metrics    8080 only, and NO prometheus.io/port
+            #   node-exporter         9100 only, and NO prometheus.io/port
+            #
+            # Traefik and the three cert-manager pods are also scraped, but via
+            # POD annotations through the `kubernetes-pods` job above — the pod
+            # role yields one target per pod regardless of how many ports the
+            # pod has, so that job never had this bug and needs no equivalent.
+            #
+            # `keep_if_equal` is a VictoriaMetrics relabeling extension, and it
+            # is the only way to express this: the plain-Prometheus spelling
+            # would be `regex: (\d+);\1`, and RE2 has no backreferences.
+            #
+            # THE `if` GUARD IS LOAD-BEARING, not decoration, and the live
+            # annotation set above is why: kube-state-metrics and node-exporter
+            # set scrape=true WITHOUT a prometheus.io/port. For them the
+            # annotation label is empty, which is never equal to a port number,
+            # so an UNGUARDED keep_if_equal drops both targets — that is every
+            # kube_* and node_* series, i.e. both Grafana dashboards, gone. With
+            # the guard the rule applies only to Services that actually pin a
+            # port, which today means kube-dns alone.
+            #
+            # Verified against victoria-metrics v1.148.0 via
+            # /metric-relabel-debug: (9153,9153) kept, (53,9153) dropped,
+            # (8080, no annotation) kept.
+            - action: keep_if_equal
+              if: '{__meta_kubernetes_service_annotation_prometheus_io_port=~".+"}'
+              source_labels:
+                - __meta_kubernetes_endpointslice_port
+                - __meta_kubernetes_service_annotation_prometheus_io_port
             - action: replace
               regex: (https?)
               source_labels:
@@ -316,6 +381,16 @@ server:
               regex: true
               source_labels:
                 - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+            # Same dedup as the fast job above — see the boxed comment there for
+            # why it exists and why the `if` guard is not optional. No Service
+            # sets prometheus.io/scrape_slow today, so this has no live effect;
+            # it is here so the bug does not come back with the first one that
+            # does.
+            - action: keep_if_equal
+              if: '{__meta_kubernetes_service_annotation_prometheus_io_port=~".+"}'
+              source_labels:
+                - __meta_kubernetes_endpointslice_port
+                - __meta_kubernetes_service_annotation_prometheus_io_port
             - action: replace
               regex: (https?)
               source_labels:

@@ -1,0 +1,268 @@
+---
+# platform-telemetry — Grafana, the VictoriaMetrics family (metrics/logs/traces),
+# kube-state-metrics, node-exporter and the OTel Collector.
+#
+# k3s enforces NetworkPolicy, so this is real isolation — and it is needed here
+# for the same reason platform-analytics needs it: NONE of the three Victoria
+# stores authenticates anything, and every write path is always on (unlike
+# Prometheus/Loki/Tempo there is no receiver flag to leave off).
+# VictoriaMetrics takes Prometheus remote-write on :8428, VictoriaLogs takes OTLP
+# *and* Loki push on :9428, VictoriaTraces takes OTLP on :10428. Without this
+# file any pod in the cluster could write junk into all three, or read every
+# series, log line and span back out.
+#
+# TWO rules below are deliberately wider than the rest. Both are called out at
+# the rule itself, so neither can be mistaken for an oversight:
+#   * OTLP ingest (4317/4318) is open to every namespace — the platformServices
+#     contract has nothing narrower to select on.
+#   * VictoriaMetrics' egress is unrestricted — it scrapes an annotation-driven
+#     target set that a static file cannot enumerate.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: platform-telemetry
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: platform-telemetry
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # Pods in platform-telemetry -> each other, any port; sourced by the
+    # namespace label, so nothing outside platform-telemetry matches.
+    #
+    # This ONE rule carries every store-facing flow, because every legitimate
+    # client of a store lives in this namespace:
+    #   grafana          -> victoria-metrics:8428   Prometheus query API
+    #                    -> victoria-logs:9428      LogsQL (plugin datasource)
+    #                    -> victoria-traces:10428   Jaeger query API
+    #   otel-collector   -> victoria-metrics:8428   /api/v1/write
+    #                    -> victoria-logs:9428      OTLP logs (both exporters)
+    #                    -> victoria-traces:10428   OTLP traces
+    #   victoria-metrics -> kube-state-metrics:8080 scrape
+    # A second policy naming grafana and otel-collector by pod label would be
+    # strictly redundant with this one, and would drift the day a store moves.
+    #
+    # State the consequence plainly: the three stores get NO cross-namespace
+    # ingress at all. The only ports reachable from outside platform-telemetry
+    # are the collector's two OTLP ports and Grafana's 3000, both below.
+    #
+    # node-exporter is NOT covered and does not need to be: it runs
+    # `hostNetwork: true` (chart default, kept), so its pod IP *is* the node IP
+    # and NetworkPolicy never filters traffic to it. VictoriaMetrics reaches it
+    # through the egress rule at the bottom of this file instead.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-telemetry
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-otlp-ingest
+  namespace: platform-telemetry
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+      app.kubernetes.io/instance: otel-collector
+  policyTypes:
+    - Ingress
+  ingress:
+    # ANY pod in ANY namespace -> the collector's OTLP ports. This is the ingest
+    # half of the app chart's `platformServices: [otel-collector]` contract: the
+    # catalog in kubernetes/charts/app/templates/_helpers.tpl hands the app
+    # OTEL_EXPORTER_OTLP_ENDPOINT plus a matching egress hole, and this is the
+    # door that hole leads to.
+    #
+    # DELIBERATELY namespace-wide, because nothing narrower exists to select on:
+    #   * NetworkPolicy has no globbing, so `prod-*` / `next-*` / `staging-*` is
+    #     not expressible as a selector at all.
+    #   * the labels the app namespaces DO carry are per-namespace, not a shared
+    #     marker: `kubernetes.io/metadata.name` (which is the namespace name) and
+    #     a `name` label equal to it. `matchExpressions: [{key: name, operator:
+    #     Exists}]` would come close — it happens to match every app namespace
+    #     and no platform one — but it is REJECTED here on two counts: nothing in
+    #     this repo sets that label (some step in jterrazz-actions does, so it is
+    #     not a contract this side can rely on), and prod-gateway-intelligence,
+    #     which IS an app-chart workload, does not have it because
+    #     kubernetes/cluster/namespaces.yaml declares that namespace itself.
+    #   * the otel-collector catalog entry has no `clientLabel` (only
+    #     gateway-intelligence does), so opted-in app PODS carry no marker
+    #     either.
+    # What makes it acceptable is the narrowing that IS applied: one pod, two
+    # ports. The widest thing it grants is "write telemetry", which the
+    # collector already accepts from every instrumented app by design.
+    #
+    # TIGHTENING PATH, deliberately not taken here — it is an app-chart change
+    # that is only safe once EVERY app has redeployed: add
+    # `clientLabel: platform-client.jterrazz.com/otel-collector` to the
+    # otel-collector catalog entry, then swap the bare `namespaceSelector: {}`
+    # for `namespaceSelector: {}` + `podSelector` on that label (the shape the
+    # gateway already uses). Land it before the apps carry the label and every
+    # app's telemetry stops silently.
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-grafana
+  namespace: platform-telemetry
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+      app.kubernetes.io/instance: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    # Traefik (kube-system) -> grafana POD port 3000: the private IngressRoute
+    # from kubernetes/services/grafana/platform.yaml (grafana.jterrazz.com,
+    # `access: private`). Every other pod in this namespace is excluded by the
+    # podSelector and stays same-namespace only.
+    #
+    # 3000, NOT the Service's 80. The Service is `port: 80 -> targetPort:
+    # grafana (3000)`, and a NetworkPolicy only ever sees the POD port —
+    # kube-proxy has already rewritten the destination by the time the packet is
+    # filtered. Same trap, same answer as the 8317-not-80 note in
+    # kubernetes/cluster/network-policies/prod-gateway-intelligence.yaml.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+# Egress is DEFAULT-DENY for every pod in the namespace (podSelector {} +
+# policyTypes: Egress), so each rule below is load-bearing — a telemetry flow
+# not listed here stops working.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress
+  namespace: platform-telemetry
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # Everything here -> CoreDNS on 53; namespace-wide because a pod resolves
+    # before it can know which namespace answered.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Everything here -> anything else in platform-telemetry: the mirror of
+    # allow-same-namespace above (grafana and the collector to the three
+    # stores, VictoriaMetrics to kube-state-metrics).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform-telemetry
+    # -> the kube-apiserver, and -> the public internet on 443. One rule,
+    # because on this cluster they are the same destination pattern.
+    #
+    # NOTE THE MISSING `except`. platform-networking's egress uses
+    # `0.0.0.0/0 except 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`; copying that
+    # shape here would break four of the six workloads in this namespace,
+    # because the apiserver is RFC1918 twice over: pods dial the `kubernetes`
+    # Service ClusterIP (10.43.0.1:443), which iptables DNATs to the node's own
+    # address (192.168.x.x:6443). Both ports are listed for exactly that reason
+    # — which one the filter sees depends on whether it runs before or after
+    # DNAT, and that is a CNI implementation detail, not a contract.
+    #
+    # Who needs the apiserver:
+    #   grafana          both k8s-sidecars, watching grafana_dashboard=1 and
+    #                    grafana_alert=1 ConfigMaps in ALL namespaces
+    #   otel-collector   k8sattributes' pod + replicaset informers
+    #   victoria-metrics kubernetes_sd (endpointslice / node / pod discovery)
+    #   kube-state-metrics  its entire job
+    # Who needs 443 outbound:
+    #   otel-collector   cloud.langfuse.com (the otlphttp/langfuse exporter)
+    #   grafana          grafana.com, to install
+    #                    victoriametrics-logs-datasource on EVERY pod start
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-victoria-metrics-scrape
+  namespace: platform-telemetry
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: victoria-metrics-single
+      app.kubernetes.io/instance: victoria-metrics
+  policyTypes:
+    - Egress
+  egress:
+    # DELIBERATELY UNRESTRICTED, and it has to be. VictoriaMetrics scrapes with
+    # `-promscrape.config` (server.scrape in
+    # kubernetes/services/victoria-metrics/helm.yaml) and its target set is
+    # DISCOVERED FROM ANNOTATIONS at runtime — a static file cannot enumerate
+    # it without re-deriving the list on every app deploy, which is the exact
+    # opposite of what the annotation contract is for.
+    #
+    # The live target set, enumerated rather than guessed (every Service and pod
+    # carrying a prometheus.io annotation, plus the three static jobs):
+    #   node IP:6443     kubernetes-api-servers — the `kubernetes` endpointslice
+    #                    in default/, which on a single node is the node itself
+    #   node IP:10250    kubernetes-nodes and kubernetes-nodes-cadvisor. These
+    #                    hit the KUBELET DIRECTLY: that job has no
+    #                    apiserver-proxy relabel, only a labelmap, so the
+    #                    destination is the node rather than the API server.
+    #   node IP:9100     node-exporter — hostNetwork, so its pod IP IS the node
+    #                    IP, which is also why no ingress rule can cover it
+    #   10.42.x.x:8080   kube-state-metrics       (Service annotation)
+    #   10.42.x.x:9153   CoreDNS / kube-dns       (Service annotation)
+    #   10.42.x.x:9100   Traefik, kube-system     (POD annotation)
+    #   10.42.x.x:9402   cert-manager controller + cainjector + webhook, all
+    #                    three POD-annotated in platform-networking — whose
+    #                    ingress policy already carries the matching 9402 hole
+    #
+    # Not in that list, and worth knowing: NO app pod is annotated for scraping
+    # today, so nothing in a prod-/next-/staging- namespace is a target yet. When
+    # one appears, this egress rule is necessary but NOT sufficient — the app
+    # chart's own policy (kubernetes/charts/app/templates/network-policy.yaml)
+    # admits Traefik, labelled platform clients and `allowedClients`, and not
+    # platform-telemetry. The target will read DOWN until that chart grows a
+    # scrape rule; the fix belongs there, not here.
+    #
+    # The blast radius is bounded on the FAR side rather than at this rule: a
+    # scraper only ever GETs a /metrics path, and every namespace it reaches into
+    # still enforces its own ingress policy.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0

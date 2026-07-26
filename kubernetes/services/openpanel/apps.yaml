@@ -65,8 +65,18 @@ spec:
               value: "--max-old-space-size=768"
           resources:
             requests:
+              # 480Mi, down from 576Mi (2026-07-26). The request was set above
+              # the NODE_OPTIONS heap ceiling to leave room for the migration
+              # pass; steady-state RSS sits well below it, so ~96Mi of the
+              # node's allocatable budget was reserved and idle.
+              #
+              # This is NOT the same call as signews-api's request, which is
+              # pinned to its own 512Mi NODE_OPTIONS floor and must not be
+              # lowered: here the floor that matters is the 768Mi
+              # max-old-space-size below, and it is bounded by the LIMIT (1Gi,
+              # unchanged), not by the request.
               cpu: 50m
-              memory: 576Mi
+              memory: 480Mi
             limits:
               memory: 1Gi
           startupProbe:

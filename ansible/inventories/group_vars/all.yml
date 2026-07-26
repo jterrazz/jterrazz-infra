@@ -133,7 +133,10 @@ private_hostnames:
 # Same as above, but mapped to Traefik's ClusterIP rather than the node's
 # tailnet IP — for a pod that fetches its own PUBLIC URL from inside the
 # cluster. A pod cannot hairpin to the node's ServiceLB; it times out. Members
-# also belong in `PRIVATE_HOSTS` in pulumi/src/dns.ts. openpanel is here
-# because image 2.2 ignores API_URL_SSR — see issue #3.
+# also belong in `PRIVATE_HOSTS` in pulumi/src/dns.ts. openpanel is here because
+# the dashboard image cannot use API_URL_SSR: 2.2.1 (2026-03-21) predates the
+# upstream commit that added it (2026-07-01) and is still the newest published
+# tag, and at that tree SSR and the browser shared ONE url. Full evidence and
+# the retirement order are in kubernetes/services/openpanel/config.yaml.
 private_hostnames_via_traefik:
   - openpanel.jterrazz.com

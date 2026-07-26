@@ -42,10 +42,16 @@ server:
   # s/h/d/w/M/y suffixes and the minimum supported retention is 1d.
   retentionPeriod: "720h"
 
+  # REQUEST right-sized down from 192Mi (2026-07-26), same reasoning as
+  # victoria-logs: the number was inherited from Tempo, and VictoriaTraces
+  # budgets its caches from `-memory.allowedPercent` of the LIMIT rather than
+  # from the request — so the request was reserving node capacity that nothing
+  # ever occupied. This is also the lowest-traffic store here (trace ingest is
+  # GenAI spans plus whatever apps emit).
   resources:
     requests:
       cpu: 25m
-      memory: 192Mi
+      memory: 96Mi
     limits:
       # Carried over from Tempo, whose WAL flush spiked well above idle RSS.
       # VictoriaTraces should need less, but a limit that is too tight OOMKills

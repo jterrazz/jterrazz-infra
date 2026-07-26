@@ -28,6 +28,25 @@ service:
   port: 3080
   targetPort: 3080
 
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ MUST STAY FALSE. The chart's default is `ingress.enabled: true` with the  │
+# │ PLACEHOLDER host `chat.example.com` — so leaving this unset renders a     │
+# │ stock Ingress for a domain that is not ours. It was live in the cluster   │
+# │ (Ingress `librechat`, host chat.example.com) until 2026-07-26.            │
+# │                                                                          │
+# │ Harmless-looking and not harmless: k3s' Traefik reads Ingress objects as  │
+# │ well as IngressRoutes, so that object was a real, unauthenticated route   │
+# │ into the LibreChat Service — reachable by Host header alone, bypassing    │
+# │ the `private-access` middleware that the IngressRoute applies. It also    │
+# │ made cert-manager/Traefik logs read as if a second hostname were being    │
+# │ served.                                                                  │
+# │                                                                          │
+# │ The real route is the IngressRoute the SERVICE chart renders from         │
+# │ platform.yaml (chat.jterrazz.com, `access: private`).                    │
+# └──────────────────────────────────────────────────────────────────────────┘
+ingress:
+  enabled: false
+
 # One PVC (`librechat-uploads`, from platform.yaml's storage map) mounted at
 # both LibreChat asset dirs via subPath. Without it uploads and generated
 # images sit on the container fs and are lost on every restart.

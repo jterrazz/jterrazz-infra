@@ -49,6 +49,31 @@ spec:
               to: websecure
               scheme: https
 
+    # BestEffort -> Burstable. The k3s Traefik chart ships no resources at all,
+    # which puts the pod in the BestEffort QoS class — the FIRST thing the
+    # kubelet evicts under node memory pressure. Every public and private
+    # surface in this cluster terminates here, so the ingress being the first
+    # casualty of a memory spike somewhere else is exactly backwards: a
+    # 320Mi app OOM would take down grafana, chat, the registry, openpanel and
+    # every public site with it.
+    #
+    # Requests are sized to observed idle, not to a guess (Traefik idles well
+    # under 64Mi here with ~15 routes). The memory LIMIT is what makes the QoS
+    # class Burstable and gives it a real ceiling; deliberately generous versus
+    # the request because Traefik's buffers scale with concurrent connections.
+    #
+    # NO CPU LIMIT, on purpose, and this is the opposite call from Grafana's
+    # (which is capped because it once spun on virtiofs). A CPU limit throttles
+    # request handling under exactly the burst it is there to absorb, and the
+    # failure mode is latency across every route with no obvious cause. The CPU
+    # REQUEST is the useful half: it buys scheduling priority without a cap.
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        memory: 192Mi
+
     # Required for the websecure middlewares above: they live in
     # platform-networking, Traefik in kube-system.
     providers:

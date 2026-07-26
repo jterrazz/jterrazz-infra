@@ -51,6 +51,40 @@ spec:
           ports:
             - containerPort: 5000
           env:
+            # ┌──────────────────────────────────────────────────────────────┐
+            # │ THIS IS THE LOG-VOLUME FIX. Do not drop it as redundant.      │
+            # └──────────────────────────────────────────────────────────────┘
+            # The comment above is right that no config file is MOUNTED — but
+            # the image bakes one in, and it is the DEV config:
+            # distribution's Dockerfile does
+            # `COPY cmd/registry/config-dev.yml /etc/distribution/config.yml`,
+            # and config-dev.yml sets `log.level: debug` (plus
+            # log.fields.environment=development, which is why every live log
+            # line carried `environment=development`). REGISTRY_* env vars
+            # override that baked config, so this is where the level is fixed.
+            #
+            # Debug level costs far more than chatty request logs, because
+            # distribution ALWAYS installs a second span exporter that writes
+            # through the logger: tracing/tracing.go composes the autoexport
+            # exporter with `stdouttrace.New(WithWriter(loggerWriter))`, and
+            # tracing/loggerwriter.go emits each span at DEBUG. So at
+            # `level: debug` every request also dumps its spans as JSON.
+            # OTEL_TRACES_EXPORTER=none does NOT stop that — it only disables
+            # the autoexport half. The log level is the only switch.
+            #
+            # Measured against registry:3.1.1 locally: with level=debug a
+            # handful of requests produced span dumps and `authorizing request`
+            # lines; with level=info, zero `level=debug` lines at all.
+            - name: REGISTRY_LOG_LEVEL
+              value: "info"
+            # Belt-and-braces, and a no-op today: the image's own Dockerfile has
+            # set `ENV OTEL_TRACES_EXPORTER=none` since distribution v3.1.0
+            # ("fix: set OTEL traces to disabled by default"). Pinned here so a
+            # future image that drops the default does not start shipping OTLP
+            # spans to a localhost:4318 collector that does not exist, which
+            # surfaces as export-failure warnings rather than as a config change.
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
             - name: REGISTRY_AUTH
               value: "htpasswd"
             - name: REGISTRY_AUTH_HTPASSWD_REALM
@@ -76,6 +110,41 @@ spec:
             # on the retried, wrong-offset resume rather than as an OOM.
             limits:
               memory: 512Mi
+          # ┌──────────────────────────────────────────────────────────────────┐
+          # │ NOT `/v2/`. That is the obvious endpoint and it is the WRONG one: │
+          # │ with REGISTRY_AUTH=htpasswd, `GET /v2/` answers 401 to an         │
+          # │ unauthenticated caller, kubelet treats anything outside 2xx/3xx   │
+          # │ as a failure, and a liveness probe on it would CrashLoop the      │
+          # │ registry on a perfectly healthy pod. It also logs a              │
+          # │ `level=warning error authorizing context` line per probe.         │
+          # │                                                                  │
+          # │ `GET /` answers 200 with an empty body and no auth. Both measured │
+          # │ against registry:3.1.1 (401 for /v2/, 200 for /), not assumed.    │
+          # └──────────────────────────────────────────────────────────────────┘
+          # Port 5000 deliberately, not the debug listener on 5001 (which
+          # config-dev.yml also enables, serving /debug/health and /metrics
+          # unauthenticated): a probe belongs on the port the Service targets, so
+          # that a wedged main listener actually fails readiness. The cost is one
+          # access-log line per probe, which is why the periods are 15s/30s
+          # rather than the usual 10s.
+          #
+          # No startupProbe: this is a Go binary over a local hostPath, it is
+          # listening in well under a second.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:
