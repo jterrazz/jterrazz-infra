@@ -119,6 +119,41 @@ INFISICAL_CLIENT_SECRET
 BACKUP_ENCRYPTION_KEY   # optional here; make backup also accepts it from the env
 ```
 
+## Security controls
+
+Five things enforce the boundary. Each is here because a probe found a real
+hole, and each names the check that proves it still holds.
+
+| Control | Where | Verify |
+| ------- | ----- | ------ |
+| Peer-isolation firewall | `roles/security` -> `nft-guard.conf.j2`, unit `nft-guard.service` | from a second machine: `orb create debian:trixie t && orb -m t -u root bash -c 'echo > /dev/tcp/<node-ip>/6443'` must fail |
+| Secrets encrypted at rest | `secrets-encryption: true` in the k3s config | `k3s secrets-encrypt status` -> Enabled; then grep a real Secret value in `state.db` and find nothing |
+| API audit log | `audit-policy.yaml.j2`, Metadata level | `wc -l <data-dir>/server/logs/audit.log` grows |
+| Pod Security Admission | `cluster/namespaces.yaml` | `kubectl get ns -L pod-security.kubernetes.io/enforce` |
+| kube-system NetworkPolicy | `cluster/network-policies/kube-system.yaml` | DNS from a fresh pod, `kubectl top nodes`, and a tailnet curl (see below) |
+
+### The two things that will bite
+
+**OrbStack machines are not isolated from each other by default.** Every one
+mounts every other's rootfs at `/mnt/machines/<name>/` and reads it **as
+root** — so file permissions are irrelevant there, `0600` included. A plain
+`orb create` machine can read this cluster's data directory and its
+kubeconfig. Create dev machines with `--isolated` (no `/mnt/machines` at all)
+and add `--isolate-network` for the host. Note that `--isolate-network` does
+NOT block peer machines despite the docs, which is why the nftables guard
+exists. `--isolated` is impossible for a k3s node: the unprivileged userns
+refuses kubelet's `noswap` tmpfs and k3s restart-loops without ever serving.
+
+**Test the tailnet path, not just the public one.** cloudflared dials
+Traefik's ClusterIP directly, so a kube-system policy can break every tailnet
+client while smoke stays 11/11 and the cluster looks green. CI is a tailnet
+client — it pulls from the registry — so this surfaces as a failed deploy:
+
+```bash
+curl -sk -H "Host: registry.internal.jterrazz.com" https://<tailnet-ip>/v2/   # 401
+curl -sk -H "Host: grafana.internal.jterrazz.com" https://<tailnet-ip>/api/health  # 200
+```
+
 ## Troubleshooting
 
 ```bash

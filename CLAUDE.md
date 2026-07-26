@@ -104,6 +104,19 @@ Repo-specific, each one paid for at least once.
   second is a strict superset of the first; a route picks one.
 - **Use fully-qualified CRD names** with kubectl: `certificate.cert-manager.io`,
   `ingressroute.traefik.io`.
+- **A kube-system NetworkPolicy must allow klipper-lb explicitly.** The svclb
+  pods receive the node's own address after DNAT, so `allow-same-namespace`
+  never covers them. Miss it and public traffic keeps working (cloudflared
+  dials Traefik's ClusterIP) while every tailnet client — CI included — gets
+  `connection refused` on 443.
+- **Other OrbStack machines read this VM's filesystem as root.** `/mnt/machines`
+  makes file modes irrelevant, so `0600` on the kubeconfig is defence in depth,
+  not a fix. The controls that work are the nftables guard in `roles/security`
+  and creating dev machines with `--isolated`.
+- **`chmod` cannot protect `/var/lib/k8s-data`.** Pods write through virtiofs as
+  uids 70/101/472/999/1000; dropping world-execute breaks Postgres, ClickHouse,
+  Mongo, Grafana and signews-api at once. Encrypt what leaves the tree
+  (`make backup`) instead of tightening the tree.
 
 ## Conventions that are not obvious from the tree
 

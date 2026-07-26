@@ -9,12 +9,13 @@ storage:
   # themselves are provisioned from ConfigMaps and are not stored here.
   data:
     size: 1Gi
-    # NODE-LOCAL, NOT the Mac-side share, and this is the fix for a real
-    # outage: Grafana 13 keeps its unified-storage SQLite plus a bleve search
-    # index plus 258MB of installed plugins in this directory and works them
-    # continuously. Over virtiofs that became a CPU spin that pegged the pod
-    # twice on 2026-07-26 — 9 cores the first time, then 1.5 (the cap) with
-    # /api/health 503ing behind it.
+    # NODE-LOCAL, NOT the Mac-side share. Grafana 13 keeps its unified-storage
+    # SQLite plus a bleve search index plus 258MB of plugins here and works
+    # them continuously, and virtiofs made that measurably worse — so this
+    # stays. But do NOT read it as the cure: the spin recurred on this
+    # node-local path afterwards, pegged at the CPU cap with /api/health
+    # 503ing. The trigger is CPU starvation, not the filesystem; the recovery
+    # procedure is in helm.yaml next to the limit that contains it.
     #
     # Safe to lose, which is why this volume and not another: everything that
     # matters here is provisioned from git (dashboards and alert rules as
