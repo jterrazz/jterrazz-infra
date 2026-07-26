@@ -10,13 +10,14 @@
 replicaCount: 1
 
 # Tag pinned EXPLICITLY: an empty tag inherits the chart's appVersion, so the
-# running image would change under us with no diff here. Upstream has cut no
-# stable release for this chart revision, hence the rc. Bump this together
-# with platform_chart_versions.librechat.
+# running image would change under us with no diff here. Bump this together
+# with platform_chart_versions.librechat — chart 2.0.7 carries appVersion
+# v0.8.7, so the two now agree and the rc is gone (v0.8.7 stable is published;
+# there is no v0.8.8 yet).
 image:
   registry: registry.librechat.ai
   repository: danny-avila/librechat
-  tag: "v0.8.7-rc1"
+  tag: "v0.8.7"
 
 # IngressRoute (service.yaml) targets a Service literally named `librechat`,
 # so override the chart's fullname to match.

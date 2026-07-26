@@ -28,7 +28,7 @@ spec:
       # branch never runs — and AOF durability depends on this write access.
       initContainers:
         - name: fix-perms
-          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command: ["sh", "-c", "chown -R 999:1000 /data"]
           # Root, but every capability dropped except the three `chown -R`
           # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
@@ -47,7 +47,16 @@ spec:
               mountPath: /data
       containers:
         - name: redis
-          image: redis:7.2.5-alpine
+          # Latest 7.x. Deliberately NOT 8.x: OpenPanel's self-hosting compose
+          # pins redis:7.2.5-alpine and neither OpenPanel nor BullMQ publishes
+          # any statement supporting Redis 8, so 8.x would be two uncited
+          # assumptions under the job queue. 7.4 is a minor bump inside the
+          # line upstream pins — verified to start under this manifest's exact
+          # uid (999:1000) and args (noeviction + appendonly).
+          # NOTE: 7.4's RDB/AOF are not readable by 7.2, so this is forward-
+          # only — acceptable because this volume is a rebuildable queue, not
+          # a source of truth.
+          image: redis:7.4.9-alpine
           # uid 999 / gid 1000 is the image's `redis` user — the official image
           # creates the group at 1000 and the user at 999, hence the mismatch.
           securityContext:

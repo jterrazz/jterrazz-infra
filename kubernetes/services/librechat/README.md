@@ -41,15 +41,15 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
 
 | Component      | Version                                                     |
 | -------------- | ----------------------------------------------------------- |
-| Helm chart     | `oci://ghcr.io/danny-avila/librechat-chart/librechat` **2.0.6** (pinned as `platform_chart_versions.librechat` in `ansible/inventories/group_vars/all.yml`) |
-| LibreChat app  | `registry.librechat.ai/danny-avila/librechat:v0.8.7-rc1`     |
+| Helm chart     | `oci://ghcr.io/danny-avila/librechat-chart/librechat` **2.0.7** (pinned as `platform_chart_versions.librechat` in `ansible/inventories/group_vars/all.yml`) |
+| LibreChat app  | `registry.librechat.ai/danny-avila/librechat:v0.8.7`     |
 | MongoDB        | `mongo:7.0`                                                  |
 | (init) chown   | `busybox:1.37` (digest-pinned in `mongodb.yaml`)             |
 
 The image tag is pinned **explicitly** rather than inherited from the chart's
 `appVersion`: an empty tag means "whatever appVersion this chart revision
 happens to carry", so the running image could change with no diff here.
-`v0.8.7-rc1` is what chart 2.0.6 ships; upstream has cut no stable release for
+`v0.8.7` is the stable release pinned explicitly (chart 2.0.7 defaults were an rc for
 this chart revision, so the rc is deliberate. Bump the two together.
 
 MongoDB is pinned to the **7.0 minor**, not the floating `7`. A silent minor

@@ -11,12 +11,56 @@ timezone: UTC
 # Three machines, one Helm: a chart packaged by one version and rendered by
 # another is a silent behaviour difference. Consumed here by
 # roles/platform/tasks/helm-cli.yml.
-helm_version: "v3.20.0"
+#
+# DELIBERATELY v3, not v4: Helm 4.x exists (4.0.0 GA 2025-11-12) but changes
+# CLI flags/output, makes server-side apply the default upgrade path, and
+# rewrites the plugin ABI — this repo's toolchain (helm-diff, helm-unittest +
+# its committed snapshots, the `changed_when` stdout matching in
+# roles/platform/tasks/*) is calibrated on v3. The v3 line is still on the
+# same release train and gets the same CVE fixes.
+helm_version: "v3.21.3"
 
 # SINGLE SOURCE OF TRUTH — deliberately NOT duplicated in roles/k3s/defaults
 # (which is why that file does not exist): a role default wins only when this
 # file is not loaded, so two copies is a silent-drift trap.
-k3s_version: "v1.35.1+k3s1"
+#
+# In-place minor bump (1.35 -> 1.36) is the supported path: roles/k3s re-runs
+# get.k3s.io with INSTALL_K3S_VERSION and restarts the unit. Never skip a
+# minor — Kubernetes' version-skew policy forbids it. The restart takes the
+# CONTROL PLANE down for tens of seconds (containers keep running). Kubernetes
+# 1.36 removes no API group/version this repo renders.
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ BLOCKER — kubernetes/cluster/traefik/traefik-config.yaml MUST be migrated │
+# │ IN THE SAME CHANGE. k3s 1.35.1 bundles Traefik chart v38.0.2; 1.36.2      │
+# │ bundles v40.1.0, crossing TWO breaking chart majors:                      │
+# │                                                                          │
+# │  v39.0.0  entrypoint options moved under `ports.<name>.http`:            │
+# │             ports.websecure.middlewares -> ports.websecure.http.middlewares│
+# │             ports.web.redirectTo.port   -> ports.web.http.redirections.   │
+# │                                            entryPoint.{to,scheme}         │
+# │           Each port entry is `additionalProperties: false` in the chart's │
+# │           values.schema.json, so these HARD-FAIL the helm-install job.    │
+# │                                                                          │
+# │  v40.0.0  the Service block moved under `service.spec` (aligned with the  │
+# │           Kubernetes ServiceSpec):                                        │
+# │             service.type                     -> service.spec.type         │
+# │             service.loadBalancerSourceRanges -> service.spec.             │
+# │                                                  loadBalancerSourceRanges │
+# │           `service` has NO additionalProperties:false and the template    │
+# │           renders only `.service.spec` — so the old keys are a SILENT     │
+# │           NO-OP. That drops `loadBalancerSourceRanges: 100.64.0.0/10`,    │
+# │           which is the ONLY thing restricting Traefik's host ports 80/443 │
+# │           to the tailnet (klipper-lb DNATs in PREROUTING, so UFW never    │
+# │           sees the packet). The ports keys fail loudly, the security gate │
+# │           fails silently — fix the loud ones and you will believe you are │
+# │           done.                                                          │
+# │                                                                          │
+# │ Post-upgrade gate, do not skip:                                          │
+# │   kubectl -n kube-system get svc traefik \                               │
+# │     -o jsonpath='{.spec.loadBalancerSourceRanges}'   # must be non-empty  │
+# └──────────────────────────────────────────────────────────────────────────┘
+k3s_version: "v1.36.2+k3s1"
 k3s_config_dir: "/etc/rancher/k3s"
 k3s_data_dir: "/var/lib/rancher/k3s"
 k3s_node_ip: "{{ ansible_default_ipv4.address }}"
@@ -25,15 +69,37 @@ k3s_node_ip: "{{ ansible_default_ipv4.address }}"
 # roles/platform MUST pass one of these: unpinned, it silently adopts whatever
 # the repo's latest is at deploy time, turning an unrelated deploy into an
 # uncontrolled upgrade of somebody else's service.
+#
+# REPO MIGRATION (2026-01): Grafana moved its OSS charts out of
+# `grafana/helm-charts` into `grafana-community/helm-charts` and restarted the
+# version numbering. grafana/loki, grafana/tempo and grafana/grafana are now
+# FROZEN at the last pre-migration release (7.1.0 / 1.24.4 / 10.5.15), and
+# `grafana/loki` 7.x is Grafana Enterprise Logs ONLY — following the old repo
+# would silently swap the OSS chart for the enterprise one. loki/tempo/grafana
+# below are therefore versions from the `grafana-community` repo (added in
+# roles/platform/tasks/helm-cli.yml, consumed in tasks/telemetry.yml). ALLOY
+# did NOT migrate and still comes from `grafana/helm-charts`.
 platform_chart_versions:
-  cert_manager: "v1.20.2"
-  infisical: "0.11.0"
-  prometheus: "28.13.0"
-  loki: "6.53.0"
-  tempo: "1.24.4"
-  otel_collector: "0.158.1"
-  grafana: "10.5.15"
-  librechat: "2.0.6"
+  cert_manager: "v1.21.0"
+  infisical: "0.11.5"
+  prometheus: "29.19.0"
+  # grafana-community repo — see REPO MIGRATION above. 6.53.0 -> 18.5.4 spans
+  # 12 chart majors; the values keys this repo sets were re-verified by
+  # rendering, and `lokiCanary` had to move to the top level (see loki/helm.yaml).
+  loki: "18.5.4"
+  # grafana-community repo. Only values removal across the range is
+  # `tempo.receivers.opencensus`, which is not set here.
+  tempo: "2.2.3"
+  otel_collector: "0.165.0"
+  # grafana-community repo. Chart 10.5.15 -> 12.8.0 = Grafana app 12.3.1 ->
+  # 13.1.1; grafana.db schema migrates itself on first boot and is NOT
+  # reversible, so the rollback is the /var/lib/k8s-data/grafana restore.
+  grafana: "12.8.0"
+  # 2.0.6 -> 2.0.7 is a label-only chart change (verified by rendering both);
+  # what it really carries is appVersion v0.8.7-rc1 -> v0.8.7. The image tag is
+  # pinned separately in librechat/helm.yaml — bump the two together.
+  librechat: "2.0.7"
+  # Already the latest release (chart 1.11.0 / app v1.18.0) as of 2026-07-26.
   alloy: "1.11.0"
 
 # Private hostnames, short-circuited IN-CLUSTER to the node's own tailnet IP.

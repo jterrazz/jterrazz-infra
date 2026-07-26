@@ -1,4 +1,11 @@
-installCRDs: true
+# `crds.enabled` + `crds.keep`, not the older `installCRDs: true` — that key is
+# deprecated upstream (it is exactly equivalent to these two) and is on its way
+# out. Verified to render a byte-identical object set, all 6 CRDs included.
+# `keep: true` means a `helm uninstall` leaves the CRDs (and therefore every
+# Certificate/ClusterIssuer) in place rather than cascade-deleting them.
+crds:
+  enabled: true
+  keep: true
 # Aggressive leader-election timeouts: single-node, so there is no peer to
 # race and a shorter lease means faster recovery after a reboot.
 global:

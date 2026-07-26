@@ -34,6 +34,12 @@
     - { name: jetstack, url: "https://charts.jetstack.io" }
     - name: infisical
       url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
+    # Grafana's OSS charts moved here in Jan 2026 and renumbered; loki, tempo
+    # and grafana are pulled from THIS repo (see platform_chart_versions in
+    # group_vars/all.yml). The `grafana` repo below is kept because Alloy did
+    # NOT migrate — and because grafana/loki 7.x there is Grafana Enterprise
+    # Logs, so pointing loki at the wrong one swaps OSS for enterprise.
+    - { name: grafana-community, url: "https://grafana-community.github.io/helm-charts" }
     - { name: grafana, url: "https://grafana.github.io/helm-charts" }
     - { name: prometheus-community, url: "https://prometheus-community.github.io/helm-charts" }
     - { name: open-telemetry, url: "https://open-telemetry.github.io/opentelemetry-helm-charts" }

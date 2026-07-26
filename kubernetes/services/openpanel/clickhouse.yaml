@@ -87,7 +87,7 @@ spec:
       # cannot write /var/lib/clickhouse without this chown.
       initContainers:
         - name: fix-perms
-          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
           # Root, but every capability dropped except the three `chown -R`
           # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
@@ -106,6 +106,16 @@ spec:
               mountPath: /var/lib/clickhouse
       containers:
         - name: clickhouse
+          # ALREADY the newest OpenPanel-compatible version (re-checked
+          # 2026-07-26): their self-hosting compose pins exactly
+          # 25.10.2.65, and their changelog records the 24.3.2-alpine ->
+          # 25.10.2.65 move as a deliberate self-hosting v2.0.0 change. Newer
+          # ClickHouse exists (26.7 is current) but is uncited here and carries
+          # two changes that would bite this workload specifically: 26.5 flips
+          # `date_time_input_format` to `best_effort` (changes event-ingest
+          # parsing) and 26.7 rejects AggregatingMergeTree schemas where a
+          # column is neither in the sorting key nor an aggregate state, which
+          # is the shape OpenPanel's materialized views use.
           image: clickhouse/clickhouse-server:25.10.2.65
           # uid/gid 101 is the image's `clickhouse` user — the same uid the
           # initContainer chowns to. Dropping ALL caps is safe: ClickHouse

@@ -28,7 +28,7 @@ spec:
       # below means that branch never runs — hence this explicit chown.
       initContainers:
         - name: fix-perms
-          image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+          image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command: ["sh", "-c", "chown -R 999:999 /data/db"]
           # Root, but every capability dropped except the three `chown -R`
           # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
@@ -51,6 +51,25 @@ spec:
           # minor jump rewrites on-disk feature-compatibility metadata and
           # mongod then refuses to start against files a newer release wrote.
           # Bump deliberately, setting featureCompatibilityVersion either side.
+          #
+          # HELD AT 7.0 ON PURPOSE (re-evaluated 2026-07-26). LibreChat does
+          # support MongoDB 8 — its own docker-compose.yml pins mongo:8.0.20,
+          # on main and at the v0.8.7 tag — but 8.0 CANNOT RUN ON THIS HOST:
+          #
+          #   MongoDB cannot start: Linux kernel versions 6.19 and newer has a
+          #   known incompatibility with this version of MongoDB.
+          #   (SERVER-121912)
+          #
+          # This node is an OrbStack machine and OrbStack machines share the
+          # OrbStack kernel, which is 7.0.11-orbstack. Measured, not assumed:
+          # `mongo:8.0` exits 1 immediately, `mongo:7.0` and `mongo:8.2` both
+          # start and answer ping. So the version LibreChat cites (8.0) is
+          # unbootable here, and the version that boots (8.2) is outside the
+          # line LibreChat cites — and the FCV bump is irreversible.
+          #
+          # Revisit when an 8.0.x patch carrying the SERVER-121912 fix ships:
+          # retest with `docker run --rm mongo:8.0 --version`, and only then
+          # run the 7.0 -> 8.0 procedure.
           image: mongo:7.0
           # uid/gid 999 is the image's `mongodb` user — the same uid the
           # initContainer above chowns to.

@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: op-api
-          image: lindesvard/openpanel-api:2.2
+          image: lindesvard/openpanel-api:2.2.1
           # No uid pin: the lindesvard/openpanel-* images do not document the
           # user they run as, and forcing runAsNonRoot on an image expecting
           # root fails the pod outright. Pin it once checked — see issue #3.
@@ -122,7 +122,7 @@ spec:
     spec:
       containers:
         - name: op-worker
-          image: lindesvard/openpanel-worker:2.2
+          image: lindesvard/openpanel-worker:2.2.1
           # No uid pin: the lindesvard/openpanel-* images do not document the
           # user they run as, and forcing runAsNonRoot on an image expecting
           # root fails the pod outright. Pin it once checked — see issue #3.
@@ -202,7 +202,7 @@ spec:
     spec:
       containers:
         - name: op-dashboard
-          image: lindesvard/openpanel-dashboard:2.2
+          image: lindesvard/openpanel-dashboard:2.2.1
           # No uid pin: the lindesvard/openpanel-* images do not document the
           # user they run as, and forcing runAsNonRoot on an image expecting
           # root fails the pod outright. Pin it once checked — see issue #3.

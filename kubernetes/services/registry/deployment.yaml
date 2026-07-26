@@ -32,7 +32,22 @@ spec:
     spec:
       containers:
         - name: registry
-          image: registry:2.8
+          # distribution 3.x. The 2.8 -> 3.x jump is safe HERE specifically
+          # because this Deployment configures the registry entirely through
+          # REGISTRY_* env vars and mounts no config file: 3.0 moved the
+          # default config path from /etc/docker/registry/config.yml to
+          # /etc/distribution/config.yml, so a bind-mounted config at the old
+          # path would be silently ignored. If one is ever added, mount it at
+          # the NEW path.
+          #
+          # The on-disk layout is unchanged (storagePathVersion is still "v2"
+          # in 3.x), so /var/lib/registry is read in place — no migration, and
+          # the image still runs as root with the same volume and port. What
+          # 3.x drops: schema1 manifests, the oss/swift storage drivers, the
+          # `reporting:` config block, and TLS 1.0/1.1 as selectable minimums.
+          # None are used here (buildkit pushes schema2/OCI, storage is
+          # filesystem, TLS terminates at Traefik).
+          image: registry:3.1.1
           ports:
             - containerPort: 5000
           env:

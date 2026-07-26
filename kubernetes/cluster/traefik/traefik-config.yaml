@@ -16,23 +16,38 @@ spec:
     # PREROUTING, before UFW's INPUT filter sees the packet, so `ufw deny 443`
     # does nothing. Setting the range at the Service level makes klipper-lb
     # itself reject public traffic.
+    #
+    # Traefik chart v40 schema (k3s >= 1.36 bundles v40; v38 used flat
+    # `service.type`/`service.loadBalancerSourceRanges` and
+    # `ports.web.redirectTo`). The `service.spec.*` nesting is load-bearing:
+    # the v40 template renders ONLY `.service.spec`, and `service:` has no
+    # additionalProperties guard — a flat key is silently ignored, which for
+    # loadBalancerSourceRanges means host ports 80/443 quietly open to any
+    # source. Post-deploy gate:
+    #   kubectl -n kube-system get svc traefik \
+    #     -o jsonpath='{.spec.loadBalancerSourceRanges}'   # must be non-empty
     service:
-      type: LoadBalancer
-      loadBalancerSourceRanges:
-        - 100.64.0.0/10        # Tailscale CGNAT — the only permitted source.
+      spec:
+        type: LoadBalancer
+        loadBalancerSourceRanges:
+          - 100.64.0.0/10      # Tailscale CGNAT — the only permitted source.
 
     ports:
       websecure:
-        middlewares:
-          - platform-networking-rate-limit@kubernetescrd
-          - platform-networking-compress@kubernetescrd
-          - platform-networking-security-headers@kubernetescrd
+        http:
+          middlewares:
+            - platform-networking-rate-limit@kubernetescrd
+            - platform-networking-compress@kubernetescrd
+            - platform-networking-security-headers@kubernetescrd
         http3:
           enabled: true
           advertisedPort: 443
       web:
-        redirectTo:
-          port: websecure
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
 
     # Required for the websecure middlewares above: they live in
     # platform-networking, Traefik in kube-system.

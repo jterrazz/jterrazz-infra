@@ -6,11 +6,11 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@pulumi/cloudflare": "^5.49.1",
-    "@pulumi/pulumi": "^3.217.0"
+    "@pulumi/cloudflare": "^6.18.0",
+    "@pulumi/pulumi": "^3.254.0"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^26.1.1",
+    "typescript": "^6.0.3"
   }
 }

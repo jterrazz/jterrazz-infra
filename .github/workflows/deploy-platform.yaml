@@ -50,7 +50,7 @@ jobs:
     # runs, so the repo's Environments/Deployments view stays live.
     environment: production
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Fetch CI secrets (Tailscale OAuth, docker registry creds) + join
       # the tailnet as tag:ci. After this step the runner can reach the
@@ -68,14 +68,24 @@ jobs:
           infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
 
       - name: Setup Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          # Must be >= 3.12 or ansible-core 2.21 is not installable at all —
+          # pip would silently resolve an ancient core instead. Same value as
+          # the `ansible` job in validate.yaml, deliberately.
+          python-version: "3.13"
 
       - name: Install Ansible + collections
         working-directory: ansible
         run: |
-          pip install ansible
+          # Pinned exact, and ansible-CORE rather than the `ansible` community
+          # bundle — same reasoning as validate.yaml: the bundle ships its own
+          # copies of the collections that requirements.yml pins explicitly,
+          # so the version that actually runs would depend on install order.
+          # KEEP IN SYNC with the pin in validate.yaml's `ansible` job: the
+          # thing that lints a playbook and the thing that APPLIES it must be
+          # the same interpreter.
+          pip install ansible-core==2.21.2
           ansible-galaxy collection install -r requirements.yml
 
       # Materialise the deploy private key in a 0600 tempfile so ansible

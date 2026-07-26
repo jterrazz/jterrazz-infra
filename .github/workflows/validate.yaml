@@ -31,11 +31,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          # 24 is the current Active LTS (Node 20 went EOL 2026-04-30, 22 is in
+          # maintenance). NOT 26: it is the current line but does not enter LTS
+          # until 2026-10-28.
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: pulumi/package-lock.json
 
@@ -57,7 +60,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Mirrors the shellcheck step in `make lint`. ubuntu-latest ships
       # shellcheck preinstalled, so there is nothing to set up.
@@ -87,12 +90,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          # ansible-core 2.21 requires Python >= 3.12.
-          python-version: "3.12"
+          # ansible-core 2.21 requires Python >= 3.12 and is tested on 3.12-3.14.
+          # 3.13 sits in the middle of that window with the widest wheel
+          # coverage for ansible-lint's compiled deps (cffi, cryptography,
+          # ruamel-yaml-clib — which ansible-lint drops entirely on 3.14).
+          # Never a floating "3.x": it would roll to 3.15 and out of the
+          # tested matrix.
+          python-version: "3.13"
 
       # Pinned exact (not `ansible ansible-lint`, which pulls whatever the
       # latest ansible-core/ansible-lint happen to be that day, and pulls in
@@ -141,15 +149,15 @@ jobs:
         -schema-location default
         -schema-location https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup kubectl
-        uses: azure/setup-kubectl@901a10e89ea615cf61f57ac05cecdf23e7de06d8 # v3.2
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
 
       - name: Setup Helm
-        uses: azure/setup-helm@5119fcb9089d432beecbf79bb2c7915207344b78 # v3.5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v3.20.0
+          version: v3.21.3
 
       - name: Install kubeconform
         run: |
@@ -250,7 +258,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Same install pattern as kubeconform above: pinned version + sha256 of
       # the release tarball, so a compromised or re-tagged release cannot
