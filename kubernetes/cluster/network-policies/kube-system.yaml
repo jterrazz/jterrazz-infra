@@ -81,6 +81,40 @@ spec:
           protocol: UDP
 
 ---
+# klipper-lb. THIS IS THE RULE THAT BREAKS THE TAILNET IF IT IS MISSING, and
+# it is invisible to every test that goes through cloudflared: the tunnel
+# dials Traefik's ClusterIP directly, so public traffic keeps working while
+# every tailnet client gets `connection refused` on 443. CI is a tailnet
+# client — it pulls from registry.internal.jterrazz.com — so a deploy fails
+# with the cluster otherwise green.
+#
+# The source is the node's own address (kube-proxy hands the packet to the
+# svclb pod after DNAT), never a pod, so allow-same-namespace does not cover
+# it and only an ipBlock matches.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-svclb-ingress
+  namespace: kube-system
+spec:
+  podSelector:
+    matchLabels:
+      svccontroller.k3s.cattle.io/svcname: traefik
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 80
+          protocol: TCP
+        - port: 443
+          protocol: TCP
+        - port: 443
+          protocol: UDP
+
+---
 # The apiserver's metrics API (`kubectl top`, HPA) dials metrics-server from
 # the host, so this is an ipBlock and not a namespaceSelector.
 apiVersion: networking.k8s.io/v1
