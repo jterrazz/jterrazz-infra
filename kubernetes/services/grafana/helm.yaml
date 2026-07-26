@@ -7,6 +7,12 @@ resources:
     cpu: 50m
     memory: 160Mi
   limits:
+    # CPU limit is spin containment, not sizing: Grafana 13's unified-storage
+    # init once entered a lock-contention spiral on the virtiofs-backed
+    # grafana.db and ate ~9 cores until restarted (2026-07-26). Capped so a
+    # recurrence degrades Grafana instead of starving the node. If it DOES
+    # recur, the fix is moving grafana.db off virtiofs — see issue #3.
+    cpu: 1500m
     memory: 384Mi
 
 sidecar:
