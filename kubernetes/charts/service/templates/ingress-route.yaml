@@ -34,8 +34,13 @@ spec:
     {{/* One rule matching the canonical host plus any aliases. Aliases exist
          for renames: a service can answer on its old and new name at once, so
          a hostname migration needs no window in which consumers still holding
-         the old name break. Remove the alias once every consumer has moved. */}}
-    - match: Host({{ range $i, $h := (concat (list (include "service.host" .)) (.Values.aliases | default list)) }}{{ if $i }}, {{ end }}`{{ $h }}`{{ end }})
+         the old name break. Remove the alias once every consumer has moved.
+
+         `Host(a) || Host(b)`, NOT `Host(a, b)`: Traefik v3 dropped
+         multi-value matchers. The v2 form is accepted by the CRD schema and
+         then fails to build the router at runtime, so the only symptom is a
+         404 on every name — no error on apply, nothing in `kubectl get`. */}}
+    - match: {{ range $i, $h := (concat (list (include "service.host" .)) (.Values.aliases | default list)) }}{{ if $i }} || {{ end }}Host(`{{ $h }}`){{ end }}
       kind: Rule
       {{- if $middleware }}
       middlewares:
