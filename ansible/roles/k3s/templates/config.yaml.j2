@@ -13,7 +13,21 @@ token: {{ k3s_cluster_token }}
 
 data-dir: {{ k3s_data_dir }}
 
-write-kubeconfig-mode: "0644"
+# 0600, NOT 0644. This file carries a client certificate for O=system:masters —
+# cluster-admin with no further authentication. Nothing needs group or other
+# access: the VM has no human non-root users, Ansible and `orb` are root, and
+# CI uses KUBECONFIG_BASE64.
+#
+# THIS DOES NOT CLOSE THE CROSS-MACHINE READ, and it is worth being precise
+# about that. OrbStack exposes every machine's rootfs to every other machine at
+# /mnt/machines/<name>/, and a neighbour reads it AS ROOT — root ignores the
+# mode, so 0600 is exactly as readable as 0644 was. Verified both before and
+# after this change. What actually stops the credential being USED is the
+# nftables guard in roles/security (6443 blocked from the bridge), and what
+# stops it being read at all is creating dev machines with `--isolated`, which
+# has no /mnt/machines at all. Treat this line as defence in depth against a
+# future non-root user on the VM, not as the fix for that finding.
+write-kubeconfig-mode: "0600"
 write-kubeconfig: /etc/rancher/k3s/k3s.yaml
 
 # Every name a client may use to reach the API server must be here or kubectl

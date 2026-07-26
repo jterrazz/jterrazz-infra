@@ -65,7 +65,11 @@ is `DOCKER_REGISTRY_PASSWORD` at the root path, bcrypt-hashed into the
 The default `infisical-secret-path` of `jterrazz-actions/actions/infra-connect`,
 consumed by every app repo's pipeline: `DOCKER_REGISTRY_USERNAME`,
 `DOCKER_REGISTRY_PASSWORD`, `TAILSCALE_OAUTH_CLIENT_ID`,
-`TAILSCALE_OAUTH_CLIENT_SECRET`, `KUBECONFIG_BASE64`.
+`TAILSCALE_OAUTH_CLIENT_SECRET`, `KUBECONFIG_BASE64`, `BACKUP_ENCRYPTION_KEY`.
+
+`BACKUP_ENCRYPTION_KEY` is not read by CI — it lives here because this path is
+the one store that outlives the Mac. It is the only way to open anything
+`make backup` has ever written; see [Backups](#backups).
 
 **`KUBECONFIG_BASE64` must be refreshed after every repave.** k3s regenerates
 its CA on a fresh install, so the old client certificate stops authenticating
@@ -112,6 +116,7 @@ gh secret set INFISICAL_CLIENT_SECRET -R jterrazz/<repo> --body "$INFISICAL_CLIE
 PULUMI_ACCESS_TOKEN
 INFISICAL_CLIENT_ID
 INFISICAL_CLIENT_SECRET
+BACKUP_ENCRYPTION_KEY   # optional here; make backup also accepts it from the env
 ```
 
 ## Troubleshooting
@@ -205,6 +210,28 @@ NetworkPolicy file, and the OpenPanel `API_URL_SSR` question is settled — the
 published dashboard image cannot honour it, evidence in
 `kubernetes/services/openpanel/config.yaml`, so the CoreDNS→Traefik mapping for
 `openpanel.internal.jterrazz.com` stays load-bearing.
+
+## Backups
+
+`make backup` writes an AES-256 archive of `~/.jterrazz-infrastructure/data` to
+`~/.jterrazz-infrastructure/backups/` and verifies it by decrypting it back —
+an archive nobody has opened is a guess, not a backup.
+
+`make backup ARGS=--consistent` runs `k3s-killall.sh` first. Without it the
+databases are captured mid-write: `systemctl stop k3s` does NOT stop the
+containers, which is how two earlier backups came out torn.
+
+The passphrase is `BACKUP_ENCRYPTION_KEY` in Infisical at `/jterrazz-actions`.
+It is **permanent**: rotating it does not re-encrypt existing archives, it
+orphans them, and losing it loses every archive it ever produced. That is the
+whole point — a copy on Time Machine, an external disk or a future machine is
+useless without it, and fully restorable with it.
+
+Why encryption and not `chmod`: the data tree has to stay traversable by
+"other". The pods write through virtiofs as uids 70, 101, 472, 999 and 1000,
+so dropping world-execute on the directory breaks Postgres, ClickHouse,
+Grafana, Mongo and signews-api at once. Permissions cannot protect this tree;
+encrypting what leaves it can.
 
 ## Restoring from backup
 

@@ -204,7 +204,7 @@
 - name: Set the kubeconfig permissions
   ansible.builtin.file:
     path: /etc/rancher/k3s/k3s.yaml
-    mode: "0644"
+    mode: "0600"
   tags: [k3s]
 
 - name: Create the .kube directory for root

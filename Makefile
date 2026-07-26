@@ -70,6 +70,9 @@ diff: ## Preview what `make deploy-platform` would change (helm diff, read-only)
 # `--private` and the private half of `--certs` need this machine to be on the
 # tailnet, so they are left out of the default target here — CI
 # (.github/workflows/smoke.yaml) runs the full set from a runner that joins it.
+backup: ## Encrypted snapshot of every persistent volume (add --consistent for a torn-free copy)
+	@./scripts/backup.sh $(ARGS)
+
 smoke: ## Probe the public surfaces + their TLS expiry (add --private on the tailnet)
 	./scripts/smoke.sh --public --certs
 
