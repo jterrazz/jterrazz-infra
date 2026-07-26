@@ -39,10 +39,39 @@ const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 // from createMachine() in src/targets/orbstack.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
+// The tunnel's CNAME target. Public, not a secret — it IS the CNAME content.
+const TUNNEL_HOSTNAME = "8f4157bb-f883-424b-8ccd-8332867cf1b2.cfargotunnel.com";
+
 export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>): void {
     const fqdn = tailscaleHostname.apply((h) => `${h}.${TAILNET_DOMAIN}`);
 
-    // THE ONLY DNS RECORD THIS REPO OWNS.
+    // THE ONE EXCEPTION, and it is a wart, kept because retiring it carelessly
+    // takes live traffic down.
+    //
+    // Every other public hostname gets its CNAME from the tunnel's Public
+    // Hostname feature, in the Zero Trust dashboard, which creates the record
+    // itself. This one has its ROUTE there but its RECORD here — so deleting
+    // it does not fall back to anything: `analytics.jterrazz.com` would stop
+    // resolving, and it carries the event ingest that jterrazz.com actually
+    // uses (a few hundred events a week, verified in ClickHouse).
+    //
+    // TO RETIRE IT, in this order: add `analytics.jterrazz.com` as a Public
+    // Hostname in the Zero Trust dashboard (it will adopt/replace this record),
+    // confirm `dig analytics.jterrazz.com` still answers and that a POST to
+    // /api/track still returns 401, THEN delete this block and `pulumi up`.
+    // Doing it the other way around is a DNS outage of unknown length.
+    new cloudflare.DnsRecord("public-analytics", {
+        zoneId: JTERRAZZ_ZONE_ID,
+        name: "analytics",
+        type: "CNAME",
+        content: TUNNEL_HOSTNAME,
+        // Must be proxied — cfargotunnel.com only resolves at the edge.
+        proxied: true,
+        ttl: 1,
+        comment: "Managed by Pulumi (pulumi/src/dns.ts) — public ingest via the Cloudflare tunnel",
+    });
+
+    // THE ONLY OTHER DNS RECORD THIS REPO OWNS.
     //
     // Every private surface is `<svc>.internal.jterrazz.com` and is covered by
     // this one wildcard, so adding or removing a private service needs no DNS

@@ -75,12 +75,6 @@ PRIVATE_CHECKS=(
     # bearer token, and containerd relies on that challenge to authenticate.
     # A 200 would mean the registry became anonymous-readable.
     "GET|https://registry.internal.jterrazz.com/v2/|401|Docker registry API"
-    # TEMPORARY, and deliberately a probe rather than an exclusion: while the
-    # registry answers on both names (the `aliases` entry in
-    # kubernetes/services/registry/platform.yaml), the OLD name working is a
-    # precondition for the rename being safe — every not-yet-redeployed pod
-    # still pulls through it. Remove this line together with the alias.
-    "GET|https://registry.jterrazz.com/v2/|401|Docker registry API (legacy name, during the rename)"
     "GET|https://chat.internal.jterrazz.com/|200|LibreChat"
     # OpenPanel's dashboard SSRs and bounces an unauthenticated visitor to
     # /login or /onboarding, so 307 is the normal answer and 200 is the

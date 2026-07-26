@@ -133,11 +133,6 @@ platform_chart_versions:
 # plugin, which k3s's CoreDNS build does not include.
 private_hostnames:
   - registry.internal.jterrazz.com
-  # TEMPORARY, paired with the `aliases` entry in
-  # kubernetes/services/registry/platform.yaml: in-cluster pulls that still
-  # reference the old name must resolve to the node too, or a pod restart
-  # during the rename ImagePullBackOffs. Remove both together.
-  - registry.jterrazz.com
   - grafana.internal.jterrazz.com
   - gateway.internal.jterrazz.com
   - chat.internal.jterrazz.com

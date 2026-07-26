@@ -17,14 +17,3 @@ storage:
   data:
     size: 10Gi
 
-# TEMPORARY, for the registry.jterrazz.com -> registry.internal.jterrazz.com
-# rename. Serving both names from one route and one certificate means no window
-# exists in which a consumer still holding the old name breaks: running pods
-# keep pulling, CI keeps pushing, whichever name they use.
-#
-# REMOVE (and drop the old CNAME with `pulumi up`) once every app has been
-# redeployed from the new name — verify with:
-#   kubectl get pods -A -o jsonpath='{..image}' | tr ' ' '\n' \
-#     | grep -c 'registry\.jterrazz\.com/' # must be 0
-aliases:
-  - registry.jterrazz.com
