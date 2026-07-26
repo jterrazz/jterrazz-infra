@@ -216,6 +216,9 @@ owns the chart they render through. Working on an app repo:
 
 - `application.yaml` schema, merge semantics, `platformServices`, storage:
   [kubernetes/charts/app/README.md](kubernetes/charts/app/README.md).
+- A repo deploying for the first time needs `INFISICAL_CLIENT_ID` /
+  `INFISICAL_CLIENT_SECRET` set on it — see
+  [docs/RUNBOOK.md](docs/RUNBOOK.md#github-secrets-every-app-repo).
 - Every app repo must expose `make build`, `make lint`, `make test` — the
   universal CI interface, regardless of toolchain.
 - `tag:` is mandatory on every environment. Without it the workflow takes a

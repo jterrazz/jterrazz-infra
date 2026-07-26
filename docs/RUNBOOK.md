@@ -91,6 +91,21 @@ The public half of that keypair is committed as `security_ci_deploy_pubkey` in
 `ansible/roles/security/defaults/main.yml`; the `security` role installs it in
 root's `authorized_keys`.
 
+### GitHub secrets (every app repo)
+
+`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` — the same machine identity as
+above, which `infra-connect` exchanges for `/jterrazz-actions`. One identity is
+shared by CI, the cluster's Infisical operator and the local `.env`; rotating it
+means updating every deploying repo. A repo that lacks them fails the *Release*
+job at `Missing universal auth credentials` — after a green validate, so a first
+deploy looks like it almost worked.
+
+```bash
+set -a; . ./.env; set +a
+gh secret set INFISICAL_CLIENT_ID     -R jterrazz/<repo> --body "$INFISICAL_CLIENT_ID"
+gh secret set INFISICAL_CLIENT_SECRET -R jterrazz/<repo> --body "$INFISICAL_CLIENT_SECRET"
+```
+
 ### Local `.env` (gitignored, repo root)
 
 ```
