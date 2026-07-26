@@ -134,7 +134,7 @@ lists, modelSpecs, interface).
 Three things make LibreChat talk to `gateway-intelligence`, and each exists
 for a specific reason:
 
-1. **In-cluster Service URL, not `gateway.internal.jterrazz.com`.** Both the custom
+1. **In-cluster Service URL, not `gateway-intelligence.internal.jterrazz.com`.** Both the custom
    endpoint's `baseURL` and `ANTHROPIC_REVERSE_PROXY` point at
    `http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local`
    (`/v1` suffix on the custom endpoint; bare host for the Anthropic one,

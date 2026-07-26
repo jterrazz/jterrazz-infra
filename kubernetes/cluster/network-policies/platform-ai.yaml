@@ -135,7 +135,7 @@ spec:
     # librechat -> gateway-intelligence (prod-gateway-intelligence). This is
     # both endpoints configured in helm.yaml: `ANTHROPIC_REVERSE_PROXY` and the
     # custom endpoint's `baseURL`, both of which name the in-cluster Service —
-    # never gateway.internal.jterrazz.com, which a pod cannot hairpin to.
+    # never gateway-intelligence.internal.jterrazz.com, which a pod cannot hairpin to.
     #
     # 8317 is the POD port (the app chart renders `Service 80 -> targetPort
     # 8317`), and it is the port the matching ingress hole names:

@@ -84,7 +84,7 @@ PRIVATE_CHECKS=(
     # `/`, so upstream answers 404 — which still proves DNS, the tailnet path,
     # Traefik and the pod are all alive. 200 is accepted in case a root handler
     # is ever added. The point of this entry is to exclude 000/502/503.
-    "GET|https://gateway.internal.jterrazz.com/|200,404|gateway-intelligence (root is unrouted; 404 = alive)"
+    "GET|https://gateway-intelligence.internal.jterrazz.com/|200,404|gateway-intelligence (root is unrouted; 404 = alive)"
 )
 
 # Fail a certificate that expires within this many days. Let's Encrypt renews
