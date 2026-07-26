@@ -72,9 +72,7 @@ spec:
     - match: Host(`openpanel.internal.jterrazz.com`)
       kind: Rule
       middlewares:
-        # cluster-internal-access, NOT private-access: op-dashboard SSRs against
-        # openpanel.internal.jterrazz.com from inside its own pod, so Traefik sees a
-        # plain pod IP. Never chain the two — Traefik ANDs chained ipAllowLists.
+        # cluster-internal-access, NOT private-access — same reason as above.
         - name: cluster-internal-access
           namespace: platform-networking
       services:

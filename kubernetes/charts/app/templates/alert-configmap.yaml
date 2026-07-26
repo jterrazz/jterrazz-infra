@@ -1,20 +1,10 @@
 {{/*
-Grafana alert rules, owned by the app repo (chart 2.4).
-
-Same sidecar mechanism as dashboard-configmap.yaml, one level down: Grafana's
-`sidecar.alerts` (kubernetes/services/grafana/helm.yaml) watches
-`grafana_alert: "1"` across ALL namespaces, so the ConfigMap lives in the app's
-own namespace and needs no platform-side edit. Unlike dashboards there is NO
-folder annotation — the alerts sidecar has no `folderAnnotation` and each rule
-group names its own `folder:` inside the provisioning payload.
-
-ONE ConfigMap with one data key per entry (dashboards render one ConfigMap
-each). Grafana reads every key in the map, and a single object keeps an app's
-rules atomically replaced: a rename cannot leave an orphan ConfigMap behind
-still provisioning a rule nobody maintains.
-
-prod-only, for the same reason dashboards are: rule UIDs are global in Grafana,
-so three environments provisioning the same `uid:` would fight over one rule.
+Grafana alert rules, owned by the app repo. `sidecar.alerts` in
+kubernetes/services/grafana/helm.yaml watches `grafana_alert: "1"` in ALL
+namespaces, so no platform-side edit is needed. NO folder annotation: each rule
+group names its own `folder:`. ONE ConfigMap with a key per entry, so a rename
+cannot orphan one. prod-only because rule UIDs are global in Grafana — three
+environments provisioning the same `uid:` would fight over one rule.
 */}}
 {{- if and (eq (include "app.envExists" .) "true") (eq .Values.environment "prod") -}}
 {{- $spec := fromYaml (include "app.merged" .) -}}

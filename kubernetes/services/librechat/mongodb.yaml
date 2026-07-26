@@ -30,12 +30,10 @@ spec:
         - name: fix-perms
           image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command: ["sh", "-c", "chown -R 999:999 /data/db"]
-          # Root, but every capability dropped except the three `chown -R`
-          # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
-          # traverse and modify dirs root does not own.
+          # Root with only the `chown -R` capabilities — see
+          # kubernetes/charts/app/templates/deployment.yaml for why these three.
           securityContext:
             runAsUser: 0
-            runAsNonRoot: false
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
@@ -106,14 +104,11 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5
-            failureThreshold: 3
           readinessProbe:
             tcpSocket:
               port: 27017
             initialDelaySeconds: 10
-            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:

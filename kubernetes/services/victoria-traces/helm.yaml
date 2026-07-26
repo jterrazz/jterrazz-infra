@@ -1,4 +1,4 @@
-# VictoriaTraces single-node — the trace store, replacing Tempo.
+# VictoriaTraces single-node — the trace store.
 #
 # Chart: vm/victoria-traces-single (see platform_chart_versions.victoria_traces).
 #
@@ -32,38 +32,23 @@ server:
 
   # DATA LOSS IF CHANGED — see the matching note in platform.yaml. `existingClaim`
   # also makes the chart drop its StatefulSet volumeClaimTemplate and mount this
-  # PVC by name, which is why no `claimName` override is needed here (tempo did
-  # need one: storage-tempo-0).
+  # PVC by name, which is why no `claimName` override is needed here.
   persistentVolume:
     existingClaim: victoria-traces-data
 
-  # 720h == 30d, byte-for-byte the window `tempo.retention` held. Written in
-  # hours to stay comparable with the value it replaces; the flag takes
-  # s/h/d/w/M/y suffixes and the minimum supported retention is 1d.
+  # 720h == 30d. The flag takes s/h/d/w/M/y suffixes; minimum retention is 1d.
   retentionPeriod: "720h"
 
-  # REQUEST right-sized down from 192Mi (2026-07-26), same reasoning as
-  # victoria-logs: the number was inherited from Tempo, and VictoriaTraces
-  # budgets its caches from `-memory.allowedPercent` of the LIMIT rather than
-  # from the request — so the request was reserving node capacity that nothing
-  # ever occupied. This is also the lowest-traffic store here (trace ingest is
-  # GenAI spans plus whatever apps emit).
+  # The REQUEST is small on purpose: the caches are budgeted from
+  # `-memory.allowedPercent` of the LIMIT, not of the request.
   resources:
     requests:
       cpu: 25m
       memory: 96Mi
     limits:
-      # Carried over from Tempo, whose WAL flush spiked well above idle RSS.
-      # VictoriaTraces should need less, but a limit that is too tight OOMKills
-      # in a loop and makes `helm --wait` flake — measure before tightening.
+      # A limit that is too tight OOMKills in a loop and makes `helm --wait`
+      # flake — measure before tightening.
       memory: 512Mi
-
-  extraArgs:
-    # Victoria-family equivalent of the GOMEMLIMIT this repo set on Tempo (which
-    # also replaced that chart's 1 GB memory ballast). Percentage of the detected
-    # cgroup memory limit, so it tracks resources.limits.memory above. 60 is the
-    # upstream default; written out because it is a deliberate bound.
-    memory.allowedPercent: 60
 
   # Same reasoning as victoria-logs/helm.yaml: uid 1000 / fsGroup 2000 with a
   # read-only root fs, and fsGroup is not applied to hostPath volumes, so a

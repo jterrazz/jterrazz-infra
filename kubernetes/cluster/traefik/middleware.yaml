@@ -14,7 +14,6 @@ spec:
   rateLimit:
     average: 100
     burst: 200
-    period: 1s
     # Key the limiter on the REAL client IP.
     #
     # excludedIPs, NOT `depth: N`: `depth` counts from the right of XFF and

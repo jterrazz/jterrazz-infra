@@ -13,43 +13,27 @@ spec:
   storage: {}
   configFiles: {}
   dashboards: {}
-  # name -> Grafana unified-alerting provisioning YAML (the `apiVersion: 1` /
-  # `groups:` document). prod-only, like dashboards. Same map shape, so the
-  # inline form used today and a future CI `--set-file spec.alerts.<name>=…`
-  # produce identical values.
+  # name -> Grafana unified-alerting provisioning YAML. prod-only, like dashboards.
   alerts: {}
-  # Escape hatch only: merged OVER the chart's hardened container defaults
-  # (see templates/deployment.yaml) by an app that genuinely needs a
-  # capability back, so it never has to fork the chart.
   securityContext: {}
   # Opt-in in-cluster platform services, resolved against the catalog in
   # templates/_helpers.tpl (app.platformCatalog). Valid: otel-collector,
   # gateway-intelligence. Unknown names hard-fail the render.
   platformServices: []
-  networkPolicy:
-    # Namespaces of client apps allowed to reach this app's port, by bare name
-    # (expanded to prod-/next-/staging-<name>). One-off, non-platform traffic
-    # only — platform-service ingress and all egress come from
-    # spec.platformServices.
-    allowedClients: []
   health:
     path: /health
-    periodSeconds: 30
-    # k8s's own defaults (1s / 3) are too tight for an app that also runs
-    # in-process background work.
+    # Raised from Kubernetes' 1s: a Node app doing in-process background work
+    # exceeds it on a trivial route. Everything else uses the k8s defaults.
     timeoutSeconds: 5
-    failureThreshold: 5
-    # startupProbe grace = startupFailureThreshold * startupPeriodSeconds
-    # (60 * 5s = 5min) before liveness/readiness begin.
-    startupPeriodSeconds: 5
-    startupFailureThreshold: 60
+    # 30 × the k8s default 10s period = 300s of boot grace before liveness/readiness.
+    startupFailureThreshold: 30
 
 environments: {}
 
 # Set by app CI during helm upgrade --install
 environment: ""
 
-# Registry credentials (passed from CI via --set)
+# CI passes username + password via --set; `server` is a chart default.
 registry:
   server: registry.internal.jterrazz.com
   username: ""

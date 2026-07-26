@@ -51,8 +51,6 @@ spec:
       path: /
       public: true
   platformServices: [otel-collector]
-  networkPolicy:
-    allowedClients: [other-app]
   storage:
     size: 2Gi
     mountPath: /data
@@ -102,8 +100,8 @@ gated on `environment` existing as a key under `environments:` — a typo'd
 ### `spec.port`, `spec.replicas`
 
 `port` is the container port. The Service is always `ClusterIP` on port 80
-targeting it, so `allowedClients` and IngressRoutes never mention the app
-port. `PORT` is injected into the container env automatically.
+targeting it, so IngressRoutes never mention the app port. `PORT` is injected
+into the container env automatically.
 
 `replicas` is env-level (default 1). Note storage forces
 `strategy: Recreate` — don't ask for >1 replica with a hostPath volume.
@@ -134,18 +132,14 @@ Harmless on non-Node runtimes — the variable is ignored.
 ```yaml
 health:
   path: /health                 # default
-  periodSeconds: 30             # liveness period
   timeoutSeconds: 5             # all three probes (k8s's 1s default is too tight)
-  failureThreshold: 5           # liveness
-  startupPeriodSeconds: 5       # startup probe
-  startupFailureThreshold: 60   # -> 5 min of boot grace before liveness engages
+  startupFailureThreshold: 30   # x the k8s 10s period = 300s of boot grace
 ```
 
 All three probes are `httpGet` on `health.path` at `spec.port`. The
-startupProbe gates liveness and readiness, so a slow boot can't get
-SIGKILLed mid-startup. `initialDelaySeconds` was dropped from the defaults in
-chart 2.3 — the startupProbe replaced it and no template had read it since
-1.x. Setting it is harmless (unknown keys are ignored) but does nothing.
+startupProbe gates liveness and readiness, so a slow boot can't get SIGKILLed
+mid-startup. Everything the chart does not name above — probe periods, liveness
+and readiness failure thresholds — is left at the Kubernetes default.
 
 ### `spec.ingress` — a list, always
 
@@ -186,8 +180,8 @@ secrets:
 ```
 
 Renders an `InfisicalSecret` (`<app>-infisical`) that syncs into Secret
-`<app>-secrets` in the app's namespace, every 5m, using the shared
-`infisical-credentials` in `platform-secrets`. The Infisical **env slug**
+`<app>-secrets` in the app's namespace at the operator's own resync interval,
+using the shared `infisical-credentials` in `platform-secrets`. The Infisical **env slug**
 defaults to the deploy environment name; an environment that has no matching
 Infisical env sets `secretsEnv:` to borrow another one (that's what `next`
 does — `secretsEnv: prod`).
@@ -319,23 +313,14 @@ Env names are derived from the service name (`GATEWAY_INTELLIGENCE_BASE_URL`);
 `OTEL_EXPORTER_OTLP_ENDPOINT` is the one exception, because the OTel SDK owns
 that contract.
 
-### `spec.networkPolicy.allowedClients`
+### NetworkPolicy
 
-```yaml
-networkPolicy:
-  allowedClients: [other-app]   # bare app names, no env prefix
-```
-
-Bespoke **ingress** by namespace name: each entry admits `prod-<name>`,
-`next-<name>` and `staging-<name>` on `spec.port`. For one-off,
-non-platform traffic only — anything in the catalog should use
-`platformServices` instead, which handles both directions. (`allowedServices`,
-the 2.0 egress-only alias, was removed in 2.1.)
-
-The rendered policy always allows: ingress from `kube-system` (Traefik) on
-`spec.port`; egress to DNS; and egress to the whole internet **except**
-RFC1918 — so any additional in-cluster destination must come from
-`platformServices`.
+Always rendered, with no per-app knob. It allows: ingress from `kube-system`
+(Traefik) on `spec.port`; ingress from any pod, in any namespace, carrying this
+app's `clientLabel` **if** the app is itself a `platformServices` catalog target;
+egress to DNS; and egress to the whole internet **except** RFC1918. Every other
+in-cluster destination must come from `platformServices`, which opens both
+directions at once.
 
 ### `spec.securityContext` / `spec.runAsRoot`
 
@@ -386,7 +371,7 @@ failed every image pull with an unhelpful auth error.
 ## Versioning and publishing
 
 `kubernetes/charts/app/Chart.yaml` carries the chart `version:` (currently
-**2.4.0**). Push to `main` touching `kubernetes/charts/app/**` and
+**2.6.0**). Push to `main` touching `kubernetes/charts/app/**` and
 `.github/workflows/publish-chart.yaml` packages and pushes it to
 `oci://registry.internal.jterrazz.com/charts/app`.
 

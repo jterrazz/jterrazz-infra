@@ -9,57 +9,34 @@ timezone: UTC
 # KEEP IN SYNC with the `azure/setup-helm` version in BOTH
 # .github/workflows/validate.yaml and .github/workflows/publish-chart.yaml.
 # Three machines, one Helm: a chart packaged by one version and rendered by
-# another is a silent behaviour difference. Consumed here by
-# roles/platform/tasks/helm-cli.yml.
+# another is a silent behaviour difference.
 #
-# DELIBERATELY v3, not v4: Helm 4.x exists (4.0.0 GA 2025-11-12) but changes
-# CLI flags/output, makes server-side apply the default upgrade path, and
-# rewrites the plugin ABI — this repo's toolchain (helm-diff, helm-unittest +
-# its committed snapshots, the `changed_when` stdout matching in
-# roles/platform/tasks/*) is calibrated on v3. The v3 line is still on the
-# same release train and gets the same CVE fixes.
+# DELIBERATELY v3, not v4: v4 changes CLI flags/output, makes server-side apply
+# the default upgrade path, and rewrites the plugin ABI — this repo's toolchain
+# (helm-diff, helm-unittest + its committed snapshots, the `changed_when` stdout
+# matching in roles/platform/tasks/*) is calibrated on v3.
 helm_version: "v3.21.3"
 
 # SINGLE SOURCE OF TRUTH — deliberately NOT duplicated in roles/k3s/defaults
 # (which is why that file does not exist): a role default wins only when this
 # file is not loaded, so two copies is a silent-drift trap.
 #
-# In-place minor bump (1.35 -> 1.36) is the supported path: roles/k3s re-runs
-# get.k3s.io with INSTALL_K3S_VERSION and restarts the unit. Never skip a
-# minor — Kubernetes' version-skew policy forbids it. The restart takes the
-# CONTROL PLANE down for tens of seconds (containers keep running). Kubernetes
-# 1.36 removes no API group/version this repo renders.
+# In-place minor bump is the supported path: roles/k3s re-runs get.k3s.io with
+# INSTALL_K3S_VERSION and restarts the unit, which takes the CONTROL PLANE down
+# for tens of seconds (containers keep running). NEVER SKIP A MINOR —
+# Kubernetes' version-skew policy forbids it.
 #
-# ┌──────────────────────────────────────────────────────────────────────────┐
-# │ BLOCKER — kubernetes/cluster/traefik/traefik-config.yaml MUST be migrated │
-# │ IN THE SAME CHANGE. k3s 1.35.1 bundles Traefik chart v38.0.2; 1.36.2      │
-# │ bundles v40.1.0, crossing TWO breaking chart majors:                      │
-# │                                                                          │
-# │  v39.0.0  entrypoint options moved under `ports.<name>.http`:            │
-# │             ports.websecure.middlewares -> ports.websecure.http.middlewares│
-# │             ports.web.redirectTo.port   -> ports.web.http.redirections.   │
-# │                                            entryPoint.{to,scheme}         │
-# │           Each port entry is `additionalProperties: false` in the chart's │
-# │           values.schema.json, so these HARD-FAIL the helm-install job.    │
-# │                                                                          │
-# │  v40.0.0  the Service block moved under `service.spec` (aligned with the  │
-# │           Kubernetes ServiceSpec):                                        │
-# │             service.type                     -> service.spec.type         │
-# │             service.loadBalancerSourceRanges -> service.spec.             │
-# │                                                  loadBalancerSourceRanges │
-# │           `service` has NO additionalProperties:false and the template    │
-# │           renders only `.service.spec` — so the old keys are a SILENT     │
-# │           NO-OP. That drops `loadBalancerSourceRanges: 100.64.0.0/10`,    │
-# │           which is the ONLY thing restricting Traefik's host ports 80/443 │
-# │           to the tailnet (klipper-lb DNATs in PREROUTING, so UFW never    │
-# │           sees the packet). The ports keys fail loudly, the security gate │
-# │           fails silently — fix the loud ones and you will believe you are │
-# │           done.                                                          │
-# │                                                                          │
-# │ Post-upgrade gate, do not skip:                                          │
-# │   kubectl -n kube-system get svc traefik \                               │
-# │     -o jsonpath='{.spec.loadBalancerSourceRanges}'   # must be non-empty  │
-# └──────────────────────────────────────────────────────────────────────────┘
+# A k3s minor can move the BUNDLED TRAEFIK CHART across a breaking major, so
+# re-read kubernetes/cluster/traefik/traefik-config.yaml against the new chart's
+# values.schema.json IN THE SAME CHANGE. Renamed *port* keys hard-fail the
+# helm-install job; a renamed `service.*` key does NOT — `service` carries no
+# `additionalProperties: false`, so a stale key is a SILENT no-op. That is the
+# dangerous half: it would drop `loadBalancerSourceRanges: 100.64.0.0/10`, the
+# only thing restricting Traefik's host ports 80/443 to the tailnet (klipper-lb
+# DNATs in PREROUTING, so UFW never sees the packet). Post-upgrade gate, never
+# skip it:
+#   kubectl -n kube-system get svc traefik \
+#     -o jsonpath='{.spec.loadBalancerSourceRanges}'   # must be non-empty
 k3s_version: "v1.36.2+k3s1"
 k3s_config_dir: "/etc/rancher/k3s"
 k3s_data_dir: "/var/lib/rancher/k3s"
@@ -70,50 +47,28 @@ k3s_node_ip: "{{ ansible_default_ipv4.address }}"
 # the repo's latest is at deploy time, turning an unrelated deploy into an
 # uncontrolled upgrade of somebody else's service.
 #
-# REPO MIGRATION (2026-01): Grafana moved its OSS charts out of
-# `grafana/helm-charts` into `grafana-community/helm-charts` and restarted the
-# version numbering. grafana/grafana in the old repo is FROZEN at the last
-# pre-migration release (10.5.15), so `grafana` below is a version from the
-# `grafana-community` repo (added in roles/platform/tasks/helm-cli.yml,
-# consumed in tasks/telemetry.yml).
-#
-# TELEMETRY MIGRATION (2026-07): Prometheus, Loki and Tempo were replaced by the
-# VictoriaMetrics family, and Grafana Alloy was retired outright — its only job
-# (pod-log shipping) folded into the OTel collector's filelog receiver, and its
-# only reason to exist here was Loki-family affinity. That removed the last
-# consumer of the `grafana` helm repo. kube-state-metrics and node-exporter used
-# to ride along as subcharts of the prometheus release and are now pinned and
-# installed on their own, at the same chart majors that release depended on
-# (8.0.* / 4.56.*), so nothing about what they scrape changes.
+# `grafana` below is a version from the `grafana-community` repo, NOT the old
+# `grafana` one — the OSS charts moved and restarted their numbering, and the
+# chart in the old repo is frozen at 10.5.15. Repo added in
+# roles/platform/tasks/helm-cli.yml, consumed in tasks/telemetry.yml.
 platform_chart_versions:
   cert_manager: "v1.21.0"
   infisical: "0.11.5"
-  # vm repo (https://victoriametrics.github.io/helm-charts/). Chart 0.43.0 ships
-  # VictoriaMetrics v1.148.0. The chart's minor version moves fast; the app
-  # version is the one to read.
+  # vm repo. Chart minors move fast; read the app version each one ships.
   victoria_metrics: "0.43.0"
-  # vm repo. Chart 0.13.9 ships VictoriaLogs v1.52.0.
   victoria_logs: "0.13.9"
-  # vm repo. Chart 0.1.10 ships VictoriaTraces v0.9.4 — PRE-1.0, KNOWINGLY. See
-  # the boxed comment in kubernetes/services/victoria-traces/helm.yaml: no
-  # production traffic depends on trace history and trace history is the one
-  # stream this cluster can afford to lose. Do not extend that tolerance to the
-  # two 1.x pins above.
+  # PRE-1.0, KNOWINGLY — see the boxed note in victoria-traces/helm.yaml. Do NOT
+  # extend that tolerance to the two 1.x pins above.
   victoria_traces: "0.1.10"
-  # prometheus-community repo, unchanged from what the prometheus chart pulled
-  # in as a subchart (its dependency range is `8.0.*`).
+  # prometheus-community repo. The CHART is `prometheus-node-exporter`; the
+  # RELEASE is `node-exporter` (hence the fullnameOverride in its helm.yaml).
   kube_state_metrics: "8.0.0"
-  # prometheus-community repo, same story (dependency range `4.56.*`). The chart
-  # is named prometheus-node-exporter; the RELEASE is named node-exporter.
   node_exporter: "4.56.1"
   otel_collector: "0.165.0"
-  # grafana-community repo. Chart 10.5.15 -> 12.8.0 = Grafana app 12.3.1 ->
-  # 13.1.1; grafana.db schema migrates itself on first boot and is NOT
+  # grafana-community repo. grafana.db migrates itself on first boot and is NOT
   # reversible, so the rollback is the /var/lib/k8s-data/grafana restore.
   grafana: "12.8.0"
-  # 2.0.6 -> 2.0.7 is a label-only chart change (verified by rendering both);
-  # what it really carries is appVersion v0.8.7-rc1 -> v0.8.7. The image tag is
-  # pinned separately in librechat/helm.yaml — bump the two together.
+  # Bump together with the image tag pinned in librechat/helm.yaml.
   librechat: "2.0.7"
 
 # Private hostnames, short-circuited IN-CLUSTER to the node's own tailnet IP.

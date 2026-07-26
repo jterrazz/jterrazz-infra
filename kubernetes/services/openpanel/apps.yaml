@@ -65,16 +65,9 @@ spec:
               value: "--max-old-space-size=768"
           resources:
             requests:
-              # 480Mi, down from 576Mi (2026-07-26). The request was set above
-              # the NODE_OPTIONS heap ceiling to leave room for the migration
-              # pass; steady-state RSS sits well below it, so ~96Mi of the
-              # node's allocatable budget was reserved and idle.
-              #
-              # This is NOT the same call as signews-api's request, which is
-              # pinned to its own 512Mi NODE_OPTIONS floor and must not be
-              # lowered: here the floor that matters is the 768Mi
-              # max-old-space-size below, and it is bounded by the LIMIT (1Gi,
-              # unchanged), not by the request.
+              # The request does NOT have to cover the 768Mi max-old-space-size
+              # above — that heap ceiling is bounded by the LIMIT (1Gi). Do not
+              # lower the limit.
               cpu: 50m
               memory: 480Mi
             limits:
@@ -89,7 +82,6 @@ spec:
             httpGet:
               path: /healthcheck
               port: 3000
-            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthcheck
@@ -133,9 +125,7 @@ spec:
       containers:
         - name: op-worker
           image: lindesvard/openpanel-worker:2.2.1
-          # No uid pin: the lindesvard/openpanel-* images do not document the
-          # user they run as, and forcing runAsNonRoot on an image expecting
-          # root fails the pod outright. Pin it once checked — see issue #3.
+          # No uid pin — see the note on op-api above.
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -169,7 +159,6 @@ spec:
             httpGet:
               path: /healthcheck
               port: 3000
-            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthcheck
@@ -213,9 +202,7 @@ spec:
       containers:
         - name: op-dashboard
           image: lindesvard/openpanel-dashboard:2.2.1
-          # No uid pin: the lindesvard/openpanel-* images do not document the
-          # user they run as, and forcing runAsNonRoot on an image expecting
-          # root fails the pod outright. Pin it once checked — see issue #3.
+          # No uid pin — see the note on op-api above.
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -250,7 +237,6 @@ spec:
             httpGet:
               path: /api/healthcheck
               port: 3000
-            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /api/healthcheck

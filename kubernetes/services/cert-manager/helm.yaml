@@ -1,24 +1,10 @@
-# `crds.enabled` + `crds.keep`, not the older `installCRDs: true` — that key is
-# deprecated upstream (it is exactly equivalent to these two) and is on its way
-# out. Verified to render a byte-identical object set, all 6 CRDs included.
-# `keep: true` means a `helm uninstall` leaves the CRDs (and therefore every
-# Certificate/ClusterIssuer) in place rather than cascade-deleting them.
+# `crds.enabled`, not the deprecated `installCRDs: true` — exactly equivalent,
+# and this renders the same 6 CRDs.
 crds:
   enabled: true
-  keep: true
-# Aggressive leader-election timeouts: single-node, so there is no peer to
-# race and a shorter lease means faster recovery after a reboot.
 global:
-  leaderElection:
-    leaseDuration: 15s
-    renewDeadline: 10s
-    retryPeriod: 2s
-  # 3, down from Kubernetes' default 10, and this ONE key covers all three
-  # Deployments (controller, webhook, cainjector) — they each render
-  # `.Values.global.revisionHistoryLimit`. Ten stale ReplicaSets per Deployment
-  # is 30 objects in a SQLite-backed apiserver in exchange for a `rollout undo`
-  # depth nobody uses; the real cert-manager recovery is the restart-all-three
-  # dance in CLAUDE.md, not a revision rollback.
+  # 3, and this ONE key covers all three Deployments (controller, webhook,
+  # cainjector) — see grafana/helm.yaml for the reasoning.
   revisionHistoryLimit: 3
 # 128Mi floor on every component: these Go processes spike well above idle RSS
 # during cert reconciliation and CRD-watch reconnects, and an OOM-killed

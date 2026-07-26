@@ -4,12 +4,11 @@
 #
 # k3s enforces NetworkPolicy, so this is real isolation — and it is needed here
 # for the same reason platform-analytics needs it: NONE of the three Victoria
-# stores authenticates anything, and every write path is always on (unlike
-# Prometheus/Loki/Tempo there is no receiver flag to leave off).
-# VictoriaMetrics takes Prometheus remote-write on :8428, VictoriaLogs takes OTLP
-# *and* Loki push on :9428, VictoriaTraces takes OTLP on :10428. Without this
-# file any pod in the cluster could write junk into all three, or read every
-# series, log line and span back out.
+# stores authenticates anything, and every write path is always on, with no
+# receiver flag to leave off. VictoriaMetrics takes Prometheus remote-write on
+# :8428, VictoriaLogs takes OTLP *and* Loki push on :9428, VictoriaTraces takes
+# OTLP on :10428. Without this file any pod in the cluster could write junk into
+# all three, or read every series, log line and span back out.
 #
 # TWO rules below are deliberately wider than the rest. Both are called out at
 # the rule itself, so neither can be mistaken for an oversight:
@@ -39,29 +38,18 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Pods in platform-telemetry -> each other, any port; sourced by the
-    # namespace label, so nothing outside platform-telemetry matches.
+    # Pods in platform-telemetry -> each other, any port, sourced by the namespace
+    # label. This ONE rule carries every store-facing flow, because every
+    # legitimate client of a store lives here: grafana queries all three stores
+    # (8428/9428/10428), otel-collector writes to all three, victoria-metrics
+    # scrapes kube-state-metrics:8080. Naming them by pod label instead would be
+    # strictly redundant and would drift the day a store moves.
     #
-    # This ONE rule carries every store-facing flow, because every legitimate
-    # client of a store lives in this namespace:
-    #   grafana          -> victoria-metrics:8428   Prometheus query API
-    #                    -> victoria-logs:9428      LogsQL (plugin datasource)
-    #                    -> victoria-traces:10428   Jaeger query API
-    #   otel-collector   -> victoria-metrics:8428   /api/v1/write
-    #                    -> victoria-logs:9428      OTLP logs (both exporters)
-    #                    -> victoria-traces:10428   OTLP traces
-    #   victoria-metrics -> kube-state-metrics:8080 scrape
-    # A second policy naming grafana and otel-collector by pod label would be
-    # strictly redundant with this one, and would drift the day a store moves.
-    #
-    # State the consequence plainly: the three stores get NO cross-namespace
-    # ingress at all. The only ports reachable from outside platform-telemetry
-    # are the collector's two OTLP ports and Grafana's 3000, both below.
-    #
-    # node-exporter is NOT covered and does not need to be: it runs
-    # `hostNetwork: true` (chart default, kept), so its pod IP *is* the node IP
-    # and NetworkPolicy never filters traffic to it. VictoriaMetrics reaches it
-    # through the egress rule at the bottom of this file instead.
+    # CONSEQUENCE: the three stores get NO cross-namespace ingress at all — the
+    # only ports reachable from outside this namespace are the collector's two
+    # OTLP ports and Grafana's 3000, both below. node-exporter is not covered and
+    # cannot be: `hostNetwork: true` means its pod IP IS the node IP, so
+    # NetworkPolicy never filters traffic to it (it is scraped via egress below).
     - from:
         - namespaceSelector:
             matchLabels:
@@ -81,38 +69,16 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # ANY pod in ANY namespace -> the collector's OTLP ports. This is the ingest
-    # half of the app chart's `platformServices: [otel-collector]` contract: the
-    # catalog in kubernetes/charts/app/templates/_helpers.tpl hands the app
-    # OTEL_EXPORTER_OTLP_ENDPOINT plus a matching egress hole, and this is the
-    # door that hole leads to.
+    # ANY pod in ANY namespace -> the collector's OTLP ports: the ingest half of
+    # the app chart's `platformServices: [otel-collector]` contract.
     #
-    # DELIBERATELY namespace-wide, because nothing narrower exists to select on:
-    #   * NetworkPolicy has no globbing, so `prod-*` / `next-*` / `staging-*` is
-    #     not expressible as a selector at all.
-    #   * the labels the app namespaces DO carry are per-namespace, not a shared
-    #     marker: `kubernetes.io/metadata.name` (which is the namespace name) and
-    #     a `name` label equal to it. `matchExpressions: [{key: name, operator:
-    #     Exists}]` would come close — it happens to match every app namespace
-    #     and no platform one — but it is REJECTED here on two counts: nothing in
-    #     this repo sets that label (some step in jterrazz-actions does, so it is
-    #     not a contract this side can rely on), and prod-gateway-intelligence,
-    #     which IS an app-chart workload, does not have it because
-    #     kubernetes/cluster/namespaces.yaml declares that namespace itself.
-    #   * the otel-collector catalog entry has no `clientLabel` (only
-    #     gateway-intelligence does), so opted-in app PODS carry no marker
-    #     either.
-    # What makes it acceptable is the narrowing that IS applied: one pod, two
-    # ports. The widest thing it grants is "write telemetry", which the
-    # collector already accepts from every instrumented app by design.
-    #
-    # TIGHTENING PATH, deliberately not taken here — it is an app-chart change
-    # that is only safe once EVERY app has redeployed: add
-    # `clientLabel: platform-client.jterrazz.com/otel-collector` to the
-    # otel-collector catalog entry, then swap the bare `namespaceSelector: {}`
-    # for `namespaceSelector: {}` + `podSelector` on that label (the shape the
-    # gateway already uses). Land it before the apps carry the label and every
-    # app's telemetry stops silently.
+    # DELIBERATELY namespace-wide, because nothing narrower is expressible.
+    # NetworkPolicy has no globbing, so `prod-*` is not a selector; the only
+    # labels app namespaces carry are their own names; and the otel-collector
+    # catalog entry has no `clientLabel`, so opted-in app pods carry no marker.
+    # The narrowing that IS applied is one pod, two ports, and the widest thing
+    # granted is "write telemetry". Tightening means adding a clientLabel to that
+    # catalog entry — land it only AFTER every app has redeployed carrying it.
     - from:
         - namespaceSelector: {}
       ports:
@@ -183,28 +149,20 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: platform-telemetry
-    # -> the kube-apiserver, and -> the public internet on 443. One rule,
-    # because on this cluster they are the same destination pattern.
+    # -> the kube-apiserver, and -> the public internet on 443: one rule, because
+    # on this cluster they are the same destination pattern.
     #
-    # NOTE THE MISSING `except`. platform-networking's egress uses
-    # `0.0.0.0/0 except 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`; copying that
-    # shape here would break four of the six workloads in this namespace,
-    # because the apiserver is RFC1918 twice over: pods dial the `kubernetes`
-    # Service ClusterIP (10.43.0.1:443), which iptables DNATs to the node's own
-    # address (192.168.x.x:6443). Both ports are listed for exactly that reason
-    # — which one the filter sees depends on whether it runs before or after
-    # DNAT, and that is a CNI implementation detail, not a contract.
+    # NOTE THE MISSING `except`. Copying platform-networking's
+    # `0.0.0.0/0 except <RFC1918>` shape here breaks four of six workloads — the
+    # apiserver is RFC1918 twice over: pods dial the `kubernetes` ClusterIP
+    # (10.43.0.1:443), which iptables DNATs to the node's own 192.168.x.x:6443.
+    # Both ports are listed for that reason; which one the filter sees depends on
+    # whether it runs before or after DNAT, a CNI detail rather than a contract.
     #
-    # Who needs the apiserver:
-    #   grafana          both k8s-sidecars, watching grafana_dashboard=1 and
-    #                    grafana_alert=1 ConfigMaps in ALL namespaces
-    #   otel-collector   k8sattributes' pod + replicaset informers
-    #   victoria-metrics kubernetes_sd (endpointslice / node / pod discovery)
-    #   kube-state-metrics  its entire job
-    # Who needs 443 outbound:
-    #   otel-collector   cloud.langfuse.com (the otlphttp/langfuse exporter)
-    #   grafana          grafana.com, to install
-    #                    victoriametrics-logs-datasource on EVERY pod start
+    # Apiserver: grafana's two sidecars, otel-collector's informers,
+    # victoria-metrics' kubernetes_sd, kube-state-metrics. 443 outbound:
+    # otel-collector -> cloud.langfuse.com, grafana -> grafana.com (plugin
+    # install on EVERY pod start).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -256,9 +214,9 @@ spec:
     # today, so nothing in a prod-/next-/staging- namespace is a target yet. When
     # one appears, this egress rule is necessary but NOT sufficient — the app
     # chart's own policy (kubernetes/charts/app/templates/network-policy.yaml)
-    # admits Traefik, labelled platform clients and `allowedClients`, and not
-    # platform-telemetry. The target will read DOWN until that chart grows a
-    # scrape rule; the fix belongs there, not here.
+    # admits Traefik and labelled platform clients, not platform-telemetry. The
+    # target will read DOWN until that chart grows a scrape rule; the fix belongs
+    # there, not here.
     #
     # The blast radius is bounded on the FAR side rather than at this rule: a
     # scraper only ever GETs a /metrics path, and every namespace it reaches into

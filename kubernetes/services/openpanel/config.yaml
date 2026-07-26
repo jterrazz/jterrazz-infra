@@ -1,51 +1,18 @@
-# Shared non-secret env for op-api / op-worker / op-dashboard, consumed via
-# envFrom. Secrets (DB URL, cookie secret) come from the Infisical-synced
-# `openpanel-secrets` Secret instead — see secret.yaml.
+# Shared non-secret env for op-api / op-worker / op-dashboard, via envFrom;
+# secrets come from the Infisical-synced `openpanel-secrets` (secret.yaml).
+# DASHBOARD_URL / API_URL are the PRIVATE host only — the public ingest host
+# analytics.jterrazz.com carries /api/track alone, configured per sending site.
 #
-# URL model:
-#   DASHBOARD_URL / API_URL  -> the PRIVATE host only. The public ingest host
-#     analytics.jterrazz.com is deliberately absent: it carries /api/track
-#     alone, and each sending site configures that URL on its own side.
-#   API_URL_SSR -> in-cluster op-api Service, meant to bypass the ingress for
-#     server-side rendering.
-#
-#     ┌────────────────────────────────────────────────────────────────────────┐
-#     │ IMAGE 2.2.1 CANNOT HONOR THIS. Not "not observed to" — it does not     │
-#     │ contain the code. Established 2026-07-26, upstream:                    │
-#     │   * lindesvard/openpanel-dashboard:2.2.1 was pushed 2026-03-21, and it │
-#     │     is also what `latest`, `2.2` and `2` point at — there is no newer  │
-#     │     published dashboard image at all.                                  │
-#     │   * API_URL_SSR was ADDED to the dashboard on 2026-07-01, in commit    │
-#     │     c354d847 ("feat: add API_URL_SSR to override api url during ssr"), │
-#     │     touching only apps/start/src/integrations/tanstack-query/          │
-#     │     root-provider.tsx. That is three and a half months after the       │
-#     │     image was built, and it has never been released.                    │
-#     │   * At the tree the image was built from, the dashboard resolved its    │
-#     │     tRPC base URL in apps/start/src/server/get-envs.ts as              │
-#     │     `API_URL || NEXT_PUBLIC_API_URL` — ONE value, used identically on  │
-#     │     the server and in the browser. So there is no second variable to   │
-#     │     set instead: pointing API_URL at http://op-api:3000 would fix SSR  │
-#     │     and break every browser, which cannot resolve that name.           │
-#     └────────────────────────────────────────────────────────────────────────┘
-#
-#     The env is therefore kept — harmless, and it starts working the moment a
-#     dashboard image built after 2026-07-01 is published — and the CoreDNS
-#     fallback stays load-bearing: `openpanel.internal.jterrazz.com` is in
-#     `private_hostnames_via_traefik` (ansible/inventories/group_vars/all.yml),
-#     which maps the host to Traefik's ClusterIP in-cluster so the pod's SSR
-#     fetch of its own public URL resolves. The matching egress hole is the
-#     kube-system:443 rule in
-#     kubernetes/cluster/network-policies/platform-analytics.yaml, and the
-#     IngressRoute uses `cluster-internal-access` (not `private-access`) for the
-#     same reason. All four pieces go together; remove one and /onboarding fails
-#     with `[tRPC SSR Error] fetch failed`.
-#
-#     TO RETIRE THE WORKAROUND, in this order: confirm a dashboard tag newer
-#     than 2026-07-01 exists on Docker Hub, bump all three op-* images, confirm
-#     SSR works, then drop the hostname from private_hostnames_via_traefik +
-#     PRIVATE_HOSTS + PRIVATE_CHECKS (the hand-synced trio) and re-tighten the
-#     IngressRoute to `private-access`.
-#   CLICKHOUSE_URL path segment /openpanel = the DB created by init-db.sh.
+# API_URL_SSR IS INERT: dashboard image 2.2.1 predates the commit that added it
+# (2026-07-01) and is still the newest published tag; at that tree SSR and the
+# browser shared ONE url. So the dashboard's SSR fetch of its own public URL
+# rests on THREE things together — the host in `private_hostnames_via_traefik`
+# (group_vars/all.yml), the kube-system:443 egress rule in
+# cluster/network-policies/platform-analytics.yaml, and ingress.yaml using
+# `cluster-internal-access`; remove one and /onboarding fails with
+# `[tRPC SSR Error] fetch failed`. TO RETIRE: move to a dashboard image newer
+# than 2026-07-01, verify SSR, then drop the hostname from
+# private_hostnames_via_traefik + PRIVATE_CHECKS and re-tighten to private-access.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -60,6 +27,7 @@ data:
   # ALLOW_REGISTRATION is deliberately NOT here: it is a per-container env in
   # apps.yaml so the true/false flip stays greppable.
   REDIS_URL: "redis://op-redis:6379"
+  # The /openpanel path segment is the DB init-db.sh creates.
   CLICKHOUSE_URL: "http://op-clickhouse:8123/openpanel"
   DASHBOARD_URL: "https://openpanel.internal.jterrazz.com"
   API_URL: "https://openpanel.internal.jterrazz.com/api"

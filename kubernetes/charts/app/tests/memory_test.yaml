@@ -58,13 +58,7 @@ tests:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 1000000Ki
 
-  - it: falls back to the 256Mi default when no request is declared
-    set:
-      spec.resources: null
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].resources.requests.memory
-          value: 256Mi
-      - equal:
-          path: spec.template.spec.containers[0].resources.limits.memory
-          value: 512Mi
+# There is deliberately no "falls back when no request is declared" case: the
+# request/limit defaults live in values.yaml (spec.resources.cpu/memory), which
+# Helm merges in, exactly like spec.port and health.path. The template carries
+# no second copy of them to test.

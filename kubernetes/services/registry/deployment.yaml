@@ -51,40 +51,14 @@ spec:
           ports:
             - containerPort: 5000
           env:
-            # ┌──────────────────────────────────────────────────────────────┐
-            # │ THIS IS THE LOG-VOLUME FIX. Do not drop it as redundant.      │
-            # └──────────────────────────────────────────────────────────────┘
-            # The comment above is right that no config file is MOUNTED — but
-            # the image bakes one in, and it is the DEV config:
-            # distribution's Dockerfile does
-            # `COPY cmd/registry/config-dev.yml /etc/distribution/config.yml`,
-            # and config-dev.yml sets `log.level: debug` (plus
-            # log.fields.environment=development, which is why every live log
-            # line carried `environment=development`). REGISTRY_* env vars
-            # override that baked config, so this is where the level is fixed.
-            #
-            # Debug level costs far more than chatty request logs, because
-            # distribution ALWAYS installs a second span exporter that writes
-            # through the logger: tracing/tracing.go composes the autoexport
-            # exporter with `stdouttrace.New(WithWriter(loggerWriter))`, and
-            # tracing/loggerwriter.go emits each span at DEBUG. So at
-            # `level: debug` every request also dumps its spans as JSON.
-            # OTEL_TRACES_EXPORTER=none does NOT stop that — it only disables
-            # the autoexport half. The log level is the only switch.
-            #
-            # Measured against registry:3.1.1 locally: with level=debug a
-            # handful of requests produced span dumps and `authorizing request`
-            # lines; with level=info, zero `level=debug` lines at all.
+            # THE LOG-VOLUME FIX — do not drop as redundant. No config file is
+            # mounted, but the image BAKES IN distribution's config-dev.yml,
+            # which sets `log.level: debug`; REGISTRY_* env overrides it. At
+            # debug, distribution dumps every request's spans as JSON through
+            # the logger (tracing/loggerwriter.go emits each span at DEBUG), and
+            # OTEL_TRACES_EXPORTER does not stop that — the level is the switch.
             - name: REGISTRY_LOG_LEVEL
               value: "info"
-            # Belt-and-braces, and a no-op today: the image's own Dockerfile has
-            # set `ENV OTEL_TRACES_EXPORTER=none` since distribution v3.1.0
-            # ("fix: set OTEL traces to disabled by default"). Pinned here so a
-            # future image that drops the default does not start shipping OTLP
-            # spans to a localhost:4318 collector that does not exist, which
-            # surfaces as export-failure warnings rather than as a config change.
-            - name: OTEL_TRACES_EXPORTER
-              value: "none"
             - name: REGISTRY_AUTH
               value: "htpasswd"
             - name: REGISTRY_AUTH_HTPASSWD_REALM
@@ -136,7 +110,6 @@ spec:
               port: 5000
             periodSeconds: 15
             timeoutSeconds: 3
-            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /
@@ -144,7 +117,6 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 3
-            failureThreshold: 3
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -161,7 +133,6 @@ metadata:
   name: registry
   namespace: platform-registry
 spec:
-  type: ClusterIP
   ports:
     - port: 5000
       targetPort: 5000

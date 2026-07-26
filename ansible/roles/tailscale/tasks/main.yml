@@ -34,44 +34,18 @@
   notify: Restart systemd-resolved
   tags: [tailscale, dns]
 
-# ┌──────────────────────────────────────────────────────────────────────────────┐
-# │ upstream.conf ABOVE IS NOT ENOUGH, and this is the half that was missing.     │
-# └──────────────────────────────────────────────────────────────────────────────┘
-# `DNS=` in resolved.conf sets the GLOBAL resolver. It does not remove the
-# PER-LINK resolver that DHCP supplies, and resolved keeps both: with
-# upstream.conf in place, `resolvectl status` still showed
+# upstream.conf ABOVE IS NOT ENOUGH — this is the other half. `DNS=` in
+# resolved.conf sets the GLOBAL resolver and does NOT remove the PER-LINK one
+# DHCP supplies; resolved keeps both, and because eth0 has DefaultRoute it also
+# writes the bogus server into /run/systemd/resolve/resolv.conf. That file is
+# what kubelet pins with `--resolv-conf` (roles/k3s/templates/config.yaml.j2) and
+# therefore what CoreDNS forwards to, so a third of every in-cluster upstream
+# lookup was aimed at a resolver that silently drops queries.
 #
-#     Link 5 (eth0)
-#       Current DNS Server: 0.250.250.200
-#              DNS Servers: 0.250.250.200
-#            Default Route: yes
-#
-# and, because that link has DefaultRoute, resolved also wrote it into
-# /run/systemd/resolve/resolv.conf as a third nameserver:
-#
-#     nameserver 1.1.1.1
-#     nameserver 9.9.9.9
-#     nameserver 0.250.250.200
-#
-# That file is the one kubelet pins with `--resolv-conf` (roles/k3s/templates/
-# config.yaml.j2), so it is the upstream list CoreDNS forwards to — meaning
-# roughly a third of every in-cluster upstream lookup was aimed at a resolver
-# that silently drops queries, and only recovered on CoreDNS' retry.
-#
-# THE MECHANISM BELOW IS CHOSEN TO MATCH THIS HOST, verified read-only on it:
-#   systemctl is-active systemd-networkd      -> active
-#   /etc/systemd/network/eth0.network         -> exists, [Network] DHCP=true
-#   /etc/network/interfaces                   -> does not exist
-#   NetworkManager / dhcpcd                   -> not installed
-#   networkctl status eth0 | 'Network File:'  -> /etc/systemd/network/eth0.network
-# i.e. systemd-networkd is the DHCP client, so a dhclient.conf `supersede` or an
-# ifupdown hook would be dead config. networkd's own knob is `UseDNS=false`, and
-# networkd reads drop-ins from `<name>.network.d/*.conf` (with /etc/ winning over
-# /run/ and /usr/lib/), which is what lets this override OrbStack's own
-# eth0.network without replacing a file the image owns.
-#
-# `UseDomains=true` in that file is deliberately NOT touched — the DHCP search
-# domain is fine; it is only the SERVER that is bogus.
+# systemd-networkd is the DHCP client here, so its own knob is the fix:
+# `UseDNS=false` in a `<name>.network.d/*.conf` drop-in, which overrides
+# OrbStack's eth0.network without replacing a file the image owns. A
+# dhclient.conf `supersede` or an ifupdown hook would be dead config.
 - name: Discover the systemd-networkd file configuring the default interface
   ansible.builtin.shell:
     cmd: |
@@ -112,13 +86,10 @@
     dest: /etc/systemd/network/{{ tailscale_networkd_file.stdout | trim | basename }}.d/10-no-dhcp-dns.conf
     mode: "0644"
     content: |
-      # Managed by ansible/roles/tailscale. OrbStack's DHCP server hands out
-      # 0.250.250.200, which silently drops every query; the global DNS= in
-      # /etc/systemd/resolved.conf.d/upstream.conf cannot remove a per-link
-      # server, so it is refused here at the source instead.
-      #
-      # Only UseDNS is disabled. The DHCP address, route and search domain are
-      # still used.
+      # Managed by ansible/roles/tailscale. OrbStack's DHCP hands out
+      # 0.250.250.200, which silently drops every query; a global DNS= cannot
+      # remove a per-link server. Only UseDNS is disabled — address, route
+      # and search domain still come from DHCP.
       [DHCPv4]
       UseDNS=false
 

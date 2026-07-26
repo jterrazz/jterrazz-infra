@@ -90,11 +90,11 @@ through unchanged.
 */}}
 {{- define "app.memoryLimit" -}}
 {{- $resources := (fromYaml (include "app.merged" .)).resources | default dict -}}
-{{- $memLimit := $resources.memoryLimit | default "" -}}
+{{- $memLimit := $resources.memoryLimit -}}
 {{- if $memLimit -}}
 {{- $memLimit -}}
 {{- else -}}
-{{- $mem := $resources.memory | default "256Mi" -}}
+{{- $mem := $resources.memory -}}
 {{- $mi := include "app.memMi" $mem -}}
 {{- if $mi -}}
 {{- printf "%dMi" (mul ($mi | int) 2) -}}
@@ -105,16 +105,14 @@ through unchanged.
 {{- end -}}
 
 {{/*
-Node.js V8 old-space cap (MiB) ≈ 75% of the memory *request*, but ONLY for
-apps requesting >= 512Mi. Without --max-old-space-size V8 sizes its heap off
-the (2x) cgroup limit and drifts toward it, which only matters for large apps
-(e.g. signews-api at 768Mi). Below the 512Mi floor a derived cap (96MB for a
-128Mi Next.js service) starves SSR boot and crash-loops the pod, so return ""
-and let the caller skip injection. Also returns "" for non-Mi/Gi requests.
+Node.js V8 old-space cap (MiB) ≈ 75% of the memory *request*, and ONLY at or
+above a 512Mi request: below that floor a derived cap (96MB for a 128Mi Next.js
+service) starves SSR boot and crash-loops the pod. Returns "" there, and for a
+non-Mi/Gi request, so the caller skips injection entirely.
 */}}
 {{- define "app.nodeMaxOldSpace" -}}
 {{- $resources := (fromYaml (include "app.merged" .)).resources | default dict -}}
-{{- $mem := $resources.memory | default "256Mi" -}}
+{{- $mem := $resources.memory -}}
 {{- $reqMi := include "app.memMi" $mem | default "0" | int -}}
 {{- if ge $reqMi 512 -}}
 {{- div (mul $reqMi 3) 4 -}}

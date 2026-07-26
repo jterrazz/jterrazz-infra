@@ -34,18 +34,14 @@
     - { name: jetstack, url: "https://charts.jetstack.io" }
     - name: infisical
       url: "https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/"
-    # Grafana's OSS charts moved here in Jan 2026 and renumbered. Sole consumer
-    # today is `grafana` itself (loki and tempo left with the VictoriaMetrics
-    # migration). The OLD `grafana` repo is deliberately NOT added any more: its
-    # last consumer was Alloy, which was retired when pod-log shipping moved
-    # into the OTel collector.
+    # Grafana's OSS charts live here, renumbered; sole consumer is `grafana`.
+    # The OLD `grafana` repo is deliberately NOT added — nothing pulls from it.
     - { name: grafana-community, url: "https://grafana-community.github.io/helm-charts" }
     # The whole VictoriaMetrics family — victoria-metrics-single,
     # victoria-logs-single, victoria-traces-single.
     - { name: vm, url: "https://victoriametrics.github.io/helm-charts/" }
-    # Kept after the prometheus release was deleted: kube-state-metrics and
-    # prometheus-node-exporter are installed from here as standalone releases
-    # (both dashboards depend on the series they produce).
+    # kube-state-metrics and prometheus-node-exporter, each its own release —
+    # both dashboards depend on the series they produce.
     - { name: prometheus-community, url: "https://prometheus-community.github.io/helm-charts" }
     - { name: open-telemetry, url: "https://open-telemetry.github.io/opentelemetry-helm-charts" }
   register: repo_add

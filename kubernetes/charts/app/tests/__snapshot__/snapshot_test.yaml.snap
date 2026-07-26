@@ -117,21 +117,17 @@ matches the recorded render of the CI fixture:
               image: registry.internal.jterrazz.com/ci-test-app:latest
               imagePullPolicy: Always
               livenessProbe:
-                failureThreshold: 5
                 httpGet:
                   path: /health
                   port: 3000
-                periodSeconds: 30
                 timeoutSeconds: 5
               name: ci-test-app
               ports:
                 - containerPort: 3000
               readinessProbe:
-                failureThreshold: 3
                 httpGet:
                   path: /health
                   port: 3000
-                periodSeconds: 10
                 timeoutSeconds: 5
               resources:
                 limits:
@@ -152,7 +148,6 @@ matches the recorded render of the CI fixture:
                 httpGet:
                   path: /health
                   port: 3000
-                periodSeconds: 5
                 timeoutSeconds: 5
               volumeMounts:
                 - mountPath: /data
@@ -223,8 +218,6 @@ matches the recorded render of the CI fixture:
         - secretName: ci-test-app-secrets
           secretNamespace: NAMESPACE
           secretType: Opaque
-      syncConfig:
-        resyncInterval: 5m
   6: |
     apiVersion: cert-manager.io/v1
     kind: Certificate
@@ -373,18 +366,6 @@ matches the recorded render of the CI fixture:
             - namespaceSelector:
                 matchLabels:
                   kubernetes.io/metadata.name: kube-system
-          ports:
-            - port: 3000
-        - from:
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: prod-ci-test-client
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: next-ci-test-client
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: staging-ci-test-client
           ports:
             - port: 3000
       podSelector:

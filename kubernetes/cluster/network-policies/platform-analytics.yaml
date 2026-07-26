@@ -89,17 +89,26 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: platform-analytics
-    # op-dashboard SSR -> Traefik (kube-system) on 443: it fetches its OWN
-    # public URL from inside the pod and coredns-custom maps that host to
-    # Traefik's ClusterIP. Without this /onboarding fails with
-    # `[tRPC SSR Error] fetch failed`.
+    # op-dashboard SSR -> Traefik: it fetches its OWN public URL from inside the
+    # pod, and coredns-custom maps that host to Traefik's ClusterIP. Without
+    # this, /login and /onboarding render "Something went wrong / fetch failed"
+    # server-side — the page itself, not just a log line.
+    #
+    # THE PORT IS 8443, NOT 443. A NetworkPolicy is evaluated AFTER kube-proxy's
+    # DNAT, so the destination it sees is the Traefik POD's containerPort, not
+    # the Service port the client dialled. Writing 443 here (as this rule did)
+    # denies the traffic while reading as if it allows it, and the pod sees
+    # ECONNREFUSED with nothing logged anywhere. Same trap for any Service whose
+    # port differs from its targetPort. 8000 is web/HTTP, kept for symmetry.
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: TCP
-          port: 443
+          port: 8443
+        - protocol: TCP
+          port: 8000
     # op-* pods -> the internet on 443 (geo/IP enrichment, avatar fetches);
     # deliberately un-narrowed, see issue #3.
     - ports:

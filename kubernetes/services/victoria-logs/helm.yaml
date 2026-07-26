@@ -1,21 +1,11 @@
-# VictoriaLogs single-node — the log store, replacing Loki.
-#
-# Chart: vm/victoria-logs-single (see platform_chart_versions.victoria_logs).
-# Two write paths, both on :9428, both always on (no receiver flag to enable):
-#   * OTLP/HTTP from the OTel collector
-#       /insert/opentelemetry/v1/logs
-#       https://docs.victoriametrics.com/victorialogs/data-ingestion/opentelemetry/
-#   * Loki push — VictoriaLogs also implements Loki's `/loki/api/v1/push` under
-#       /insert/loki/api/v1/push
-#       https://docs.victoriametrics.com/victorialogs/data-ingestion/promtail/
-#     NOTHING WRITES TO IT TODAY. It is the reason the Alloy DaemonSet could
-#     have survived this migration on a one-line URL change; it did not, because
-#     pod-log shipping moved into the OTel collector's filelog receiver instead
-#     (see kubernetes/services/otel-collector/helm.yaml). Left documented
-#     because it is the cheapest possible fallback if that ever needs undoing.
-#
-# Query language is LogsQL, not LogQL. Stream filters look the same
-# (`{k8s.namespace.name="x"}`); the pipe operators do not — see docs/RUNBOOK.md.
+# VictoriaLogs single-node — the log store. Chart: vm/victoria-logs-single (see
+# platform_chart_versions.victoria_logs). Two write paths, both on :9428, both
+# always on (no receiver flag to enable):
+#   * OTLP/HTTP  /insert/opentelemetry/v1/logs  — what the OTel collector uses
+#   * Loki push  /insert/loki/api/v1/push       — nothing writes it today; kept
+#     documented because it is the cheapest fallback for pod-log shipping.
+# Query language is LogsQL, not LogQL: stream filters look the same
+# (`{k8s.namespace.name="x"}`), the pipe operators do not — see docs/RUNBOOK.md.
 
 server:
   # Without this the objects are named <release>-victoria-logs-single-server.
@@ -23,26 +13,17 @@ server:
 
   # DATA LOSS IF CHANGED — see the matching note in platform.yaml. `existingClaim`
   # also makes the chart drop its StatefulSet volumeClaimTemplate and mount this
-  # PVC by name, which is why no `claimName` override is needed here (loki did
-  # need one: storage-loki-0).
+  # PVC by name, which is why no `claimName` override is needed here.
   persistentVolume:
     existingClaim: victoria-logs-data
 
-  # Same 90d window Loki's limits_config.retention_period had — but this one is
-  # enforced: VictoriaLogs actually DELETES data past it (and rejects ingestion
-  # of entries outside it), whereas Loki's compactor retention-delete was off, so
-  # 90d was only a query-lookback bound and chunks accumulated forever.
+  # 90d, and actually ENFORCED: VictoriaLogs deletes data past the window and
+  # rejects ingestion of entries outside it.
   retentionPeriod: "90d"
 
-  # REQUEST right-sized down from 256Mi (2026-07-26). The 256Mi was inherited
-  # from what Loki asked for, and Loki's memory profile is not this one:
-  # VictoriaLogs' caches are budgeted from `-memory.allowedPercent` of the LIMIT
-  # (below), not from the request, so the request was buying scheduling headroom
-  # nothing used. Lowering it frees ~160Mi of the node's allocatable budget for
-  # workloads that actually touch their request.
-  #
-  # The LIMIT is deliberately UNCHANGED at 512Mi: that is the number
-  # allowedPercent tracks, so cutting it would shrink the caches for real.
+  # The REQUEST is small on purpose: the caches are budgeted from
+  # `-memory.allowedPercent` of the LIMIT, not of the request. Do not cut the
+  # 512Mi limit — that is the number the cache budget tracks.
   resources:
     requests:
       cpu: 25m
@@ -50,21 +31,11 @@ server:
     limits:
       memory: 512Mi
 
-  extraArgs:
-    # Victoria-family equivalent of the GOMEMLIMIT this repo set on Loki: the
-    # cache budget is a percentage of the detected cgroup memory limit (i.e. of
-    # resources.limits.memory above), so it tracks the limit instead of going
-    # stale the way an absolute `-memory.allowedBytes` would. 60 is also the
-    # upstream default; it is written out because it is a deliberate bound.
-    memory.allowedPercent: 60
-
   # The chart runs the server as uid 1000 / fsGroup 2000 with a read-only root
   # filesystem (podSecurityContext defaults, left alone). fsGroup does NOT apply
   # to hostPath volumes — the kubelet's ownership management skips that plugin —
   # so the DirectoryOrCreate hostPath arrives root-owned on a fresh node and the
-  # server cannot write to it. Same class of problem as the prometheus chown,
-  # except here it bites on FIRST boot: /var/lib/k8s-data/victoria-logs is a new
-  # directory, not an inherited one.
+  # server cannot write to it — this bites on FIRST boot.
   #
   # runAsUser 0 + runAsNonRoot false are required: the pod-level context forbids
   # root, and a container-level context overrides it.

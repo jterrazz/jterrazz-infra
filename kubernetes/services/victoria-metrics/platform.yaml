@@ -9,13 +9,10 @@
 #
 # No `claimName` override is needed even though the chart runs a StatefulSet:
 # setting `existingClaim` makes it drop its volumeClaimTemplate and mount this
-# PVC by name, so the storage-<release>-<ordinal> constraint that forced
-# claimName on loki/tempo does not apply here.
+# PVC by name, so the storage-<release>-<ordinal> constraint never applies.
 name: victoria-metrics
 storage:
-  # No pathSuffix — the PV lands on /var/lib/k8s-data/victoria-metrics, a NEW
-  # directory. Prometheus' /var/lib/k8s-data/prometheus is left untouched
-  # (Retain reclaim policy), which is the rollback.
+  # No pathSuffix — the PV lands on /var/lib/k8s-data/victoria-metrics.
   #
   # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
   data:

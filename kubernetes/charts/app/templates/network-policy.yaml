@@ -42,22 +42,6 @@ spec:
         - port: {{ $spec.port }}
     {{- end }}
     {{- end }}
-    {{- range (($spec.networkPolicy | default dict).allowedClients | default list) }}
-    # {{ . }} in prod-/next-/staging- -> this app on {{ $spec.port }}; sourced by
-    # spec.networkPolicy.allowedClients (one-off, non-platform traffic only).
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: prod-{{ . }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: next-{{ . }}
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: staging-{{ . }}
-      ports:
-        - port: {{ $spec.port }}
-    {{- end }}
   egress:
     # This app -> CoreDNS (kube-system) on 53; namespace-wide because a pod
     # resolves before it can know which namespace answered.

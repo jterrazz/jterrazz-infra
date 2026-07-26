@@ -7,43 +7,20 @@
 # Bitnami repo. A standalone mongo:7.0 (mongodb.yaml) on a `manual` hostPath
 # PVC replaces them — that survives a repave, `local-path` does not.
 
-replicaCount: 1
-
 # Tag pinned EXPLICITLY: an empty tag inherits the chart's appVersion, so the
 # running image would change under us with no diff here. Bump this together
-# with platform_chart_versions.librechat — chart 2.0.7 carries appVersion
-# v0.8.7, so the two now agree and the rc is gone (v0.8.7 stable is published;
-# there is no v0.8.8 yet).
+# with platform_chart_versions.librechat.
 image:
-  registry: registry.librechat.ai
-  repository: danny-avila/librechat
   tag: "v0.8.7"
 
 # IngressRoute (platform.yaml) targets a Service literally named `librechat`,
 # so override the chart's fullname to match.
 fullnameOverride: librechat
 
-service:
-  type: ClusterIP
-  port: 3080
-  targetPort: 3080
-
-# ┌──────────────────────────────────────────────────────────────────────────┐
-# │ MUST STAY FALSE. The chart's default is `ingress.enabled: true` with the  │
-# │ PLACEHOLDER host `chat.example.com` — so leaving this unset renders a     │
-# │ stock Ingress for a domain that is not ours. It was live in the cluster   │
-# │ (Ingress `librechat`, host chat.example.com) until 2026-07-26.            │
-# │                                                                          │
-# │ Harmless-looking and not harmless: k3s' Traefik reads Ingress objects as  │
-# │ well as IngressRoutes, so that object was a real, unauthenticated route   │
-# │ into the LibreChat Service — reachable by Host header alone, bypassing    │
-# │ the `private-access` middleware that the IngressRoute applies. It also    │
-# │ made cert-manager/Traefik logs read as if a second hostname were being    │
-# │ served.                                                                  │
-# │                                                                          │
-# │ The real route is the IngressRoute the SERVICE chart renders from         │
-# │ platform.yaml (chat.internal.jterrazz.com, `access: private`).                    │
-# └──────────────────────────────────────────────────────────────────────────┘
+# MUST STAY FALSE. The chart default is `true`, with the placeholder host
+# chat.example.com — and k3s' Traefik serves Ingress objects as well as
+# IngressRoutes, so leaving it unset publishes an unauthenticated route to this
+# Service that bypasses the `private-access` middleware platform.yaml applies.
 ingress:
   enabled: false
 
@@ -84,8 +61,6 @@ mongodb:
 redis:
   enabled: false
 meilisearch:
-  enabled: false
-librechat-rag-api:
   enabled: false
 
 librechat:

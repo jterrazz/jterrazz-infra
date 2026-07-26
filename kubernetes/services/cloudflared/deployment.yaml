@@ -79,13 +79,11 @@ spec:
               port: metrics
             initialDelaySeconds: 10
             periodSeconds: 30
-            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: metrics
             initialDelaySeconds: 5
-            periodSeconds: 10
           resources:
             requests:
               cpu: 10m

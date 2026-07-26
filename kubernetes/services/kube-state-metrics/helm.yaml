@@ -1,30 +1,14 @@
-# kube-state-metrics — the source of every kube_* series.
-#
-# STANDALONE RELEASE since the VictoriaMetrics migration. It used to arrive as a
-# subchart of the `prometheus` release (`kube-state-metrics.enabled: true` in
-# prometheus/helm.yaml); that release is gone, and VictoriaMetrics' chart has no
-# equivalent bundling, so it is installed directly from the same upstream repo at
-# the same chart major the prometheus chart depended on (`kube-state-metrics 8.0.*`).
+# kube-state-metrics — the source of every kube_* series. Its own release, from
+# prometheus-community, pinned by platform_chart_versions.kube_state_metrics.
 #
 # Nothing here configures scraping: the chart annotates its own Service with
-# prometheus.io/scrape=true, and victoria-metrics' `kubernetes-service-endpoints`
-# job keeps exactly that annotation. Discovery is order-independent, so this
-# release and victoria-metrics can be installed in either order.
-#
-# The release is named `kube-state-metrics`, which the chart's fullname helper
-# collapses to `kube-state-metrics` (release name already contains the chart
-# name) — no fullnameOverride needed. The Service name changes from
-# `prometheus-kube-state-metrics`, which moves the `service`/`instance` labels on
-# these series. Neither dashboard in this repo selects on them; both query the
-# kube_* metric names directly.
+# prometheus.io/scrape=true and victoria-metrics' `kubernetes-service-endpoints`
+# job keeps exactly that annotation, so the two releases install in either order.
+# Both dashboards query the kube_* metric names directly, never `service`/`instance`.
 
-# 3, down from the chart's 10. Same reasoning everywhere it appears in this
-# tree: stale ReplicaSets are objects in a SQLite-backed apiserver, and the
-# rollback they buy is one nobody performs on a stateless exporter.
+# 3, not the chart's 10 — see grafana/helm.yaml for the reasoning.
 revisionHistoryLimit: 3
 
-# Carried over verbatim from the `kube-state-metrics:` block of the old
-# prometheus/helm.yaml.
 resources:
   requests:
     cpu: 10m

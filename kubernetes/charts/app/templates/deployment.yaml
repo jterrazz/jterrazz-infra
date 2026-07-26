@@ -146,35 +146,31 @@ spec:
           {{- end }}
           resources:
             requests:
-              cpu: {{ $resources.cpu | default "100m" }}
-              memory: {{ $resources.memory | default "256Mi" }}
+              cpu: {{ $resources.cpu }}
+              memory: {{ $resources.memory }}
             limits:
               memory: {{ include "app.memoryLimit" . }}
-          # Gates liveness/readiness until the app first answers, so a slow or
-          # event-loop-busy boot cannot trip liveness and SIGKILL the pod
-          # mid-startup. timeoutSeconds defaults to 5s, not k8s's 1s: an app
-          # running in-process background work exceeds 1s on a trivial route.
+          # The startupProbe is what makes a slow boot safe, so liveness and
+          # readiness keep Kubernetes' own timings — a wedged pod is restarted
+          # in ~30s rather than the ~150s a lenient liveness probe would take.
+          # Only timeoutSeconds is raised: 1s is not enough for a Node app that
+          # also runs in-process background work.
           startupProbe:
             httpGet:
               path: {{ $health.path }}
               port: {{ $spec.port }}
-            periodSeconds: {{ $health.startupPeriodSeconds | default 5 }}
-            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
-            failureThreshold: {{ $health.startupFailureThreshold | default 60 }}
+            timeoutSeconds: {{ $health.timeoutSeconds }}
+            failureThreshold: {{ $health.startupFailureThreshold }}
           livenessProbe:
             httpGet:
               path: {{ $health.path }}
               port: {{ $spec.port }}
-            periodSeconds: {{ $health.periodSeconds | default 30 }}
-            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
-            failureThreshold: {{ $health.failureThreshold | default 5 }}
+            timeoutSeconds: {{ $health.timeoutSeconds }}
           readinessProbe:
             httpGet:
               path: {{ $health.path }}
               port: {{ $spec.port }}
-            periodSeconds: 10
-            timeoutSeconds: {{ $health.timeoutSeconds | default 5 }}
-            failureThreshold: 3
+            timeoutSeconds: {{ $health.timeoutSeconds }}
       {{- if or $spec.storage $spec.configFiles }}
       volumes:
         {{- if $spec.storage }}

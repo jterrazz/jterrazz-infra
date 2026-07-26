@@ -24,8 +24,9 @@ Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
 ```
 
 - **Upstream chart, our datastore.** The official LibreChat chart is installed
-  as-is, but every bundled datastore subchart is **disabled** (`mongodb`,
-  `redis`, `meilisearch`, `librechat-rag-api`). The bundled MongoDB is a
+  as-is, but every bundled datastore subchart is **off** — `mongodb`, `redis` and
+  `meilisearch` are disabled in `helm.yaml`; `librechat-rag-api` is already off by
+  chart default, so nothing sets it. The bundled MongoDB is a
   Bitnami subchart, deprecated upstream since 2025-09 and no longer pullable;
   it would also land on the default `local-path` StorageClass, which does not
   survive a repave. We run our own `mongo:7.0` Deployment instead

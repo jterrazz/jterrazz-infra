@@ -2,20 +2,11 @@
 {{- $spec := fromYaml (include "app.merged" .) -}}
 {{- if $spec.storage -}}
 {{- $appName := include "app.name" . -}}
-{{- /*
-Both fields are load-bearing, hence `required`: size sizes the PV *and* the
-PVC request (they must match for a manual bind), and mountPath is consumed by
-deployment.yaml. An empty value produces a PV that never binds or a container
-with an empty mountPath — both only diagnosable at runtime.
-*/ -}}
 {{- $size := $spec.storage.size | required (printf "spec.storage.size is required when spec.storage is set (app %s)" $appName) -}}
 {{- $_ := $spec.storage.mountPath | required (printf "spec.storage.mountPath is required when spec.storage is set (app %s)" $appName) -}}
-{{- /*
-NO nodeAffinity here: only app CI installs this chart and it passes no node
-name. If a second node is ever added, restore it here AND in
-kubernetes/charts/service/templates/storage.yaml together — an unpinned
-hostPath PV can bind on a node whose disk holds an empty directory.
-*/ -}}
+{{- /* No nodeAffinity: app CI passes no node name. A second node would need it
+here AND in charts/service/templates/storage.yaml, or a hostPath PV can bind
+where the disk is empty. */ -}}
 ---
 apiVersion: v1
 kind: PersistentVolume

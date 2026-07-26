@@ -15,48 +15,25 @@ resources:
     cpu: 1500m
     memory: 384Mi
 
-# revisionHistoryLimit 3, not the chart's 10. Ten ReplicaSets per Deployment is
-# ten objects in a SQLite-backed apiserver for a rollback nobody performs — the
-# real rollback for Grafana is the /var/lib/k8s-data/grafana restore (see the
-# chart-version note in group_vars), not `kubectl rollout undo`. Three keeps
-# `rollout undo` working for the one-step-back case.
+# 3, not the chart's 10: ten ReplicaSets per Deployment is ten objects in a
+# SQLite-backed apiserver for a rollback nobody performs. One step back suffices.
 revisionHistoryLimit: 3
 
 sidecar:
-  # ONE `resources` block covers EVERY sidecar the chart renders — the
-  # dashboards and alerts watchers here, plus datasources/notifiers/plugins if
-  # they are ever enabled. Verified in the chart's templates/_pod.tpl, where all
-  # five containers interpolate the same `.Values.sidecar.resources`; there is
-  # no per-sidecar override to set.
-  #
-  # Both sidecars were BestEffort until now, i.e. first in line for eviction,
-  # and evicting them is not visibly a Grafana outage — it is dashboards and
-  # alert rules silently ceasing to update while Grafana itself stays green.
-  # That is the worst shape of failure available here, which is why this is
-  # worth 2×64Mi of reservation.
-  #
-  # k8s-sidecar is a Python process holding a watch on ConfigMaps in ALL
-  # namespaces; 64Mi request / 128Mi limit is the upstream chart's own suggested
-  # sizing and matches what these two idle at.
+  # ONE `resources` block covers EVERY sidecar the chart renders (all five
+  # containers interpolate `.Values.sidecar.resources` in _pod.tpl — there is no
+  # per-sidecar override). Sized rather than left BestEffort because an evicted
+  # sidecar is not a visible outage: dashboards and alert rules silently stop
+  # updating while Grafana itself stays green.
   resources:
     requests:
       cpu: 10m
       memory: 64Mi
     limits:
       memory: 128Mi
-  image:
-    # PINNED EXPLICITLY to quay.io, which is also the chart 12.8.0 default — so
-    # this changes nothing about what runs and everything about what happens on
-    # the next chart bump. The registry default has moved between docker.io and
-    # quay.io across grafana chart majors, and because the node caches by full
-    # reference, a flip leaves TWO copies of the same k8s-sidecar image on a disk
-    # that is a virtiofs share of the Mac. Naming it here means the bump cannot
-    # silently re-pull the same bytes under a different name.
-    registry: quay.io
   dashboards:
     enabled: true
     searchNamespace: ALL
-    label: grafana_dashboard
     labelValue: "1"
     folderAnnotation: grafana_folder
     provider:
@@ -71,7 +48,6 @@ sidecar:
   alerts:
     enabled: true
     searchNamespace: ALL
-    label: grafana_alert
     labelValue: "1"
 
 # VictoriaLogs is not a core Grafana datasource — it ships as a plugin, signed
@@ -88,14 +64,12 @@ plugins:
 datasources:
   datasources.yaml:
     apiVersion: 1
-    # Provisioning applies these BEFORE the datasources below, which is what
-    # makes the UID reuse work: the rows are matched by NAME, so deleting
-    # "Prometheus"/"Loki"/"Tempo" frees the uids `prometheus`/`loki`/`tempo`
-    # for the renamed entries that follow. Without the delete, the insert
-    # collides on the unique uid index and Grafana logs a provisioning error.
-    #
-    # Keep the old names here even after the live rows are gone: this file is
-    # also what a from-scratch Grafana on a restored grafana.db reads.
+    # Provisioning applies these BEFORE the datasources below, and that ordering
+    # is what frees the uids: rows are matched by NAME, so these three deletes
+    # release `prometheus`/`loki`/`tempo` for the entries that follow. Without
+    # them the insert collides on the unique uid index and Grafana logs a
+    # provisioning error. Keep them even though the live rows are gone — this
+    # file is also what a from-scratch Grafana on a restored grafana.db reads.
     deleteDatasources:
       - name: Prometheus
         orgId: 1
@@ -103,55 +77,36 @@ datasources:
         orgId: 1
       - name: Tempo
         orgId: 1
-      - name: VictoriaMetrics
-        orgId: 1
-      - name: VictoriaLogs
-        orgId: 1
-      - name: VictoriaTraces
-        orgId: 1
     datasources:
-      # THE UIDs ARE THE STABLE IDENTIFIERS, and they deliberately keep their
-      # pre-migration values — `prometheus`, `loki`, `tempo` — even though the
-      # names and (for traces) the type changed. Every dashboard JSON in
+      # THE UIDs `prometheus` / `loki` / `tempo` ARE THE STABLE IDENTIFIERS and
+      # do NOT track the names or types below. Every dashboard JSON in
       # kubernetes/services/grafana/dashboards/ and every app-shipped alert rule
-      # (the app chart's `spec.alerts`) references a datasource by uid, and those
-      # live in other repos. Renaming a uid silently breaks all of them.
+      # (the app chart's `spec.alerts`, which lives in other repos) references a
+      # datasource by uid. Renaming a uid silently breaks all of them.
       - name: VictoriaMetrics
-        # Unchanged type: VictoriaMetrics serves the Prometheus HTTP API
-        # (/api/v1/query, /api/v1/query_range, /api/v1/labels …) on :8428, so
-        # Grafana's core prometheus datasource talks to it directly. MetricsQL is
-        # a superset of PromQL — every existing panel expression still parses.
+        # VictoriaMetrics serves the Prometheus HTTP API on :8428, so Grafana's
+        # core prometheus datasource talks to it directly; MetricsQL is a
+        # superset of PromQL, so every panel expression parses.
         type: prometheus
         uid: prometheus
         url: http://victoria-metrics.platform-telemetry.svc:8428
         isDefault: true
       - name: VictoriaLogs
-        # Type CHANGED (loki -> victoriametrics-logs-datasource) on the same uid.
-        # Nothing in this repo queries uid `loki` from a dashboard — the OTel
-        # collector writes to it and humans read it in Explore — so the change
-        # is invisible here. Query language is LogsQL, not LogQL.
+        # Query language is LogsQL, not LogQL.
         type: victoriametrics-logs-datasource
         uid: loki
         url: http://victoria-logs.platform-telemetry.svc:9428
       - name: VictoriaTraces
-        # Type CHANGED (tempo -> jaeger) on the same uid. VictoriaTraces exposes
-        # a Jaeger-compatible query API under /select/jaeger; the path is part of
-        # the URL, not a jsonData option.
+        # VictoriaTraces exposes a Jaeger-compatible query API under
+        # /select/jaeger; the path is part of the URL, not a jsonData option.
         # https://docs.victoriametrics.com/victoriatraces/querying/grafana/
         type: jaeger
         uid: tempo
         url: http://victoria-traces.platform-telemetry.svc:10428/select/jaeger
         jsonData:
-          # Correlations carried over unchanged. They point at the uids above,
-          # which is why keeping the uids stable mattered twice over. The jaeger
-          # datasource supports both options; the logs side now lands on the
-          # VictoriaLogs plugin rather than Loki, which is untested — nothing
-          # depends on it.
+          # These point at the uids above — the second reason uid stability
+          # matters.
           tracesToLogsV2:
             datasourceUid: loki
           tracesToMetrics:
             datasourceUid: prometheus
-
-# The IngressRoute comes from the service chart (platform.yaml) instead.
-ingress:
-  enabled: false

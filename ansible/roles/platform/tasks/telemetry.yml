@@ -47,12 +47,9 @@
   register: victoria_traces_result
   changed_when: "'has been upgraded' in victoria_traces_result.stdout or 'has been installed' in victoria_traces_result.stdout"
 
-# kube-state-metrics and node-exporter used to be subcharts of the `prometheus`
-# release. They are standalone releases now because the VictoriaMetrics chart
-# bundles no equivalent — but both dashboards still depend on them, so they are
-# not optional. Position in this file is arbitrary: VictoriaMetrics finds them
-# by Service annotation whenever they appear, so there is no ordering
-# constraint in either direction.
+# Both dashboards depend on these two, so neither is optional. Position in this
+# file is arbitrary: VictoriaMetrics finds them by Service annotation whenever
+# they appear, so there is no ordering constraint in either direction.
 - name: Install kube-state-metrics via Helm
   ansible.builtin.command: >
     helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics
@@ -82,9 +79,9 @@
     wait_secret_name: otel-collector-secrets
     wait_secret_namespace: platform-telemetry
 
-# After VictoriaLogs: the collector now owns pod-log shipping too (the filelog
-# receiver that replaced the Alloy DaemonSet), so an earlier install has nowhere
-# to write. It also exports to VictoriaMetrics and VictoriaTraces, both above.
+# AFTER VictoriaLogs: the collector owns pod-log shipping (its filelog receiver),
+# so an earlier install has nowhere to write. It also exports to VictoriaMetrics
+# and VictoriaTraces, both above.
 - name: Install the OpenTelemetry Collector via Helm
   ansible.builtin.command: >
     helm upgrade --install otel-collector open-telemetry/opentelemetry-collector

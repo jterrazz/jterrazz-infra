@@ -6,14 +6,12 @@
 # `server.persistentVolume.existingClaim: victoria-logs-data`, which is
 # <name>-<key> = victoria-logs-data.
 #
-# No `claimName` override, unlike loki's storage-loki-0: `existingClaim` makes
-# the chart drop its StatefulSet volumeClaimTemplate entirely, so the
-# storage-<release>-<ordinal> constraint never applies.
+# No `claimName` override needed: `existingClaim` makes the chart drop its
+# StatefulSet volumeClaimTemplate entirely, so the storage-<release>-<ordinal>
+# constraint never applies.
 name: victoria-logs
 storage:
-  # No pathSuffix — the PV lands on /var/lib/k8s-data/victoria-logs, a NEW
-  # directory. /var/lib/k8s-data/loki is left untouched (Retain), which is the
-  # rollback and the only remaining copy of the pre-migration logs.
+  # No pathSuffix — the PV lands on /var/lib/k8s-data/victoria-logs.
   #
   # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
   data:

@@ -1,7 +1,6 @@
 # Service-chart values for Grafana (Cert + private IngressRoute + storage).
 name: grafana
 host: grafana.internal.jterrazz.com
-port: 80
 # Tailnet-only. Grafana's datasources reach every telemetry backend in the
 # cluster; there is no reason for it to answer the public internet.
 access: private

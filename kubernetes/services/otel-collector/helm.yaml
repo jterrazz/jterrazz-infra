@@ -6,25 +6,18 @@ image:
 # a Deployment keeps the OTLP Service backed by exactly one endpoint.
 #
 # THE DAY A SECOND NODE EXISTS this must become `mode: daemonset`: a Deployment
-# lands on one node and would silently collect only that node's logs (the same
-# failure the alloy DaemonSet existed to avoid). Switching also means adding
-# `filter.node_from_env_var: K8S_NODE_NAME` to the k8sattributes processor and
-# rethinking where the OTLP receiver lives.
+# lands on one node and would silently collect only that node's logs. Switching
+# also means adding `filter.node_from_env_var: K8S_NODE_NAME` to the
+# k8s_attributes processor and rethinking where the OTLP receiver lives.
 mode: deployment
-replicaCount: 1
 
-# 3, not the chart's 10: ten ReplicaSets per Deployment is ten objects in a
-# SQLite-backed apiserver for a rollback nobody performs by hand.
+# 3, not the chart's 10 — see grafana/helm.yaml for the reasoning.
 revisionHistoryLimit: 3
 
 # No manual GOMEMLIMIT: this chart auto-injects it at 80% of
-# resources.limits.memory.
-#
-# +64Mi on both numbers versus the pre-filelog collector: the filelog receiver
-# holds a reader plus a recombine buffer per tailed file (~25 pods here) and the
-# k8sattributes processor keeps an informer cache of every pod in the cluster.
-# That is roughly what the alloy DaemonSet this replaced was given (128Mi limit)
-# and this pod absorbs its job.
+# resources.limits.memory. The headroom is for the filelog receiver (a reader
+# plus a recombine buffer per tailed file) and the k8s_attributes informer cache
+# of every pod in the cluster — both scale with pod count, not with traffic.
 resources:
   requests:
     cpu: 25m
@@ -32,12 +25,11 @@ resources:
   limits:
     memory: 320Mi
 
-# ROOT, deliberately, and only since pod-log collection moved here. The
-# container log files under /var/log/pods are created by containerd owned by
-# root with group-restricted permissions; the collector image's default
-# 10001:10001 cannot open them, and a collector that starts fine and ships
-# nothing is the worst possible outcome of this migration. The host mount below
-# is read-only, so what root buys is read access and nothing else.
+# ROOT, deliberately, for pod-log collection. The container log files under
+# /var/log/pods are created by containerd owned by root with group-restricted
+# permissions; the image's default 10001:10001 cannot open them, and a collector
+# that starts fine and ships nothing is the worst failure shape available here.
+# The host mount below is read-only, so root buys read access and nothing else.
 #
 # If this is ever tightened, verify by CONTENT, not by pod status:
 #   kubectl logs -n platform-telemetry deploy/otel-collector | grep -i 'permission denied'
@@ -99,16 +91,6 @@ clusterRole:
 fullnameOverride: otel-collector
 
 ports:
-  otlp:
-    enabled: true
-    containerPort: 4317
-    servicePort: 4317
-    protocol: TCP
-  otlp-http:
-    enabled: true
-    containerPort: 4318
-    servicePort: 4318
-    protocol: TCP
   jaeger-compact:
     enabled: false
   jaeger-thrift:
@@ -131,11 +113,8 @@ config:
   extensions:
     # Persists the filelog receiver's per-file read offsets to disk, which is
     # what makes `start_at: beginning` below safe. Merged with — not replacing —
-    # the chart's own `health_check` extension, since these are maps.
-    #
-    # Named `file_storage` (canonical). The old `file_storage/...`-less alias
-    # `filestorage` is the deprecated spelling; this one is what the component
-    # registers as today.
+    # the chart's own `health_check` extension, since these are maps. The name
+    # is `file_storage` (canonical); `filestorage` is the deprecated alias.
     file_storage:
       directory: /var/lib/otelcol-file-storage
       # A slow virtiofs-backed sync would otherwise stall the read loop. 10s is
@@ -150,9 +129,8 @@ config:
         http:
           endpoint: 0.0.0.0:4318
 
-    # Every pod's stdout/stderr, tailed off the node. This replaces the Grafana
-    # Alloy DaemonSet, which existed only because the log store was Loki-family;
-    # with VictoriaLogs there is no affinity left to pay a second agent for.
+    # Every pod's stdout/stderr, tailed off the node — so `kubectl logs` is never
+    # the only copy.
     #
     # /var/log/pods/*/*/*.log, NOT /var/log/containers/*.log: the `container`
     # operator's add_metadata_from_filepath (on by default) derives
@@ -170,27 +148,12 @@ config:
       # is the chart name, the pod name starts with the fullnameOverride above.
       exclude:
         - /var/log/pods/platform-telemetry_otel-collector-*_*/opentelemetry-collector/*.log
-      # Offsets are checkpointed to disk by the file_storage extension above, so
-      # a restart RESUMES each file where it stopped instead of re-reading it.
-      # That is what changes the `start_at` calculus:
-      #
-      #   was `end` — the only defence against a duplicate flood when there is
-      #   no persisted position, but it silently DROPS every line written while
-      #   the collector was down. Every `helm upgrade` of this release, every
-      #   OOM, every node reboot punched a hole in the log record, and a hole is
-      #   invisible in a log store: nothing tells you the minutes are missing.
-      #
-      #   now `beginning` — with `storage:` set, this applies only to files the
-      #   collector has NEVER seen, which is what it should always have meant.
-      #   A pod that starts, logs and exits between two collector restarts is now
-      #   captured whole rather than not at all.
-      #
-      # ONE-TIME COST on the first rollout after this change: the storage
-      # directory is empty, so every currently-open log file under /var/log/pods
-      # is read from its start. That is bounded by the kubelet's per-container
-      # log rotation (containerd rotates at 10Mi, and rotated files are named
-      # *.log.<ts> which `*.log` does not match), so it is a one-off burst of at
-      # most a few tens of MB, not "a node's worth of history".
+      # `beginning` is only safe BECAUSE `storage:` is set below: with persisted
+      # offsets it applies solely to files the collector has never seen, and a
+      # restart resumes every known file where it stopped. Without `storage:` it
+      # would re-read every open log file on every restart. `end` is the trap in
+      # the other direction — it silently drops every line written while the
+      # collector was down, and a hole in a log store is invisible.
       start_at: beginning
       storage: file_storage
       retry_on_failure:
@@ -216,25 +179,11 @@ config:
     # container operator already puts namespace/pod/container/uid on the
     # resource from the file path; this adds what only the API server knows —
     # the node, the owning Deployment, and the `app` pod label.
-    # `k8s_attributes`, NOT `k8sattributes`. This is the one component in this
-    # file whose name is actually deprecated, and it was the source of the
-    # chart's [DEPRECATION] render warnings: opentelemetry-collector chart
-    # 0.160.0 renamed the processor, and 0.162.0's `rewriteDeprecatedComponentNames`
-    # (default true) has been silently rewriting our old spelling on every
-    # render — "auto-rewrite will be removed in a future release" per the
-    # chart's UPGRADING.md. The chart's rename table (templates/_helpers.tpl,
-    # `deprecatedComponentRenames`) contains exactly two entries:
-    # k8sattributes -> k8s_attributes, and the resourcedetection detector
-    # k8snode -> k8s_api (which this file does not use).
-    #
-    # NOT renamed, because they are not aliases: `otlphttp`,
-    # `prometheusremotewrite` and `filelog` are the canonical component types —
-    # there is no `otlp_http` / `prometheus_remote_write` / `file_log`, and
-    # renaming them would fail config load outright. `service.telemetry.resource`
-    # is a chart-owned default (the chart sets the map itself), not something
-    # this values file spells.
-    #
-    # The new name needs Collector >= 0.146.0; chart 0.165.0 ships 0.156.0.
+    # `k8s_attributes`, NOT `k8sattributes` — the only deprecated component name
+    # in this file, and the chart's auto-rewrite of it will be removed upstream.
+    # Do NOT "fix" the others by analogy: `otlphttp`, `prometheusremotewrite` and
+    # `filelog` are canonical, and an `otlp_http` / `file_log` spelling fails
+    # config load outright. Needs Collector >= 0.146.0 (chart 0.165.0 ships 0.156.0).
     k8s_attributes:
       # Deployment mode, so no node filter: this collector watches every pod in
       # the cluster. A daemonset would add filter.node_from_env_var.
@@ -257,8 +206,8 @@ config:
           - k8s.deployment.name
         labels:
           # `app` is carried by every workload in this repo (both charts stamp
-          # it, the raw manifests set it by hand), which is what made
-          # {app="op-api"} work across restarts under Alloy. Kept.
+          # it, the raw manifests set it by hand), so {app="op-api"} keeps working
+          # across restarts.
           - tag_name: app
             key: app
             from: pod
@@ -303,10 +252,9 @@ config:
         # Pins which resource attributes define a log STREAM. Without it every
         # attribute qualifies — including k8s.pod.uid, which changes on every
         # reschedule, and k8s.node.name — and stream cardinality is the one way
-        # to make a small log store miserable. This list is exactly the four
-        # labels the Alloy config promoted, for the same reason it kept them
-        # short. Everything else (uid, node, deployment, file path) is still
-        # ingested and queryable, just as a regular field.
+        # to make a small log store miserable. Keep this list short. Everything
+        # else (uid, node, deployment, file path) is still ingested and
+        # queryable, just as a regular field.
         VL-Stream-Fields: "k8s.namespace.name,k8s.pod.name,k8s.container.name,app"
     prometheusremotewrite:
       # VictoriaMetrics accepts Prometheus remote-write v1 on /api/v1/write with
@@ -353,10 +301,10 @@ config:
         receivers: [otlp]
         processors: [batch]
         exporters: [otlphttp/victoria-logs]
-      # Pod stdout/stderr, the job the Alloy DaemonSet used to do. A SEPARATE
-      # pipeline, not extra receivers on `logs` above: k8sattributes is
-      # meaningless for app OTLP logs (its pod_association keys on a uid only
-      # the filelog path carries) and the stream-field policy differs.
+      # Pod stdout/stderr. A SEPARATE pipeline, not extra receivers on `logs`
+      # above: k8s_attributes is meaningless for app OTLP logs (its
+      # pod_association keys on a uid only the filelog path carries) and the
+      # stream-field policy differs.
       logs/pods:
         receivers: [filelog]
         processors: [k8s_attributes, batch]
