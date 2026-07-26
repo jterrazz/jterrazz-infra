@@ -9,3 +9,16 @@ storage:
   # themselves are provisioned from ConfigMaps and are not stored here.
   data:
     size: 1Gi
+    # NODE-LOCAL, NOT the Mac-side share, and this is the fix for a real
+    # outage: Grafana 13 keeps its unified-storage SQLite plus a bleve search
+    # index plus 258MB of installed plugins in this directory and works them
+    # continuously. Over virtiofs that became a CPU spin that pegged the pod
+    # twice on 2026-07-26 — 9 cores the first time, then 1.5 (the cap) with
+    # /api/health 503ing behind it.
+    #
+    # Safe to lose, which is why this volume and not another: everything that
+    # matters here is provisioned from git (dashboards and alert rules as
+    # ConfigMaps, datasources from this chart's values, the admin password
+    # from --set). A repave resets logins, annotations and dashboard-version
+    # history, and nothing else.
+    nodeLocalPath: /var/lib/grafana-node-local
