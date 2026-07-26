@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@pulumi/cloudflare": "^6.18.0",
+    "@pulumi/command": "^1.2.1",
     "@pulumi/pulumi": "^3.254.0"
   },
   "devDependencies": {
