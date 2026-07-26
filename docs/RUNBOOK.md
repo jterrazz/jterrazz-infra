@@ -38,6 +38,11 @@ on the host.
 |                                    | `TAILSCALE_OAUTH_CLIENT_SECRET` | `tailscale_oauth_client_secret` | site only     |
 | `/jterrazz-infrastructure/grafana` | `ADMIN_PASSWORD`                | `grafana_admin_password`        | site+platform |
 
+`BACKUP_ENCRYPTION_KEY` also lives at `/jterrazz-infrastructure` but is **not**
+in the table above: no deploy reads it, only `make backup` does, and it is
+fetched directly rather than through the extra-vars file. See
+[Backups](#backups).
+
 The `platform` scope drops the Tailscale OAuth pair — `platform.yml` only reads
 Tailscale *facts* off an already-joined node. `infisical_client_id` /
 `infisical_client_secret` are the one exception to all of this: they come from
@@ -65,11 +70,7 @@ is `DOCKER_REGISTRY_PASSWORD` at the root path, bcrypt-hashed into the
 The default `infisical-secret-path` of `jterrazz-actions/actions/infra-connect`,
 consumed by every app repo's pipeline: `DOCKER_REGISTRY_USERNAME`,
 `DOCKER_REGISTRY_PASSWORD`, `TAILSCALE_OAUTH_CLIENT_ID`,
-`TAILSCALE_OAUTH_CLIENT_SECRET`, `KUBECONFIG_BASE64`, `BACKUP_ENCRYPTION_KEY`.
-
-`BACKUP_ENCRYPTION_KEY` is not read by CI — it lives here because this path is
-the one store that outlives the Mac. It is the only way to open anything
-`make backup` has ever written; see [Backups](#backups).
+`TAILSCALE_OAUTH_CLIENT_SECRET`, `KUBECONFIG_BASE64`.
 
 **`KUBECONFIG_BASE64` must be refreshed after every repave.** k3s regenerates
 its CA on a fresh install, so the old client certificate stops authenticating
@@ -116,7 +117,6 @@ gh secret set INFISICAL_CLIENT_SECRET -R jterrazz/<repo> --body "$INFISICAL_CLIE
 PULUMI_ACCESS_TOKEN
 INFISICAL_CLIENT_ID
 INFISICAL_CLIENT_SECRET
-BACKUP_ENCRYPTION_KEY   # optional here; make backup also accepts it from the env
 ```
 
 ## Security controls
@@ -256,7 +256,12 @@ an archive nobody has opened is a guess, not a backup.
 databases are captured mid-write: `systemctl stop k3s` does NOT stop the
 containers, which is how two earlier backups came out torn.
 
-The passphrase is `BACKUP_ENCRYPTION_KEY` in Infisical at `/jterrazz-actions`.
+The passphrase is `BACKUP_ENCRYPTION_KEY` in Infisical at
+`/jterrazz-infrastructure` (env `prod`). Nothing local is needed: with
+`INFISICAL_CLIENT_ID` / `INFISICAL_CLIENT_SECRET` in `.env`, `make backup`
+fetches it itself. It is deliberately NOT routed through
+`scripts/infisical-vars.py`, which writes the deploy extra-vars onto the node —
+this key has no business there.
 It is **permanent**: rotating it does not re-encrypt existing archives, it
 orphans them, and losing it loses every archive it ever produced. That is the
 whole point — a copy on Time Machine, an external disk or a future machine is

@@ -11,7 +11,8 @@
 #
 # THE PASSPHRASE IS PERMANENT. Rotating it does not re-encrypt old archives,
 # it only orphans them. Keep it in Infisical (/jterrazz-actions,
-# BACKUP_ENCRYPTION_KEY) — losing it loses every archive it ever made, and
+# BACKUP_ENCRYPTION_KEY under /jterrazz-infrastructure) — losing it loses
+# every archive it ever made, and
 # there is no recovery path by design.
 #
 #   ./scripts/backup.sh                 # snapshot, workloads left running
@@ -28,6 +29,8 @@ OUT_DIR="${BACKUP_OUT_DIR:-$HOME/.jterrazz-infrastructure/backups}"
 # 600k iterations: openssl's own default is 10k, which is a decade out of date
 # for a key this long-lived.
 ITER=600000
+# Where the passphrase lives. Same folder as the rest of this repo's secrets.
+KEY_PATH=/jterrazz-infrastructure
 
 usage() { echo "usage: $0 [--consistent] [--verify-only <archive>]"; exit 2; }
 
@@ -41,9 +44,31 @@ require_key() {
             set +a
         fi
     fi
+    # Still nothing: pull it from Infisical directly. Deliberately NOT routed
+    # through infisical-vars.py — that writes the deploy extra-vars file onto
+    # the node, and this key has no business there.
+    if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ] && [ -n "${INFISICAL_CLIENT_ID:-}" ]; then
+        info "Fetching BACKUP_ENCRYPTION_KEY from Infisical"
+        local token
+        token=$(curl -s -X POST https://eu.infisical.com/api/v1/auth/universal-auth/login \
+                    -H 'Content-Type: application/json' \
+                    -d "{\"clientId\":\"$INFISICAL_CLIENT_ID\",\"clientSecret\":\"$INFISICAL_CLIENT_SECRET\"}" \
+                | python3 -c 'import sys,json; print(json.load(sys.stdin).get("accessToken",""))')
+        if [ -n "$token" ]; then
+            BACKUP_ENCRYPTION_KEY=$(curl -s -G "https://eu.infisical.com/api/v3/secrets/raw" \
+                    -H "Authorization: Bearer $token" \
+                    --data-urlencode "workspaceSlug=jterrazz" \
+                    --data-urlencode "environment=prod" \
+                    --data-urlencode "secretPath=$KEY_PATH" \
+                | python3 -c 'import sys,json; s=json.load(sys.stdin).get("secrets") or []; print(next((x["secretValue"] for x in s if x["secretKey"]=="BACKUP_ENCRYPTION_KEY"), ""))')
+            export BACKUP_ENCRYPTION_KEY
+        fi
+    fi
+
     if [ -z "${BACKUP_ENCRYPTION_KEY:-}" ]; then
         error "BACKUP_ENCRYPTION_KEY is not set."
-        error "It lives in Infisical at /jterrazz-actions. Export it, or put it in .env."
+        error "It lives in Infisical at $KEY_PATH (env prod). Export it, or put"
+        error "INFISICAL_CLIENT_ID / INFISICAL_CLIENT_SECRET in .env and re-run."
         exit 1
     fi
 }
