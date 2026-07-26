@@ -1,15 +1,14 @@
 installCRDs: true
-# Shorter leader election lease for faster recovery after reboot
-# Single-node cluster, so we can use aggressive timeouts
+# Aggressive leader-election timeouts: single-node, so there is no peer to
+# race and a shorter lease means faster recovery after a reboot.
 global:
   leaderElection:
     leaseDuration: 15s
     renewDeadline: 10s
     retryPeriod: 2s
-# Memory limits raised from 32-64Mi: these Go components spike well above
-# idle RSS during cert reconciliation / CRD-watch reconnects (the webhook was
-# OOM-killed at its 32Mi cap, flipping it 0/1 and timing out `helm --wait`
-# during platform deploys). 128Mi gives headroom while staying tiny.
+# 128Mi floor on every component: these Go processes spike well above idle RSS
+# during cert reconciliation and CRD-watch reconnects, and an OOM-killed
+# webhook flips 0/1 and times out `helm --wait` for the whole platform deploy.
 resources:
   requests:
     cpu: 100m

@@ -93,27 +93,23 @@ curl -s "http://$POD_IP:2000/metrics" | grep '^cloudflared_tunnel_total_requests
 The Cloudflare dashboard shows the tunnel as **HEALTHY** within ~30s of
 pod start.
 
-## Swapping between Hetzner and OrbStack
-
-Both clusters can run cloudflared with the same `CLOUDFLARE_TUNNEL_TOKEN`
-— a tunnel allows up to 4 connectors and Cloudflare load-balances
-between them. To make only one serve traffic, scale the other to 0:
+A tunnel accepts up to 4 connectors and Cloudflare load-balances between them,
+so a second cluster brought up with the same `CLOUDFLARE_TUNNEL_TOKEN` starts
+serving traffic immediately. To stop one from serving without deleting it:
 
 ```bash
-# On the cluster that should NOT serve:
 kubectl scale -n platform-networking deploy/cloudflared --replicas=0
 ```
 
-## OrbStack-specific tweaks
+## Two settings that are load-bearing here
 
-The deployment runs with `hostNetwork: true`. Without it, the CNI
-bridge on the OrbStack VM mangles outbound TCP/7844 to the Cloudflare
-edge and cloudflared's tunnel handshake gets RSTed (`curl` from the
-same pod IP connects fine — only cloudflared's specific socket flow
-fails). hostNetwork bypasses CNI and traffic goes straight through the
-host's stack. Harmless on Hetzner.
+`hostNetwork: true`. Without it, the CNI bridge on the OrbStack VM mangles
+outbound TCP/7844 to the Cloudflare edge and cloudflared's tunnel handshake
+gets RSTed — while `curl` from the same pod IP connects fine, so only
+cloudflared's specific socket flow fails. hostNetwork bypasses CNI and traffic
+goes straight through the host's stack.
 
-Also, `--protocol http2` is set to avoid OrbStack's NAT eating
-outbound UDP/443 (QUIC). HTTP/2 over TCP traverses the NAT cleanly.
-Hetzner doesn't need it but we keep both clusters on the same protocol
-for consistency.
+`--protocol http2`, to avoid OrbStack's NAT eating outbound UDP/443 (QUIC).
+HTTP/2 over TCP traverses the NAT cleanly. Both settings are harmless on a
+target that doesn't need them; neither should be removed without testing the
+handshake on a fresh VM.

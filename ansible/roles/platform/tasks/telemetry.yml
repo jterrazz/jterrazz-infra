@@ -1,16 +1,10 @@
 ---
-# ========================================
-# Telemetry: Grafana + Loki + Tempo + Prometheus + OTel Collector + Alloy
-# ========================================
-# The platform-telemetry namespace is declared in
-# kubernetes/cluster/namespaces.yaml and applied by cluster-base.yml — it is
-# not created imperatively here.
+# The platform-telemetry namespace comes from
+# kubernetes/cluster/namespaces.yaml via cluster-base.yml, never `kubectl
+# create ns` here.
 
-# Storage first, for all four stateful members at once. Their PVs used to come
-# from a hand-written telemetry-storage.yaml.j2 rendered by Ansible; they are
-# now ordinary `storage:` entries in each service's service.yaml, so the
-# service chart emits them (including the nodeAffinity that must reference the
-# real node name) exactly like every other platform service.
+# Storage for all four stateful members first — each upstream `helm --wait`
+# below blocks on a pod that cannot schedule without its PVC.
 - name: Deploy the telemetry service-chart resources
   ansible.builtin.include_tasks: service-charts.yml
   vars:
@@ -46,11 +40,7 @@
   register: loki_result
   changed_when: "'has been upgraded' in loki_result.stdout or 'has been installed' in loki_result.stdout"
 
-# Alloy is the log SHIPPER for Loki (it tails container logs via
-# loki.source.kubernetes and writes to loki.write) — Loki itself only stores
-# what something else sends it, so this must come after the Loki install or
-# the first scrape has nowhere to push. Values, including the write URL, are
-# in kubernetes/services/alloy/helm.yaml.
+# After Loki: Alloy pushes to it, so an earlier install has nowhere to write.
 - name: Install Grafana Alloy via Helm
   ansible.builtin.command: >
     helm upgrade --install alloy grafana/alloy
@@ -87,7 +77,7 @@
 - name: Wait for the OTel Collector credentials
   ansible.builtin.include_tasks: wait-for-secret.yml
   vars:
-    wait_secret_name: otel-collector-credentials-env
+    wait_secret_name: otel-collector-secrets
     wait_secret_namespace: platform-telemetry
 
 - name: Install the OpenTelemetry Collector via Helm
@@ -103,8 +93,8 @@
   register: otel_result
   changed_when: "'has been upgraded' in otel_result.stdout or 'has been installed' in otel_result.stdout"
 
-# argv form so the admin password is never assembled by a shell, and no_log so
-# it never reaches the Ansible output or a CI log.
+# argv form so the admin password is never assembled by a shell; no_log so it
+# never reaches the Ansible output or a CI log.
 - name: Install Grafana via Helm
   ansible.builtin.command:
     argv:

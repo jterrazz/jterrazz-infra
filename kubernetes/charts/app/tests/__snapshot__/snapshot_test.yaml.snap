@@ -1,0 +1,426 @@
+matches the recorded render of the CI fixture:
+  1: |
+    apiVersion: v1
+    data:
+      ci-test.json: |
+        { "fixture": true }
+    kind: ConfigMap
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-config
+  2: |
+    apiVersion: v1
+    data:
+      ci-test-app-overview.json: |
+        { "title": "ci-test-app overview", "panels": [] }
+    kind: ConfigMap
+    metadata:
+      annotations:
+        grafana_folder: ci-test-app
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+        grafana_dashboard: "1"
+      name: ci-test-app-dashboard-overview
+  3: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app
+    spec:
+      replicas: 1
+      revisionHistoryLimit: 3
+      selector:
+        matchLabels:
+          app: ci-test-app
+          environment: prod
+      strategy:
+        type: Recreate
+      template:
+        metadata:
+          annotations:
+            rollout/release-revision: "0"
+          labels:
+            app: ci-test-app
+            environment: prod
+            platform-client.jterrazz.com/gateway-intelligence: "true"
+        spec:
+          containers:
+            - env:
+                - name: PORT
+                  value: "3000"
+                - name: LOG_LEVEL
+                  value: info
+                - name: OTEL_SERVICE_NAME
+                  value: ci-test-app
+                - name: OTEL_RESOURCE_ATTRIBUTES
+                  value: deployment.environment=prod
+                - name: GATEWAY_INTELLIGENCE_BASE_URL
+                  value: http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1
+                - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                  value: http://otel-collector.platform-telemetry:4318
+                - name: NODE_OPTIONS
+                  value: --max-old-space-size=384
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      key: DATABASE_URL
+                      name: ci-test-app-secrets
+                - name: API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      key: API_TOKEN
+                      name: ci-test-app-secrets
+              image: registry.jterrazz.com/ci-test-app:latest
+              imagePullPolicy: Always
+              livenessProbe:
+                failureThreshold: 5
+                httpGet:
+                  path: /health
+                  port: 3000
+                periodSeconds: 30
+                timeoutSeconds: 5
+              name: ci-test-app
+              ports:
+                - containerPort: 3000
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  path: /health
+                  port: 3000
+                periodSeconds: 10
+                timeoutSeconds: 5
+              resources:
+                limits:
+                  memory: 1Gi
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              startupProbe:
+                failureThreshold: 60
+                httpGet:
+                  path: /health
+                  port: 3000
+                periodSeconds: 5
+                timeoutSeconds: 5
+              volumeMounts:
+                - mountPath: /data
+                  name: data
+                - mountPath: /app/ci-test.json
+                  name: config
+                  readOnly: true
+                  subPath: ci-test.json
+          imagePullSecrets:
+            - name: registry-credentials
+          initContainers:
+            - command:
+                - sh
+                - -c
+                - chown -R 1000:1000 /data
+              image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
+              name: fix-permissions
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  add:
+                    - CHOWN
+                    - FOWNER
+                    - DAC_OVERRIDE
+                  drop:
+                    - ALL
+                runAsNonRoot: false
+                runAsUser: 0
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - mountPath: /data
+                  name: data
+          securityContext:
+            fsGroup: 1000
+            runAsGroup: 1000
+            runAsUser: 1000
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: ci-test-app-data
+            - configMap:
+                name: ci-test-app-config
+              name: config
+  4: |
+    apiVersion: secrets.infisical.com/v1alpha1
+    kind: InfisicalSecret
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-infisical
+    spec:
+      authentication:
+        universalAuth:
+          credentialsRef:
+            secretName: infisical-credentials
+            secretNamespace: platform-secrets
+          secretsScope:
+            envSlug: prod
+            projectSlug: jterrazz
+            secretsPath: /jterrazz-ci/ci-test-app
+      hostAPI: https://eu.infisical.com
+      managedSecretReference:
+        secretName: ci-test-app-secrets
+        secretNamespace: NAMESPACE
+        secretType: Opaque
+      resyncInterval: 60
+  5: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-ci-test-app-internal-jterrazz-com-tls
+    spec:
+      dnsNames:
+        - ci-test-app-internal.jterrazz.com
+      issuerRef:
+        kind: ClusterIssuer
+        name: letsencrypt-production
+      secretName: ci-test-app-ci-test-app-internal-jterrazz-com-tls
+  6: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-ci-test-app-jterrazz-com-tls
+    spec:
+      dnsNames:
+        - ci-test-app.jterrazz.com
+      issuerRef:
+        kind: ClusterIssuer
+        name: letsencrypt-production
+      secretName: ci-test-app-ci-test-app-jterrazz-com-tls
+  7: |
+    apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-0-strip-prefix
+    spec:
+      stripPrefix:
+        prefixes:
+          - /api
+  8: |
+    apiVersion: traefik.io/v1alpha1
+    kind: IngressRoute
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-0
+    spec:
+      entryPoints:
+        - websecure
+      routes:
+        - kind: Rule
+          match: Host(`ci-test-app.jterrazz.com`) && PathPrefix(`/api`)
+          middlewares:
+            - name: ci-test-app-0-strip-prefix
+          services:
+            - name: ci-test-app
+              port: 80
+      tls:
+        secretName: ci-test-app-ci-test-app-jterrazz-com-tls
+  9: |
+    apiVersion: traefik.io/v1alpha1
+    kind: IngressRoute
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-1
+    spec:
+      entryPoints:
+        - websecure
+      routes:
+        - kind: Rule
+          match: Host(`ci-test-app-internal.jterrazz.com`)
+          middlewares:
+            - name: private-access
+              namespace: platform-networking
+          services:
+            - name: ci-test-app
+              port: 80
+      tls:
+        secretName: ci-test-app-ci-test-app-internal-jterrazz-com-tls
+  10: |
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app
+    spec:
+      egress:
+        - ports:
+            - port: 53
+              protocol: UDP
+            - port: 53
+              protocol: TCP
+          to:
+            - namespaceSelector: {}
+        - to:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except:
+                  - 10.0.0.0/8
+                  - 172.16.0.0/12
+                  - 192.168.0.0/16
+        - ports:
+            - port: 4317
+              protocol: TCP
+            - port: 4318
+              protocol: TCP
+          to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: platform-telemetry
+        - ports:
+            - port: 8317
+              protocol: TCP
+          to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: prod-gateway-intelligence
+      ingress:
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: kube-system
+          ports:
+            - port: 3000
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: prod-ci-test-client
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: next-ci-test-client
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: staging-ci-test-client
+          ports:
+            - port: 3000
+      podSelector:
+        matchLabels:
+          app: ci-test-app
+          environment: prod
+      policyTypes:
+        - Ingress
+        - Egress
+  11: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app
+    spec:
+      ports:
+        - port: 80
+          protocol: TCP
+          targetPort: 3000
+      selector:
+        app: ci-test-app
+        environment: prod
+      type: ClusterIP
+  12: |
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-prod-data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      capacity:
+        storage: 2Gi
+      hostPath:
+        path: /var/lib/k8s-data/ci-test-app-prod
+        type: DirectoryOrCreate
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: manual
+  13: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      labels:
+        app: ci-test-app
+        app.kubernetes.io/instance: RELEASE-NAME
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-app
+        environment: prod
+      name: ci-test-app-data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 2Gi
+      storageClassName: manual
+      volumeName: ci-test-app-prod-data

@@ -17,22 +17,22 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow traffic from Traefik (ingress controller in kube-system)
+    # Traefik (kube-system) -> this app on {{ $spec.port }}: every IngressRoute
+    # this chart renders terminates here, so without it the app is unreachable.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ $spec.port }}
-    {{- /* Server side: if THIS app is itself a platform-service catalog target
-           carrying a clientLabel (e.g. gateway-intelligence), auto-render an
-           ingress rule that admits any pod (in any namespace) stamped with that
-           label. Consumers opt in via spec.platformServices, which stamps the
-           label — so a new consumer needs ZERO edit here. Replaces the old
-           per-name allowedClients enumeration for platform traffic. */}}
+    {{- /* Server side: if THIS app is a catalog target carrying a clientLabel,
+           admit any pod (any namespace) stamped with it. Consumers opt in via
+           spec.platformServices, so a new consumer needs ZERO edit here. */}}
     {{- if hasKey $catalog $appName }}
     {{- $selfEntry := index $catalog $appName }}
     {{- if $selfEntry.clientLabel }}
+    # Opted-in platform consumers (labelled {{ $selfEntry.clientLabel }}, any
+    # namespace) -> this app on {{ $spec.port }}; sourced by app.platformCatalog.
     - from:
         - namespaceSelector: {}
           podSelector:
@@ -42,9 +42,9 @@ spec:
         - port: {{ $spec.port }}
     {{- end }}
     {{- end }}
-    {{- /* Bespoke ingress: explicitly declared client apps by namespace name.
-           Kept for non-platform / one-off ingress only. */}}
     {{- range (($spec.networkPolicy | default dict).allowedClients | default list) }}
+    # {{ . }} in prod-/next-/staging- -> this app on {{ $spec.port }}; sourced by
+    # spec.networkPolicy.allowedClients (one-off, non-platform traffic only).
     - from:
         - namespaceSelector:
             matchLabels:
@@ -59,7 +59,8 @@ spec:
         - port: {{ $spec.port }}
     {{- end }}
   egress:
-    # Allow DNS resolution
+    # This app -> CoreDNS (kube-system) on 53; namespace-wide because a pod
+    # resolves before it can know which namespace answered.
     - to:
         - namespaceSelector: {}
       ports:
@@ -67,7 +68,8 @@ spec:
           protocol: UDP
         - port: 53
           protocol: TCP
-    # Allow all traffic to external services (outside cluster)
+    # This app -> the public internet (RFC1918 excepted, so no lateral reach
+    # into the node LAN or another cluster's pod/service CIDR).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -75,11 +77,10 @@ spec:
               - 10.0.0.0/8
               - 172.16.0.0/12
               - 192.168.0.0/16
-    {{- /* Opt-in platform services (spec.platformServices → catalog). Each
-           opens egress to the catalog namespace on the POD ports (never the
-           Service port). */}}
     {{- range $svc := $platformServices }}
     {{- $entry := index $catalog $svc }}
+    # This app -> {{ $svc }} in {{ $entry.egress.namespace }} on the POD ports
+    # (never the Service port); sourced by spec.platformServices -> catalog.
     - to:
         - namespaceSelector:
             matchLabels:

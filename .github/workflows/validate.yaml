@@ -66,7 +66,20 @@ jobs:
 
       - name: Python syntax check
         # ast.parse rather than py_compile: same check, no __pycache__ artifact.
-        run: python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" scripts/lib/infisical-vars.py
+        run: |
+          set -euo pipefail
+          for f in scripts/lib/infisical-vars.py scripts/assert-sync.py; do
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "$f"
+          done
+
+      # Several facts in this repo are necessarily written down twice, in two
+      # languages, because two different machines consume them (Cloudflare via
+      # Pulumi vs CoreDNS via Ansible; a Traefik entrypoint argument vs a
+      # Traefik Middleware CRD; a Python secret map vs an Ansible assert). Each
+      # pair carries a "KEEP IN SYNC" comment — and a comment is not a check.
+      # This step is the check. Stdlib-only, so this job still installs nothing.
+      - name: Cross-file sync assertions
+        run: python3 scripts/assert-sync.py
 
   ansible:
     name: Validate Ansible
@@ -179,6 +192,39 @@ jobs:
               | kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary -
           done
 
+      # kubeconform proves each rendered object is SCHEMA-valid. It cannot see
+      # whether the template computed the right value — a NODE_OPTIONS heap cap
+      # derived from the wrong number, a dockerconfigjson whose escaping broke,
+      # an `access:` value that silently picked the wrong ipAllowList are all
+      # perfectly valid YAML. helm-unittest asserts the logic.
+      #
+      # Pinned by tag: Helm plugins are installed from a git ref, so there is no
+      # digest to pin the way the kubeconform tarball's sha256 is pinned above.
+      # The plugin embeds its own Helm rendering library, so its output does not
+      # depend on the helm CLI version installed alongside it — which is what
+      # keeps the committed snapshots reproducible between a laptop and here.
+      - name: Install helm-unittest
+        run: |
+          set -euo pipefail
+          HELM_UNITTEST_VERSION=v1.1.2
+          # Helm 4 verifies plugin signatures by default and this plugin
+          # publishes none; Helm 3 has no --verify flag at all. Pass it only
+          # where it exists, so this step survives the next helm bump.
+          if helm plugin install --help 2>&1 | grep -q -- '--verify'; then
+            helm plugin install https://github.com/helm-unittest/helm-unittest \
+              --version "$HELM_UNITTEST_VERSION" --verify=false
+          else
+            helm plugin install https://github.com/helm-unittest/helm-unittest \
+              --version "$HELM_UNITTEST_VERSION"
+          fi
+          helm plugin list
+
+      - name: Helm chart unit tests
+        # Both charts at once so a failure in either fails the job. `--strict`
+        # rejects unknown keys in a test file, so a typo'd assertion name is an
+        # error rather than an assertion that silently never runs.
+        run: helm unittest --strict kubernetes/charts/app kubernetes/charts/service
+
       - name: Validate raw service manifests
         # kubernetes/services/** mixes Helm values files (helm.yaml,
         # service.yaml — consumed BY the service chart, not raw manifests)
@@ -197,3 +243,53 @@ jobs:
           printf '  %s\n' "${manifests[@]}"
           # shellcheck disable=SC2086
           kubeconform -strict $KUBECONFORM_SCHEMA_ARGS -summary "${manifests[@]}"
+
+  secrets:
+    name: Scan for committed secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Same install pattern as kubeconform above: pinned version + sha256 of
+      # the release tarball, so a compromised or re-tagged release cannot
+      # silently execute here.
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          GITLEAKS_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan the working tree
+        # --no-git scans the CHECKED-OUT FILES ONLY, never the commit history.
+        #
+        # That is deliberate and it is not a bug to "fix": this repository
+        # predates any secret hygiene and its history is known to contain
+        # credentials that have since been rotated. Scanning it would fail
+        # every run forever, and the only remedies — a filter-repo rewrite or a
+        # baseline file enumerating historical findings — are explicitly out of
+        # scope. What this gate is for is stopping a NEW secret from landing:
+        # every PR and every push to main is checked before merge, so anything
+        # this misses was already committed before the gate existed.
+        #
+        # --redact so a true positive does not print the secret into a public
+        # Actions log (which would leak it a second time, more widely).
+        #
+        # There is deliberately NO .gitleaks.toml: the default ruleset runs
+        # unmodified and the tree is clean under it. When a fixture tripped a
+        # rule, the fixture was rewritten to an obviously-non-secret form
+        # rather than allowlisted (see the registry credentials in
+        # kubernetes/charts/app/ci/test-values.yaml, and the decode-and-match
+        # assertions in the chart tests that no longer embed a base64 blob).
+        # That keeps EVERY scanner quiet — gitleaks here, and whatever runs
+        # against the repo on GitHub's side — not just the one configured here.
+        # An allowlist is the last resort, for a finding that structurally
+        # cannot be rewritten; none exists today.
+        run: gitleaks detect --source . --no-git --no-banner --redact -v

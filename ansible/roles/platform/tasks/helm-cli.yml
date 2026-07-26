@@ -1,8 +1,4 @@
 ---
-# ========================================
-# Helm CLI + chart repositories
-# ========================================
-
 - name: Check if Helm is installed
   ansible.builtin.command: which helm
   register: helm_check
@@ -12,10 +8,9 @@
 - name: Install Helm
   when: helm_check.rc != 0
   block:
-    # Pinned to a tag, not `main`: the installer script is fetched and executed
-    # as root, so tracking a moving branch means an upstream commit can change
-    # what runs on the host between two deploys with no change on our side. The
-    # tag URL is immutable. Version comes from inventories/group_vars/all.yml.
+    # A TAG, never `main`: this script is fetched and executed as root, so a
+    # moving branch lets an upstream commit change what runs on the host
+    # between two deploys with no change on our side.
     - name: Download Helm install script
       ansible.builtin.get_url:
         url: "https://raw.githubusercontent.com/helm/helm/{{ helm_version }}/scripts/get-helm-3"

@@ -1,28 +1,15 @@
 # Grafana Alloy — cluster-wide pod log shipper (chart: grafana/alloy).
 #
-# WHY THIS EXISTS
-# ---------------
-# Five of the six apps in this cluster have no OpenTelemetry SDK wired in, so
-# the OTel collector's logs pipeline (otel-collector/helm.yaml -> otlphttp/loki)
-# only ever sees the one app that does instrument itself. Everything else —
-# every platform service, every datastore, every uninstrumented app — writes to
-# stdout and that output dies with the pod. Loki has been sitting there with a
-# 90d window and almost nothing in it.
+# Complementary to the OTel collector, not a replacement: the collector owns
+# traces, metrics and structured OTLP logs from instrumented apps; Alloy owns
+# "what did this pod print" for everything else (only one app in this cluster
+# has an OTel SDK wired in, so without Alloy Loki stays almost empty).
 #
-# Alloy closes that gap the boring way: tail EVERY pod's stdout/stderr and push
-# it into the Loki that already exists. It is complementary to, not a
-# replacement for, the OTel collector — the collector still owns traces,
-# metrics and structured OTLP logs from instrumented apps; Alloy owns "what did
-# this pod print".
-#
-# WHY loki.source.kubernetes AND NOT local.file_match
-# ---------------------------------------------------
-# `loki.source.kubernetes` reads logs through the Kubernetes API
-# (pods/log subresource) rather than tailing /var/log/pods on the host. That
-# means no hostPath mount, no dependence on the container runtime's on-disk log
-# layout, and it works unchanged on OrbStack where /var/log/pods lives inside
-# the VM. The cost is API-server traffic, which is irrelevant at this scale
-# (single node, ~25 pods).
+# `loki.source.kubernetes`, NOT `local.file_match`: it reads through the
+# Kubernetes API (pods/log subresource) instead of tailing /var/log/pods, so
+# there is no hostPath mount and no dependence on the container runtime's
+# on-disk log layout — which matters on OrbStack, where /var/log/pods lives
+# inside the VM. The cost is API-server traffic, irrelevant at ~25 pods.
 
 controller:
   # DaemonSet: one Alloy per node, each tailing only its own node's pods.
@@ -97,14 +84,5 @@ alloy:
         }
       }
 
-# TODO-verify on first deploy: `loki.source.kubernetes` needs `pods/log`
-# (get/list/watch) on top of the `pods` read the chart's default ClusterRole
-# grants. The chart creates RBAC by default (rbac.create: true) and recent
-# versions do include pods/log, but confirm rather than assume — the failure
-# mode is silent-ish: Alloy comes up healthy and its own logs fill with
-# `is forbidden: User "system:serviceaccount:platform-telemetry:alloy" cannot
-# get resource "pods/log"`, while Loki simply stays empty. Check with:
-#   kubectl logs -n platform-telemetry ds/alloy | grep -i forbidden
-# If it is missing, add the rule via `rbac.extraRules` (or set
-# `rbac.create: false` and manage the ClusterRole here) rather than granting
-# cluster-admin.
+# `loki.source.kubernetes` needs pods/log RBAC beyond the chart's default
+# ClusterRole; unverified — see issue #3.

@@ -1,12 +1,7 @@
 ---
-# ClusterIssuer for Let's Encrypt using Cloudflare DNS-01 challenge
-# Works with private IPs - only requires DNS access
-#
-# Uses dnsZones selector to allow ANY subdomain of jterrazz.com
-# This is safe because:
-# - Cloudflare API token is scoped to jterrazz.com zone only
-# - You control what Certificates you create in the cluster
-# - DNS-01 challenge proves domain ownership
+# DNS-01, not HTTP-01: the cluster has no public inbound path, so an HTTP-01
+# challenge could never be reached. Adding a new public zone means adding it to
+# the dnsZones list of BOTH issuers below.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -31,7 +26,7 @@ spec:
             - sig.news
             - spwn.sh
 ---
-# Staging issuer for testing (higher rate limits)
+# Staging — higher rate limits, untrusted chain. For testing issuance only.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:

@@ -1,0 +1,162 @@
+suite: ingress list — replace-not-merge, and the explicit-visibility guard
+#
+# app.merged resolves `ingress` through sprig mergeOverwrite, where LISTS ARE
+# REPLACED WHOLESALE (maps deep-merge, scalars take the environment's value).
+# For a list of network surfaces that is the only safe rule: a half-merged
+# ingress list is unreadable, and the failure mode of getting it wrong is a
+# staging environment quietly inheriting prod's PUBLIC hostname.
+#
+# The synthetic cases below declare a `probe` environment rather than
+# overriding the fixture's `staging` list: overriding a list that the values
+# file already defines makes Helm's own merge print an "ignoring non-table
+# value" warning, which is noise, not a finding.
+templates:
+  - templates/ingress.yaml
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: renders every prod entry from the base spec list
+    # The fixture's prod list: one public /api surface + one private one.
+    # 2 Certificates (one per unique host) + 1 strip-prefix Middleware (for the
+    # /api entry) + 2 IngressRoutes.
+    asserts:
+      - hasDocuments:
+          count: 5
+
+  - it: REPLACES the base list with the environment's, never merges them
+    # The fixture's staging environment declares exactly ONE entry while spec
+    # declares two. If lists merged, this would render three surfaces and
+    # staging would answer on ci-test-app.jterrazz.com — publicly.
+    set:
+      environment: staging
+    asserts:
+      - hasDocuments:
+          count: 2 # 1 Certificate + 1 IngressRoute; no strip-prefix, path is /
+      - equal:
+          path: spec.dnsNames
+          value:
+            - ci-test-app-staging.jterrazz.com
+        documentIndex: 0
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`ci-test-app-staging.jterrazz.com`)
+        documentIndex: 1
+
+  - it: "attaches private-access to a `public: false` entry, and nothing else"
+    set:
+      environment: staging
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - name: private-access
+              namespace: platform-networking
+        documentIndex: 1
+
+  - it: "leaves a `public: true` entry with no access middleware"
+    # Public routes still sit behind the rate-limit / compress / security-headers
+    # chain the websecure entrypoint attaches globally — but no ipAllowList.
+    set:
+      environment: probe
+      environments.probe.ingress:
+        - host: probe.jterrazz.com
+          path: /
+          public: true
+    asserts:
+      - notExists:
+          path: spec.routes[0].middlewares
+        documentIndex: 1
+
+  - it: "hard-fails an ingress entry with no explicit `public` field"
+    # Network visibility must never be implied by omission — the whole reason
+    # the field is required rather than defaulted to either value.
+    set:
+      environment: probe
+      environments.probe.ingress:
+        - host: probe.jterrazz.com
+          path: /
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress entry 0 for ci-test-app is missing the required `public: true|false` field — declare network visibility explicitly"
+
+  - it: hard-fails the pre-1.17 single-object ingress form
+    set:
+      environment: probe
+      environments.probe.ingress:
+        host: probe.jterrazz.com
+        public: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "ingress must be a list of { host, path?, public? } entries. The single-object form was removed in chart 1.17.0 — migrate to a one-element list."
+
+  - it: emits one Certificate per unique host, not per entry
+    # Two entries on the same host share one TLS secret; two Certificates for
+    # one dnsName would race each other at cert-manager.
+    set:
+      environment: probe
+      environments.probe.ingress:
+        - host: shared.jterrazz.com
+          path: /api
+          public: true
+        - host: shared.jterrazz.com
+          path: /admin
+          public: false
+    asserts:
+      - hasDocuments:
+          count: 5 # 1 Certificate + 2 strip-prefix Middlewares + 2 IngressRoutes
+      - isKind:
+          of: Certificate
+        documentIndex: 0
+      - equal:
+          path: spec.secretName
+          value: ci-test-app-shared-jterrazz-com-tls
+        documentIndex: 0
+      - isKind:
+          of: IngressRoute
+        documentIndex: 2
+      - isKind:
+          of: IngressRoute
+        documentIndex: 4
+
+  - it: names each IngressRoute by index so two entries never collide
+    set:
+      environment: probe
+      environments.probe.ingress:
+        - host: shared.jterrazz.com
+          path: /api
+          public: true
+        - host: shared.jterrazz.com
+          path: /admin
+          public: false
+    asserts:
+      - equal:
+          path: metadata.name
+          value: ci-test-app-0
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: ci-test-app-1
+        documentIndex: 4
+
+  - it: skips the strip-prefix middleware when the app opts out
+    # An MCP server registered at the literal /mcp path needs the prefix kept.
+    set:
+      environment: probe
+      environments.probe.ingress:
+        - host: probe.jterrazz.com
+          path: /mcp
+          public: false
+          stripPrefix: false
+    asserts:
+      - hasDocuments:
+          count: 2 # Certificate + IngressRoute only
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`probe.jterrazz.com`) && PathPrefix(`/mcp`)
+        documentIndex: 1
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - name: private-access
+              namespace: platform-networking
+        documentIndex: 1

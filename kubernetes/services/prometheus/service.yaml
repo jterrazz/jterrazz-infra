@@ -1,21 +1,14 @@
-# Service-chart values for Prometheus — storage only, no ingress.
+# Service-chart values for Prometheus — storage only. `host` is deliberately
+# unset (Grafana queries it in-cluster), and with no host the chart emits
+# neither IngressRoute nor Certificate.
 #
-# Prometheus has no hostname: it is scraped/queried in-cluster by Grafana
-# (and written to by the OTel collector's prometheusremotewrite exporter), so
-# there is nothing to put behind Traefik. With `host` unset the chart emits
-# neither an IngressRoute nor a Certificate.
-#
-# MIGRATION: this replaces the prometheus half of
-# ansible/templates/kubernetes/telemetry-storage.yaml.j2. Object names, size
-# and hostPath are byte-identical to what that template produced:
-#   PV  prometheus-data   20Gi   /var/lib/k8s-data/prometheus
-#   PVC prometheus-data   20Gi   volumeName: prometheus-data
-# The claim name is load-bearing: prometheus/helm.yaml pins
-# `server.persistentVolume.existingClaim: prometheus-data`.
+# The PVC name is load-bearing: prometheus/helm.yaml pins
+# `server.persistentVolume.existingClaim: prometheus-data`, which is
+# <name>-<key> = prometheus-data. Rename either half and Prometheus starts on
+# a fresh dynamically-provisioned volume.
 name: prometheus
 storage:
-  # 20Gi is nominal — hostPath enforces no quota, the real cap is the Mac
-  # disk. Sized for the 30d time-based retention set in helm.yaml
-  # (~285MB/day → ~8-10GB steady state).
+  # Nominal — hostPath enforces no quota, the real cap is the Mac disk. 30d at
+  # ~285MB/day is ~8-10GB steady state.
   data:
     size: 20Gi

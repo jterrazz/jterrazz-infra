@@ -341,15 +341,19 @@ failed every image pull with an unhelpful auth error.
 
 Two rules follow from apps pulling the chart **unversioned**:
 
-1. **Bump `version:` in the same commit as any template change.** The
-   workflow `helm pull`s the version first and fails the build if it already
-   exists, precisely so two different template sets can never answer to the
-   same tag.
+1. **Bump `version:` in the same commit as any template change.** The workflow
+   `helm pull`s the version first and, if it resolves, publishes **nothing**
+   (a green no-op with a `::notice::`, not a failure — a routine push right
+   after `make deploy` would otherwise go red on an already-current registry).
+   The guard's only job is to prevent an *overwrite*, so two template sets can
+   never answer to the same tag. The corollary is that a forgotten bump ships
+   nothing at all, quietly.
 2. **Every behavioural change reaches every app on its next deploy** — there
    is no per-app opt-in window. Additive and defaulted changes only, unless
-   you're prepared to redeploy the fleet. (`ansible/playbooks/tasks/platform/chart-publish.yml`
+   you're prepared to redeploy the fleet. (`ansible/roles/platform/tasks/publish-app-chart.yml`
    publishes the same chart from the host during a fresh-cluster build,
-   because until it exists in the registry no app can deploy at all.)
+   because until it exists in the registry no app can deploy at all. It carries
+   the same guard: already-published is a skip, not a failure.)
 
 ## Working on the chart
 

@@ -1,37 +1,25 @@
-# k3s Configuration
-# Managed by Ansible
+# Managed by Ansible (roles/k3s).
 
-# Network
 bind-address: 0.0.0.0
 node-ip: {{ k3s_node_ip }}
 node-external-ip: {{ k3s_node_ip }}
 https-listen-port: 6443
 
-# Cluster — single-node uses k3s's default SQLite/kine datastore (no
-# `cluster-init`, which would force the heavier embedded etcd: etcd
-# holds the keyspace in RAM + runs its own compaction/snapshotting,
-# ~150-300Mi more RSS for zero benefit on one node). The whole cluster
-# is reproducible via Pulumi+Ansible and app data is hostPath on the
-# Mac, so etcd's auto-snapshots were redundant here. If you ever go
-# multi-node HA, re-add `cluster-init: true`.
+# NO `cluster-init`: it forces embedded etcd, which holds the keyspace in RAM
+# and runs its own compaction/snapshotting for ~150-300Mi more RSS and zero
+# benefit on one node (the cluster is reproducible from Pulumi+Ansible and app
+# data is hostPath). Re-add it only when going multi-node HA.
 token: {{ k3s_cluster_token }}
 
-# Storage
 data-dir: {{ k3s_data_dir }}
 
-# Kubeconfig
 write-kubeconfig-mode: "0644"
 write-kubeconfig: /etc/rancher/k3s/k3s.yaml
 
-# TLS SANs
-#
-# Every name a client may use to reach the API server has to be in here or
-# kubectl fails cert verification. The tailnet IP and MagicDNS name matter
-# most — that is how the laptop and CI reach the cluster.
-#
-# `ansible_host` is deliberately NOT a SAN: it is `orb`, an entry in the
-# OrbStack SSH config rather than a resolvable hostname, so putting it here
-# just produced a junk SAN nobody could ever present.
+# Every name a client may use to reach the API server must be here or kubectl
+# fails cert verification; the tailnet IP and MagicDNS name are how the laptop
+# and CI reach it. `ansible_host` is deliberately NOT a SAN — it is `orb`, an
+# OrbStack SSH-config alias no client can ever present.
 tls-san:
   - {{ k3s_node_ip }}
   - localhost
@@ -43,16 +31,14 @@ tls-san:
   - {{ tailscale_dns_hostname }}
 {% endif %}
 
-# Kubelet
-# resolv-conf must point at the uplink resolv.conf (with real upstream
-# DNS servers), not /etc/resolv.conf which on systemd-resolved hosts is
-# the 127.0.0.53 stub. Without this, kubelet hands the stub to pods
-# that inherit host DNS (CoreDNS uses dnsPolicy: Default), CoreDNS
-# forwards back into itself, and the loop plugin fatals on startup.
+# resolv-conf MUST be the uplink file with real upstream servers, never
+# /etc/resolv.conf (the 127.0.0.53 stub on systemd-resolved hosts). With the
+# stub, kubelet hands it to pods inheriting host DNS — CoreDNS runs
+# dnsPolicy: Default — so CoreDNS forwards into itself and its loop plugin
+# fatals on startup.
 kubelet-arg:
   - "max-pods=250"
   - "resolv-conf=/run/systemd/resolve/resolv.conf"
 
-# API Server
 kube-apiserver-arg:
   - "enable-admission-plugins=NodeRestriction,ResourceQuota"

@@ -18,36 +18,20 @@ port: 80
 #                       rate-limit / compress / security-headers chain that
 #                       the websecure entrypoint attaches globally.
 #
-# Replaces the boolean `private` of chart 2.0; a leftover `private` key now
-# fails the render (see templates/ingress-route.yaml).
+# A leftover boolean `private:` key hard-fails the render
+# (templates/ingress-route.yaml).
 access: private
 
-# Named volumes. MAP of <key> -> { size, pathSuffix, claimName } as of chart
-# 2.0 (was a single object with size/pathSuffix at the top level).
+# Named volumes: <key> -> { size, pathSuffix?, claimName? }. Names and paths
+# address live data — see templates/storage.yaml before changing any of them.
 #
-# The PV is always named <name>-<key>, so the key `data` reproduces the
-# historical <name>-data PV name exactly. hostPath is
-# /var/lib/k8s-data/<name>[/<pathSuffix>].
-#
-# storage:
-#   data:
-#     size: 3Gi
-#     # pathSuffix nests the volume under the app dir (1 dir = 1 app), e.g.
-#     # pathSuffix: mongo -> hostPath /var/lib/k8s-data/<name>/mongo
-#     pathSuffix: mongo
-#     # claimName overrides ONLY the PVC's metadata.name (chart 2.1) — for a
-#     # volume whose consumer imposes the claim name. A StatefulSet's
-#     # volumeClaimTemplate binds to storage-<release>-<ordinal> and nothing
-#     # else. PV name and the PVC's volumeName binding stay <name>-<key>.
-#     claimName: storage-loki-0
-#   uploads:
-#     size: 5Gi
-#     pathSuffix: uploads
+#   storage:
+#     data:      { size: 3Gi, pathSuffix: mongo, claimName: storage-loki-0 }
+#     uploads:   { size: 5Gi, pathSuffix: uploads }
 storage: {}
 
-# Infrastructure settings (injected by Ansible at deploy time).
-# nodeName is the k8s node name used as the hostPath PV's nodeAffinity
-# match (single-node k3s, safety belt against accidental schedule on a
-# renamed node).
+# Injected by Ansible at deploy time (roles/platform/tasks/service-charts.yml
+# passes --set infrastructure.nodeName={{ inventory_hostname }}). Used as the
+# hostPath PV's nodeAffinity match.
 infrastructure:
   nodeName: ""

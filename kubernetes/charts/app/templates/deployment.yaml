@@ -7,17 +7,11 @@
 {{- $platformEnv := fromYaml (include "app.platformEnv" .) -}}
 {{- $platformClientLabels := fromYaml (include "app.platformClientLabels" .) -}}
 {{- /*
-Container-level securityContext (pod-level runAsUser/runAsGroup/fsGroup 1000
-are set further down). Shape copied from cloudflared's deployment, which is
-the gold standard in this repo.
-
-readOnlyRootFilesystem is deliberately NOT set: every app here is a Next.js
-or Node service that writes caches (.next/cache, /tmp) at runtime, and
-flipping it would crash-loop them.
-
-Escape hatch: `spec.securityContext` is merged OVER these defaults, so an app
-that genuinely needs a capability back can ask for it without forking the
-chart. Note mergeOverwrite mutates its first argument, hence deepCopy.
+readOnlyRootFilesystem is deliberately NOT among these defaults: every app
+here is a Next.js or Node service that writes caches at runtime, and setting
+it would crash-loop them. `spec.securityContext` merges OVER the defaults, so
+an app needing a capability back never has to fork the chart. deepCopy because
+mergeOverwrite mutates its first argument.
 */ -}}
 {{- $secDefaults := dict
       "allowPrivilegeEscalation" false
@@ -70,13 +64,10 @@ spec:
         - name: fix-permissions
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
           command: ["sh", "-c", "chown -R 1000:1000 /data"]
-          # Must stay root: hostPath directories are created root-owned and
-          # only root can chown them to the app's uid. It still gets the rest
-          # of the hardening — no privilege escalation, seccomp on, and every
-          # capability dropped except the three `chown -R` actually needs:
-          # CHOWN to change ownership, FOWNER + DAC_OVERRIDE to traverse and
-          # modify directories root does not own (root bypasses file
-          # permission checks only by virtue of DAC_OVERRIDE).
+          # Must stay root: hostPath dirs are created root-owned and only root
+          # can chown them to the app's uid. Every capability is still dropped
+          # except the three `chown -R` needs — CHOWN to change ownership,
+          # FOWNER + DAC_OVERRIDE to traverse and modify dirs root does not own.
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -99,15 +90,12 @@ spec:
           ports:
             - containerPort: {{ $spec.port }}
           env:
-            # Auto-injected PORT
             - name: PORT
               value: {{ $spec.port | quote }}
-            {{- /* User-defined environment variables (merged base + env override) */}}
             {{- range $key, $value := $envVars }}
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
-            {{- /* Auto-injected OTEL identity from metadata */}}
             {{- if not (hasKey $envVars "OTEL_SERVICE_NAME") }}
             - name: OTEL_SERVICE_NAME
               value: {{ include "app.name" . }}
@@ -116,12 +104,10 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "deployment.environment={{ .Values.environment }}"
             {{- end }}
-            {{- /* Opt-in platform-service env (spec.platformServices → catalog
-                   in _helpers.tpl). This is where OTEL_EXPORTER_OTLP_ENDPOINT
-                   and GATEWAY_INTELLIGENCE_BASE_URL now come from — NO longer an
-                   unconditional default: an app must declare `otel-collector`
-                   (and the egress hole it opens) for telemetry to actually flow.
-                   A user-set env of the same name always wins. */}}
+            {{- /* Opt-in platform-service env (spec.platformServices → the
+                   catalog in _helpers.tpl). An app must declare
+                   `otel-collector` for telemetry to flow — declaring it is
+                   also what opens the egress hole. A user-set env wins. */}}
             {{- range $key, $value := $platformEnv }}
             {{- if not (hasKey $envVars $key) }}
             - name: {{ $key }}
@@ -136,7 +122,6 @@ spec:
             - name: NODE_OPTIONS
               value: "--max-old-space-size={{ $nodeHeap }}"
             {{- end }}
-            {{- /* Secret environment variables from Infisical */}}
             {{- if $secrets.env }}
             {{- range $secrets.env }}
             - name: {{ . }}
@@ -165,12 +150,10 @@ spec:
               memory: {{ $resources.memory | default "256Mi" }}
             limits:
               memory: {{ include "app.memoryLimit" . }}
-          # A startupProbe gates liveness/readiness until the app first
-          # answers, so a slow or event-loop-busy boot can't trip liveness
-          # and SIGKILL the pod mid-startup (startupFailureThreshold *
-          # startupPeriodSeconds = grace window). timeoutSeconds defaults to
-          # 5s, not k8s's brutal 1s: an app that also runs in-process
-          # background work can briefly exceed 1s on a trivial health route.
+          # Gates liveness/readiness until the app first answers, so a slow or
+          # event-loop-busy boot cannot trip liveness and SIGKILL the pod
+          # mid-startup. timeoutSeconds defaults to 5s, not k8s's 1s: an app
+          # running in-process background work exceeds 1s on a trivial route.
           startupProbe:
             httpGet:
               path: {{ $health.path }}

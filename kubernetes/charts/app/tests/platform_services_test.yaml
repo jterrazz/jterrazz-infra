@@ -1,0 +1,163 @@
+suite: platformServices catalog opt-in and its typo guard
+#
+# `spec.platformServices: [name, ...]` resolves against app.platformCatalog and
+# wires a whole bundle per name: env injection, an egress NetworkPolicy hole,
+# and (for a name that is itself a catalog target) a client pod label the
+# target's ingress rule selects on. The validation lives in app.platformServices
+# — the single accessor all three consumers call — so an unknown name can never
+# reach a rendered manifest.
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: hard-fails the render on an unknown service name
+    # A typo must be a build error, not an app that deploys with telemetry
+    # quietly disabled and no egress hole to notice it by.
+    set:
+      spec.platformServices:
+        - otel-colector
+    asserts:
+      - failedTemplate:
+          errorMessage: 'spec.platformServices: unknown service "otel-colector" (valid: gateway-intelligence, otel-collector)'
+
+  - it: hard-fails even when only one name of several is wrong
+    set:
+      spec.platformServices:
+        - otel-collector
+        - nope
+    asserts:
+      - failedTemplate:
+          errorMessage: 'spec.platformServices: unknown service "nope" (valid: gateway-intelligence, otel-collector)'
+
+  - it: hard-fails on a name introduced by an environment override
+    # Lists REPLACE on merge, so an environment can swap the whole list — the
+    # check must run on the resolved list, not on spec's.
+    set:
+      environments.prod.platformServices:
+        - gateway-inteligence
+    asserts:
+      - failedTemplate:
+          errorMessage: 'spec.platformServices: unknown service "gateway-inteligence" (valid: gateway-intelligence, otel-collector)'
+
+  - it: injects the catalog env for each declared service
+    templates:
+      - templates/deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: "http://otel-collector.platform-telemetry:4318"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_INTELLIGENCE_BASE_URL
+            value: "http://gateway-intelligence.prod-gateway-intelligence.svc.cluster.local/v1"
+
+  - it: lets an app-declared env of the same name win over the catalog
+    templates:
+      - templates/deployment.yaml
+    set:
+      spec.env.OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4318"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: "http://localhost:4318"
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: "http://otel-collector.platform-telemetry:4318"
+
+  - it: stamps the client pod label only for a catalog entry that has one
+    # gateway-intelligence's own ingress rule selects on this label, so a new
+    # consumer needs zero edit on the target. otel-collector has no clientLabel
+    # and must contribute nothing here.
+    templates:
+      - templates/deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.metadata.labels["platform-client.jterrazz.com/gateway-intelligence"]
+          value: "true"
+
+  - it: keeps the client label OUT of the immutable selector
+    templates:
+      - templates/deployment.yaml
+    asserts:
+      - notExists:
+          path: spec.selector.matchLabels["platform-client.jterrazz.com/gateway-intelligence"]
+      - equal:
+          path: spec.selector.matchLabels
+          value:
+            app: ci-test-app
+            environment: prod
+
+  - it: opens one egress rule per declared service, on the POD ports
+    # Ports are the catalog's pod ports, never the Service port — a NetworkPolicy
+    # matches the destination pod's port, so using 4318-the-Service-port would
+    # produce a policy that silently drops everything.
+    templates:
+      - templates/network-policy.yaml
+    asserts:
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: platform-telemetry
+            ports:
+              - port: 4317
+                protocol: TCP
+              - port: 4318
+                protocol: TCP
+      - contains:
+          path: spec.egress
+          content:
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: prod-gateway-intelligence
+            ports:
+              - port: 8317
+                protocol: TCP
+
+  - it: opts out completely when the list is empty
+    # OTel is opt-in as of chart 2.0. It used to be an unconditional default,
+    # which was inert anyway because no egress hole accompanied it.
+    templates:
+      - templates/deployment.yaml
+    set:
+      spec.platformServices: []
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: GATEWAY_INTELLIGENCE_BASE_URL
+          any: true
+
+  - it: renders the server-side ingress rule when the app IS a catalog target
+    # metadata.name == a catalog key carrying a clientLabel: the app's own
+    # NetworkPolicy admits every pod, in any namespace, stamped with that label.
+    templates:
+      - templates/network-policy.yaml
+    set:
+      metadata.name: gateway-intelligence
+      spec.platformServices: []
+    asserts:
+      - contains:
+          path: spec.ingress
+          content:
+            from:
+              - namespaceSelector: {}
+                podSelector:
+                  matchLabels:
+                    platform-client.jterrazz.com/gateway-intelligence: "true"
+            ports:
+              - port: 3000

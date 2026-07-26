@@ -1,0 +1,96 @@
+suite: service.labels is stamped on all four kinds
+#
+# The chart emits exactly four kinds — IngressRoute, Certificate,
+# PersistentVolume, PersistentVolumeClaim — and every one of them must carry
+# the common label set. `part-of: jterrazz-infrastructure` is the grouping the
+# deleted kustomize base used to stamp cluster-wide; it is what makes
+# `kubectl get <kind> -l app.kubernetes.io/part-of=jterrazz-infrastructure`
+# answer "what does the platform own" across namespaces.
+#
+# A per-template test rather than one loop, because `include "service.labels"`
+# is pasted into each template separately and has been forgotten on a new
+# template before.
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: labels the IngressRoute
+    templates:
+      - templates/ingress-route.yaml
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: ci-test-service
+            app.kubernetes.io/part-of: jterrazz-infrastructure
+            app.kubernetes.io/managed-by: helm
+
+  - it: labels the Certificate
+    templates:
+      - templates/certificate.yaml
+    asserts:
+      - isKind:
+          of: Certificate
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: ci-test-service
+            app.kubernetes.io/part-of: jterrazz-infrastructure
+            app.kubernetes.io/managed-by: helm
+
+  - it: labels the PersistentVolume, plus the storage component label
+    templates:
+      - templates/storage.yaml
+    asserts:
+      - isKind:
+          of: PersistentVolume
+        documentIndex: 0
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: ci-test-service
+            app.kubernetes.io/part-of: jterrazz-infrastructure
+            app.kubernetes.io/managed-by: helm
+            app.kubernetes.io/component: storage
+        documentIndex: 0
+
+  - it: labels the PersistentVolumeClaim, plus the storage component label
+    templates:
+      - templates/storage.yaml
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+        documentIndex: 1
+      - equal:
+          path: metadata.labels
+          value:
+            app.kubernetes.io/name: ci-test-service
+            app.kubernetes.io/part-of: jterrazz-infrastructure
+            app.kubernetes.io/managed-by: helm
+            app.kubernetes.io/component: storage
+        documentIndex: 1
+
+  - it: labels a claimName-overridden PVC the same way
+    # The override changes metadata.name only — the labels must not follow it.
+    templates:
+      - templates/storage.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: storage-ci-test-0
+        documentIndex: 3
+      - equal:
+          path: metadata.labels["app.kubernetes.io/name"]
+          value: ci-test-service
+        documentIndex: 3
+
+  - it: requires a name before it will label anything
+    # No `templates:` filter here on purpose: `required` aborts the WHOLE
+    # render at whichever template Helm reaches first (storage.yaml), so
+    # scoping the assertion to one template would report "no failed document".
+    set:
+      name: null
+    asserts:
+      - failedTemplate:
+          errorMessage: name is required

@@ -1,0 +1,44 @@
+suite: full fixture render (snapshot)
+#
+# Pins the ENTIRE manifest set the chart produces from ci/test-values.yaml,
+# byte for byte, in __snapshot__/snapshot_test.yaml.snap.
+#
+# The targeted suites next to this one assert the load-bearing logic and say
+# WHY each value is what it is. This one exists for everything they don't
+# think to look at: a label that quietly disappears, a probe threshold that
+# changes unit, an initContainer capability that gets dropped, a resource that
+# stops rendering. The chart is pulled UNVERSIONED by every app's CI, so an
+# accidental change here reaches production on the next unrelated app deploy.
+#
+# Reviewing a failure: read the diff. If every changed line is intended,
+#   helm unittest -u kubernetes/charts/app
+# regenerates the .snap — and the diff in that file is what the change review
+# should actually look at. Never regenerate without reading it.
+#
+# ---------------------------------------------------------------------------
+# The template list is explicit, and it is EVERY template except
+# registry-secret.yaml. ADD A NEW TEMPLATE HERE when you add one to the chart,
+# or it renders unwatched.
+#
+# registry-secret.yaml is left out on purpose: its only output is a base64
+# dockerconfigjson, which is both unreviewable in a snapshot diff and the exact
+# shape every secret scanner flags (a long base64 blob beside the word `auth`),
+# even though the credentials in it are the CI fixture's. It is the most
+# thoroughly asserted template in the chart — registry_secret_test.yaml decodes
+# the payload and matches the whole document — so nothing is unwatched here.
+# ---------------------------------------------------------------------------
+templates:
+  - templates/configmap.yaml
+  - templates/dashboard-configmap.yaml
+  - templates/deployment.yaml
+  - templates/infisical.yaml
+  - templates/ingress.yaml
+  - templates/network-policy.yaml
+  - templates/service.yaml
+  - templates/storage.yaml
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: matches the recorded render of the CI fixture
+    asserts:
+      - matchSnapshot: {}

@@ -1,18 +1,13 @@
 ---
-# Jterrazz Infrastructure — master playbook.
+# Host layer + platform layer, in one run:
+#   ansible-playbook playbooks/site.yml -i inventories/laptop.yml
 #
-# Usage:
-#   Full deploy:   ansible-playbook playbooks/site.yml -i inventories/laptop.yml
-#   Platform only: ansible-playbook playbooks/platform.yml -i inventories/ci.yml
-#
-# The target is Debian 13 (trixie) on the OrbStack VM. There is no dual-distro
-# support: templates and package names are Debian-native.
+# The target is Debian 13 (trixie). There is no dual-distro support — templates
+# and package names are Debian-native.
 
-# Every other play needs a Python interpreter for the module payloads, so this
-# one runs before fact gathering and talks raw SSH. The current image ships
-# python3, hence the `command -v` short-circuit — this exists so a stripped
-# image (or a future minbase build) self-heals instead of failing on the very
-# first task with "/usr/bin/python3: not found".
+# Runs before fact gathering and over raw SSH, because every later play needs a
+# Python interpreter for its module payloads. The `command -v` short-circuit
+# makes a stripped image self-heal instead of failing on the very first task.
 - name: Bootstrap Python interpreter
   hosts: all
   become: true
@@ -23,9 +18,9 @@
       register: python_bootstrap
       changed_when: "'Setting up python3' in python_bootstrap.stdout"
 
-# Host layer, in dependency order: packages + the /var/lib/k8s-data symlink,
-# then sshd/UFW hardening, then Tailscale (systemd-resolved has to be live
-# before k3s, whose kubelet pins the resolved uplink resolv.conf), then k3s.
+# Role order is load-bearing: base installs systemd-resolved and creates the
+# /var/lib/k8s-data symlink; tailscale must unmask and start resolved before
+# k3s, whose kubelet pins the resolved uplink resolv.conf.
 - name: Configure the cluster node
   hosts: cluster
   become: true

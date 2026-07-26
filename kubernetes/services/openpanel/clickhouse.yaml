@@ -1,22 +1,15 @@
 # ClickHouse for OpenPanel — the event store and the dominant resource user.
 #
-# Config is upstream's self-hosting config verbatim, which is ALSO the fix for
-# issue #324 (ClickHouse pegged at ~140% CPU when logrotate breaks its file log
-# handle): logger -> console (stdout), and every heavy system log table
-# (query_log/trace_log/metric_log/part_log/...) removed. Kubernetes captures
-# stdout, so there is no file log for logrotate to break.
-#
-# users.d adds a per-query max_memory_usage cap (1 GiB) on top of ClickHouse's
-# cgroup-aware server cap, so an accidental heavy "Paths" query (issue #382)
-# fails that query instead of OOM-killing the pod.
+# The config below is upstream's self-hosting config verbatim, which is also
+# the fix for upstream issue #324 (ClickHouse pegged at ~140% CPU once
+# logrotate breaks its file log handle): log to console, drop every heavy
+# system log table. Kubernetes captures stdout, so there is no file log left
+# for logrotate to break.
 #
 # Runs the default no-auth user (CLICKHOUSE_SKIP_USER_SETUP=1, upstream
-# parity); it is ClusterIP-only and firewalled to this namespace by
-# kubernetes/cluster/network-policies/platform-analytics.yaml.
-#
-# Data lives on the `openpanel-clickhouse` manual hostPath PV/PVC, which used
-# to be declared in this file and now comes from the service chart — see the
-# `storage.clickhouse` entry in service.yaml.
+# parity); ClusterIP-only and firewalled to this namespace by
+# kubernetes/cluster/network-policies/platform-analytics.yaml — that policy is
+# the ONLY thing standing in front of an unauthenticated database.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -30,13 +23,13 @@ data:
             <console>true</console>
         </logger>
 
-        <!-- 10→60s: op-api's @clickhouse/client pings SELECT 1 on pooled idle
-             sockets that ClickHouse had already closed after 10s → "HTTP request
-             error" spam (~8/10min; real queries unaffected). Keeping idle
-             sockets open longer than the client's reuse interval stops it. -->
+        <!-- Must exceed op-api's client socket-reuse interval: at the 10s
+             default, @clickhouse/client pings SELECT 1 on pooled sockets
+             ClickHouse has already closed, producing "HTTP request error"
+             spam (real queries unaffected). -->
         <keep_alive_timeout>60</keep_alive_timeout>
 
-        <!-- Stop all the unnecessary logging (issue #324 mitigation) -->
+        <!-- issue #324 mitigation, see the file header. -->
         <query_thread_log remove="remove"/>
         <query_log remove="remove"/>
         <text_log remove="remove"/>
@@ -56,8 +49,9 @@ data:
             <default>
                 <log_queries>0</log_queries>
                 <log_query_threads>0</log_query_threads>
-                <!-- Cap a single query at 1 GiB so a runaway "Paths" query
-                     (issue #382) errors instead of OOM-killing the pod. -->
+                <!-- Per-query cap on top of ClickHouse's cgroup-aware server
+                     cap, so a runaway "Paths" query (upstream issue #382)
+                     errors instead of OOM-killing the pod. -->
                 <max_memory_usage>1073741824</max_memory_usage>
             </default>
         </profiles>
@@ -90,15 +84,14 @@ spec:
         app: op-clickhouse
     spec:
       # hostPath dirs are created root-owned; ClickHouse runs as uid 101 and
-      # can't write /var/lib/clickhouse without this chown.
+      # cannot write /var/lib/clickhouse without this chown.
       initContainers:
         - name: fix-perms
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
           command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
-          # Must stay root to chown, but keeps every other guardrail: no
-          # privilege escalation, seccomp on, and all capabilities dropped
-          # except the three `chown -R` needs (CHOWN to change ownership,
-          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          # Root, but every capability dropped except the three `chown -R`
+          # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
+          # traverse and modify dirs root does not own.
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -114,12 +107,10 @@ spec:
       containers:
         - name: clickhouse
           image: clickhouse/clickhouse-server:25.10.2.65
-          # Runs as the image's `clickhouse` user (uid/gid 101) — the same uid
-          # the initContainer chowns to, and the one upstream documents for
-          # running the image with an explicit user. Dropping ALL caps is
-          # safe: ClickHouse only ever wants CAP_NET_ADMIN / CAP_IPC_LOCK /
-          # CAP_SYS_NICE as optional optimisations and logs a warning when
-          # they are absent.
+          # uid/gid 101 is the image's `clickhouse` user — the same uid the
+          # initContainer chowns to. Dropping ALL caps is safe: ClickHouse
+          # wants CAP_NET_ADMIN / IPC_LOCK / SYS_NICE only as optional
+          # optimisations and merely warns when they are absent.
           securityContext:
             runAsNonRoot: true
             runAsUser: 101

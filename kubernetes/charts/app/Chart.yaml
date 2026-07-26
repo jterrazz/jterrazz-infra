@@ -1,42 +1,12 @@
-# jterrazz Application Helm Chart
-# Standardized deployment for all applications
 apiVersion: v2
 name: app
 description: Standard application chart for jterrazz infrastructure
 type: application
-# 2.3.0 — internal cleanup, additive for consumers:
-#   * ONE resolver, `app.merged` (templates/_helpers.tpl), replaces the eight
-#     helpers that each re-implemented the same environment-override preamble
-#     (app.envConfig — already dead —, app.getValue, app.getResource,
-#     app.infisicalEnv, app.secretsConfig, app.ingressList, app.envVars, and
-#     app.platformServices' merge half). Semantics unchanged: env wins on
-#     scalars and map keys, lists replace. Side effect, deliberate: an
-#     environment can now override ANY spec key, not only the six that had a
-#     bespoke helper.
-#   * `app.memMi` — one Mi/Gi parser shared by app.memoryLimit and
-#     app.nodeMaxOldSpace instead of a copy in each. NOTE the DERIVED memory
-#     limit is now always emitted in Mi: a `1Gi` request yields `2048Mi` where
-#     it used to yield `2Gi`. Same quantity, one cosmetic manifest diff.
-#   * namespace comes from `.Release.Namespace` and the `instance` label from
-#     `.Release.Name`, instead of both being reconstructed as
-#     "<environment>-<name>". Identical for every CI deploy (CI installs as
-#     `-n <env>-<app>` under release `<env>-<app>`); correct rather than
-#     coincidental for anything else.
-#   * removed `infrastructure.nodeName` and the hostPath PV nodeAffinity it
-#     gated. Only app CI installs this chart and it never passed the value, so
-#     the branch never rendered. (The service chart keeps its equivalent —
-#     Ansible does pass it there.)
-#   * removed `spec.health.initialDelaySeconds` from values + fixture: the
-#     startupProbe replaced it in 1.x and no template has read it since.
-#
-# 2.2.0 — additive, no consumer action required:
-#   * container securityContext hardening (runAsNonRoot, no privilege
-#     escalation, capabilities drop ALL, seccomp RuntimeDefault), overridable
-#     via spec.securityContext
-#   * hostPath PV nodeAffinity, emitted only when infrastructure.nodeName is
-#     supplied (app-repo CI, which does not pass it, is unaffected)
-#   * registry-secret .dockerconfigjson is now built with dict|toJson instead
-#     of raw string interpolation — fixes passwords containing " or \
-#   * spec.storage.size / spec.storage.mountPath are now `required`
+# BUMP THIS in the same commit as any template change. App CI pulls the chart
+# UNVERSIONED (oci://registry.jterrazz.com/charts/app), and both publishers
+# (.github/workflows/publish-chart.yaml and
+# ansible/roles/platform/tasks/publish-app-chart.yml) refuse to overwrite an
+# already-published version — so an unbumped template change publishes nothing
+# and every app keeps rendering the old templates.
 version: 2.3.0
 appVersion: "1.17.1"

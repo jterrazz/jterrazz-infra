@@ -1,18 +1,11 @@
 ---
-# Network Policies for platform-registry (the private Docker registry).
+# platform-registry (the private Docker registry).
 #
 # The registry holds every application image and its push credentials are
-# htpasswd-only, so with Portainer gone it is the crown jewel of the cluster.
-# The Deployment/Service live in kubernetes/services/registry/deployment.yaml
-# and the IngressRoute/Certificate/PV/PVC come from the service chart
-# (kubernetes/services/registry/service.yaml); only the namespace and these
-# policies are declared here. The one piece still rendered by Ansible is the
-# `registry-auth` Secret, because it carries a password hash.
-#
-# Ingress path in scope: containerd on the node and CI runners on the tailnet
-# both resolve registry.jterrazz.com and terminate at Traefik (kube-system),
-# which then dials the registry Service on 5000. Nothing else legitimately
-# reaches port 5000.
+# htpasswd-only, so it is the crown jewel of the cluster. Nothing but Traefik
+# legitimately reaches port 5000: containerd on the node and CI runners on the
+# tailnet both resolve registry.jterrazz.com and terminate at Traefik, which
+# then dials the registry Service.
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -35,14 +28,13 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Pods in platform-registry -> each other; sourced by the namespace label.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: platform-registry
 
 ---
-# Traefik (kube-system) -> registry:5000. Every pull and push arrives this
-# way; there is no direct ClusterIP consumer.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -53,6 +45,8 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Traefik (kube-system) -> registry:5000. Every pull and push arrives this
+    # way; there is no direct ClusterIP consumer.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -62,16 +56,6 @@ spec:
           port: 5000
 
 ---
-# Egress: the registry uses local filesystem storage (a hostPath PVC), so in
-# principle it needs nothing but DNS.
-#
-# TODO tighten after repave validation — 443 is allowed alongside DNS rather
-# than DNS alone. A registry that cannot egress fails pushes in confusing,
-# half-completed ways (see the blob-upload incident documented in
-# kubernetes/services/registry/deployment.yaml), and this namespace is on the
-# critical path for every app
-# deploy. Drop the 443 rule once a full CI push/pull cycle is confirmed green
-# on the fresh cluster.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -82,6 +66,8 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # registry -> CoreDNS on 53; namespace-wide because a pod resolves before
+    # it can know which namespace answered.
     - to:
         - namespaceSelector: {}
       ports:
@@ -89,6 +75,9 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # registry -> the internet on 443. Storage is a local hostPath PVC, so in
+    # principle DNS alone would do; kept open per issue #3 because this
+    # namespace is on the critical path for every app deploy.
     - ports:
         - protocol: TCP
           port: 443

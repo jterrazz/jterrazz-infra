@@ -1,13 +1,9 @@
 ---
-# Tailscale Installation and Configuration
-
-# systemd-resolved is installed by the base role (it is a separate, non-default
-# package on Debian 12+) — but the OrbStack image ships it MASKED. Without a
-# stub resolver, Tailscale falls back to writing /etc/resolv.conf directly
-# with `nameserver 100.100.100.100`, and that resolver does not chase CNAMEs
-# from a public zone (jterrazz.com) into the tailnet zone (*.ts.net). The
-# deploy then fails at "helm registry login registry.jterrazz.com" because
-# the CNAME chain is not followed.
+# The OrbStack image ships systemd-resolved MASKED (the base role installs it).
+# Without a stub resolver Tailscale writes /etc/resolv.conf itself with
+# `nameserver 100.100.100.100`, which does not chase CNAMEs from a public zone
+# into the tailnet zone — the deploy then fails at
+# "helm registry login registry.jterrazz.com".
 - name: Ensure systemd-resolved is enabled (needed for CNAME chasing into tailnet)
   ansible.builtin.systemd_service:
     name: systemd-resolved
@@ -17,11 +13,9 @@
     daemon_reload: true
   tags: [tailscale, dns]
 
-# OrbStack's DHCP hands out a bogus DNS server (0.250.250.200) that
-# silently drops queries; without overriding it, resolved tries the
-# bogus IP first and CoreDNS upstream forwarding times out for any
-# name that isn't in the tailnet. Force a working public resolver as
-# the global default.
+# OrbStack's DHCP hands out a bogus DNS server (0.250.250.200) that silently
+# drops queries. Without an override resolved tries it first and CoreDNS
+# upstream forwarding times out for every non-tailnet name.
 - name: Ensure the systemd-resolved drop-in directory exists
   ansible.builtin.file:
     path: /etc/systemd/resolved.conf.d
@@ -40,9 +34,8 @@
   notify: Restart systemd-resolved
   tags: [tailscale, dns]
 
-# The resolver has to be live BEFORE the resolv.conf symlink and the tailscaled
-# restart below, so flush the handler here instead of letting it run at the end
-# of the play.
+# The resolver must be live BEFORE the resolv.conf symlink and the tailscaled
+# restart below, so this cannot wait for end-of-play handler execution.
 - name: Apply the resolved config change now
   ansible.builtin.meta: flush_handlers
 
@@ -61,9 +54,8 @@
   register: tailscale_binary
   tags: [tailscale]
 
-# Only needed when tailscaled was already running with a stale resolv.conf
-# (the fresh-install branch below starts the daemon AFTER the symlink is
-# in place, so it picks up resolved on its own).
+# Only for an already-running tailscaled holding a stale resolv.conf: the
+# fresh-install branch below starts the daemon after the symlink is in place.
 - name: Restart tailscaled to pick up the systemd-resolved integration
   ansible.builtin.systemd_service:
     name: tailscaled
@@ -77,11 +69,9 @@
   when: not tailscale_binary.stat.exists
   tags: [tailscale]
   block:
-    # deb822 source, not apt_key + apt_repository: Debian 13 REMOVED the
-    # apt-key binary, so ansible.builtin.apt_key has nothing to call. The
-    # deb822_repository module writes the keyring and the .sources stanza in
-    # one step (it needs python3-debian on the target — installed by the
-    # base role).
+    # deb822, NOT apt_key + apt_repository: Debian 13 removed the apt-key
+    # binary so apt_key has nothing to call. Needs python3-debian on the
+    # target, installed by the base role.
     - name: Add the Tailscale apt repository
       ansible.builtin.deb822_repository:
         name: tailscale
@@ -93,9 +83,9 @@
         state: present
         enabled: true
 
-    # update_cache here rather than as a separate step: the source was only
-    # just written, so apt has no index for it yet and the install would fail
-    # with "Unable to locate package tailscale".
+    # update_cache here, not as a separate step: the source was only just
+    # written, so apt has no index for it and the install would fail with
+    # "Unable to locate package tailscale".
     - name: Install the Tailscale package
       ansible.builtin.apt:
         name: tailscale
@@ -109,17 +99,14 @@
     state: started
   tags: [tailscale]
 
-# Boot-time self-heal: after a host reboot tailscaled can come back
-# "Logged out" (e.g. node-key expiry) and does NOT auto-reconnect. A
-# logged-out node can't resolve *.ts.net, so registry.jterrazz.com pulls
-# NXDOMAIN and every app pod ImagePullBackOffs (Cloudflare then 503s the
-# public hostnames). This oneshot unit re-auths on every boot if needed.
+# Boot-time self-heal: after a reboot tailscaled can come back "Logged out"
+# (node-key expiry) and does NOT auto-reconnect. A logged-out node cannot
+# resolve *.ts.net, so registry.jterrazz.com NXDOMAINs, every app pod
+# ImagePullBackOffs and Cloudflare 503s the public hostnames.
 #
-# The script is ALSO how this playbook logs in (last task in the block):
-# `tailscale up` used to be spelled out a second time here as an Ansible argv,
-# so a flag added to one copy silently didn't apply to the other. The script
-# is idempotent by design — it inspects BackendState and exits 0 when the node
-# is already Running — so calling it unconditionally is safe.
+# The script is ALSO how this play logs in (last task in the block) — do not
+# re-spell `tailscale up` as an argv here, or a flag added to one copy silently
+# misses the other. It is idempotent: it exits 0 when BackendState is Running.
 - name: Set up Tailscale login and boot-time auto-reauth
   when:
     - tailscale_oauth_client_id != ""
@@ -157,8 +144,7 @@
         enabled: true
         daemon_reload: true
 
-    # no_log because the OAuth secret is handed to the task environment; the
-    # script itself never puts it on a command line.
+    # The OAuth secret goes via the task environment, never a command line.
     - name: Connect to Tailscale
       ansible.builtin.command: /usr/local/bin/tailscale-autoauth.sh
       environment:
@@ -168,9 +154,8 @@
       changed_when: "'re-authenticating' in tailscale_up.stdout"
       no_log: true
 
-# Publish tailscale_ip / tailscale_dns_hostname for the k3s role (TLS SANs and
-# the fetched kubeconfig's server URL) and the platform role (CoreDNS
-# overrides + Helm values).
+# Publishes tailscale_ip / tailscale_dns_hostname for the k3s role (TLS SANs,
+# kubeconfig server URL) and the platform role (CoreDNS overrides, Helm values).
 - name: Gather Tailscale facts for downstream plays
   ansible.builtin.include_tasks: facts.yml
   tags: [tailscale]

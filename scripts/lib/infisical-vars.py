@@ -2,10 +2,7 @@
 """Fetch the Ansible-bound secrets from Infisical into an extra-vars YAML file.
 
 THE single implementation, shared by scripts/deploy.sh (laptop) and
-.github/workflows/deploy-platform.yaml (CI). Both used to carry a hand-synced
-copy of the same login + fetch + escaping + missing-key check, with a comment
-on each saying "if you change one, change the other" — which is exactly the
-kind of thing that drifts.
+.github/workflows/deploy-platform.yaml (CI) — do not fork it back into either.
 
 Usage:
     infisical-vars.py <site|platform> <output-path>
@@ -26,6 +23,11 @@ Each secret path is fetched EXPLICITLY (not recursively) so short keys can
 repeat across services without colliding. Any missing key is a hard failure:
 silently dropping one lets an Ansible role default paper over a real Infisical
 misconfiguration.
+
+KEEP SCOPES IN SYNC with the assert list in
+ansible/roles/platform/tasks/preflight.yml. That task is the second gate on
+this same set: a var fetched here but unasserted there fails halfway through a
+deploy instead of before it starts.
 """
 
 import json
@@ -62,8 +64,7 @@ SCOPES = {
 
 
 def die(message):
-    # GitHub renders `::error::` as an annotation on the failing step; a plain
-    # line is fine everywhere else.
+    # GitHub renders `::error::` as an annotation on the failing step.
     prefix = "::error::" if os.environ.get("GITHUB_ACTIONS") else "ERROR: "
     print(f"{prefix}{message}", file=sys.stderr)
     sys.exit(1)
@@ -111,9 +112,9 @@ def fetch_path(token, secret_path):
 
 
 def yaml_escape(value):
-    # Quote everything: tokens may start with `[` or contain `:`, both of which
-    # mean things to the YAML parser. Escape embedded newlines too, so a
-    # multi-line secret can't break the file.
+    # Callers quote everything: a token may start with `[` or contain `:`,
+    # both meaningful to the YAML parser. Newlines are escaped too, so a
+    # multi-line secret cannot break the file.
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
@@ -145,7 +146,7 @@ def main():
     out["infisical_client_id"] = client_id
     out["infisical_client_secret"] = client_secret
 
-    # 0600 from the moment the file exists — it never has a world-readable
+    # os.open with 0600, not open(): the file never has a world-readable
     # window, even if the caller forgot to mktemp it.
     fd = os.open(outpath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:

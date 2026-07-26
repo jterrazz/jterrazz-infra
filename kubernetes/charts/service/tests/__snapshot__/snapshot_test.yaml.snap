@@ -1,0 +1,178 @@
+matches the recorded render of the CI fixture:
+  1: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-tls
+    spec:
+      dnsNames:
+        - ci-test-service.jterrazz.com
+      issuerRef:
+        kind: ClusterIssuer
+        name: letsencrypt-production
+      secretName: ci-test-service-tls
+  2: |
+    apiVersion: traefik.io/v1alpha1
+    kind: IngressRoute
+    metadata:
+      labels:
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service
+    spec:
+      entryPoints:
+        - websecure
+      routes:
+        - kind: Rule
+          match: Host(`ci-test-service.jterrazz.com`)
+          middlewares:
+            - name: cluster-internal-access
+              namespace: platform-networking
+          services:
+            - name: ci-test-service
+              port: 8080
+      tls:
+        secretName: ci-test-service-tls
+  3: |
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      capacity:
+        storage: 3Gi
+      hostPath:
+        path: /var/lib/k8s-data/ci-test-service
+        type: DirectoryOrCreate
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - ci-test-node
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: manual
+  4: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-data
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 3Gi
+      storageClassName: manual
+      volumeName: ci-test-service-data
+  5: |
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-metrics
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      capacity:
+        storage: 1Gi
+      hostPath:
+        path: /var/lib/k8s-data/ci-test-service/metrics
+        type: DirectoryOrCreate
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - ci-test-node
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: manual
+  6: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: storage-ci-test-0
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: manual
+      volumeName: ci-test-service-metrics
+  7: |
+    apiVersion: v1
+    kind: PersistentVolume
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-uploads
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      capacity:
+        storage: 5Gi
+      hostPath:
+        path: /var/lib/k8s-data/ci-test-service/uploads
+        type: DirectoryOrCreate
+      nodeAffinity:
+        required:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - ci-test-node
+      persistentVolumeReclaimPolicy: Retain
+      storageClassName: manual
+  8: |
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      labels:
+        app.kubernetes.io/component: storage
+        app.kubernetes.io/managed-by: helm
+        app.kubernetes.io/name: ci-test-service
+        app.kubernetes.io/part-of: jterrazz-infrastructure
+      name: ci-test-service-uploads
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+      storageClassName: manual
+      volumeName: ci-test-service-uploads

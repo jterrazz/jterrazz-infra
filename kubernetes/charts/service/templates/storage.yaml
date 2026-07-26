@@ -1,45 +1,27 @@
 {{- /*
-Storage is a MAP of named volumes:
-`storage.<key>` -> { size, pathSuffix, claimName }.
+DATA-DESTROYING IF CHANGED. Object names and hostPath paths address LIVE data:
 
-Naming: the PV is ALWAYS `<name>-<key>`, and the PVC binds to it by
-volumeName. The `data` key therefore reproduces the historical `<name>-data`
-names exactly, which is why librechat-data, registry-data, grafana-data,
-prometheus-data and openpanel-{postgres,redis,clickhouse} all keep the object
-names they were created with.
+  PV   <name>-<key>           (the PVC binds to it by volumeName)
+  PVC  <name>-<key>, unless `claimName` overrides metadata.name — needed when
+       the consumer imposes it. A StatefulSet volumeClaimTemplate looks for
+       storage-<release>-<ordinal> and silently provisions a FRESH dynamic
+       volume if it does not find one, which is how Loki/Tempo lose every
+       log/trace. Hence claimName storage-loki-0 / storage-tempo-0 over PVs
+       that stay loki-data / tempo-data.
+  path /var/lib/k8s-data/<name>[/<pathSuffix>], e.g. librechat + `mongo` ->
+       /var/lib/k8s-data/librechat/mongo. Renaming a key moves the directory
+       and the pod comes up on an empty volume.
 
-claimName (chart 2.1) overrides ONLY the PVC's metadata.name. It exists for
-volumes whose consumer imposes the claim name: a StatefulSet's
-volumeClaimTemplate looks for `storage-<release>-<ordinal>` and will provision
-a fresh dynamic volume if it doesn't find one. Loki and Tempo are installed
-from upstream StatefulSet charts, so their PVCs must be named
-storage-loki-0 / storage-tempo-0 while their PVs stay loki-data / tempo-data.
-Without this override those two pairs had to live in an Ansible-rendered
-template (ansible/templates/kubernetes/telemetry-storage.yaml.j2) instead of
-here.
-
-hostPath paths are LIVE DATA and must not move:
-  /var/lib/k8s-data/<name>[/<pathSuffix>]
-e.g. librechat + pathSuffix `mongo`   -> /var/lib/k8s-data/librechat/mongo
-     librechat + pathSuffix `uploads` -> /var/lib/k8s-data/librechat/uploads
-     grafana   + no pathSuffix        -> /var/lib/k8s-data/grafana
-
-Removed in 2.0: the `selector`-mode PVC branch and the `hostPathType` value —
-no consumer ever set either. The PVC always binds by volumeName, and
-hostPath.type is unconditionally DirectoryOrCreate to match the app chart.
-hostPath.type is an IMMUTABLE PV field, so this only takes effect on freshly
-created PVs; an existing PV created without it keeps its empty type.
+hostPath.type is an IMMUTABLE PV field, so the unconditional
+DirectoryOrCreate below only applies to freshly created PVs.
 */ -}}
 {{- $name := include "service.name" . -}}
 {{- /*
 nodeAffinity pins each hostPath PV to the node holding the data. Emitted only
-when a node name is supplied — an empty infrastructure.nodeName would produce
-`values: [""]`: a PV that matches no node and can never bind. Ansible always
-passes --set infrastructure.nodeName=<inventory_hostname>.
-
-Also immutable once set, so adding it to a PV that predates this chart means
-delete-and-recreate the PV object (the DATA is untouched — hostPath dirs and
-Retain reclaim policy).
+when a node name is supplied — an empty infrastructure.nodeName renders
+`values: [""]`, a PV that matches no node and can never bind. Also immutable
+once set: adding it to a pre-existing PV means delete-and-recreate the PV
+object (the DATA survives — hostPath dirs plus a Retain reclaim policy).
 */ -}}
 {{- $nodeName := .Values.infrastructure.nodeName | default "" -}}
 {{- range $key, $volume := .Values.storage }}
@@ -61,8 +43,6 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    # pathSuffix nests a multi-component app's volume under one dir
-    # (e.g. librechat/mongo) so the on-disk convention stays 1 dir = 1 app.
     path: /var/lib/k8s-data/{{ $name }}{{ with $volume.pathSuffix }}/{{ . }}{{ end }}
     type: DirectoryOrCreate
   {{- if $nodeName }}

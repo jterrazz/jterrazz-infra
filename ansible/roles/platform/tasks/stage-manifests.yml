@@ -1,9 +1,7 @@
 ---
-# ========================================
-# Stage the repo's kubernetes/ tree on the node
-# ========================================
-# Every helm/kubectl task below runs ON the node and reads values files and
-# manifests from {{ manifest_dir }}. platform.yml's post_tasks removes it again.
+# Every helm/kubectl task in this role runs ON the node and reads its values
+# files and manifests out of {{ manifest_dir }}. platform.yml's post_tasks
+# removes the directory again.
 
 - name: Create the manifest directory on the node
   ansible.builtin.file:
@@ -17,14 +15,9 @@
     dest: "{{ manifest_dir }}/kubernetes/"
     mode: "0644"
 
-# ========================================
-# Tailscale IP
-# ========================================
-# tailscale_ip / tailscale_dns_hostname are set by the tailscale role during a
-# full site.yml run. This play is also run on its own by
-# .github/workflows/deploy-platform.yaml, which skips the host layer, so
-# pull the facts in from the role when they are missing. Single implementation,
-# see roles/tailscale/tasks/facts.yml.
+# The tailscale role sets these during a full site.yml run, but
+# .github/workflows/deploy-platform.yaml runs this play alone and skips the
+# host layer — hence the guarded include.
 - name: Ensure Tailscale facts are available
   ansible.builtin.include_role:
     name: tailscale

@@ -1,7 +1,5 @@
 ---
-# Security Role Handlers
-
-# ssh.service, not ssh.socket: the base role turns socket activation off so the
+# ssh.service, NOT ssh.socket: the base role turns socket activation off so the
 # daemon owns the listener and a restart actually re-binds it.
 - name: Restart SSH
   ansible.builtin.systemd_service:

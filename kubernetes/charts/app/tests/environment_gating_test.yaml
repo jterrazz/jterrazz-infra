@@ -1,0 +1,77 @@
+suite: undeclared environment renders NOTHING (chart 2.x behaviour)
+#
+# ===========================================================================
+# READ BEFORE "FIXING" A FAILURE HERE
+# ===========================================================================
+# Every template is gated on app.envExists, so `--set environment=prd` against
+# a chart that declares `prod` renders an EMPTY RELEASE instead of failing.
+# A `helm upgrade --install` of an empty release does not error — it deletes
+# every object the previous revision owned. That is the whole point of pinning
+# it here.
+#
+# This is deliberately NOT asserted as "good". Turning the typo into a hard
+# failure is a breaking change owned by a coordinated chart 3.0, and when that
+# lands this suite MUST be rewritten to expect `failedTemplate`. The test
+# exists so that change is a conscious edit to a file that says so, rather than
+# a silent behaviour flip nobody notices.
+#
+# (`hasDocuments` is evaluated per selected template, so "count: 0" with no
+# `templates:` filter means "every template in the chart rendered nothing".)
+tests:
+  - it: renders zero manifests with the chart's own default values
+    # No `values:` at all — this is why plain `helm lint`/`helm template`
+    # validates nothing here, and why ci/test-values.yaml IS the contract.
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders zero manifests for an environment that is not declared
+    values:
+      - ../ci/test-values.yaml
+    set:
+      environment: prd
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders zero manifests for an EMPTY environment string
+    # Note app.merged carries `required "environment is required"`, but no
+    # template ever reaches it: app.envExists gates first and short-circuits on
+    # a falsy value. So an unset environment is silently empty too, exactly
+    # like a typo'd one — the `required` is an unreachable safety net today.
+    values:
+      - ../ci/test-values.yaml
+    set:
+      environment: ""
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: drops the prod-only dashboard ConfigMap in another environment
+    # dashboard-configmap.yaml is additionally gated on environment == prod:
+    # Grafana has one folder per app, and three environments' worth of the same
+    # dashboard would collide in it.
+    values:
+      - ../ci/test-values.yaml
+    templates:
+      - templates/dashboard-configmap.yaml
+    set:
+      environment: staging
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the dashboard ConfigMap in prod
+    values:
+      - ../ci/test-values.yaml
+    templates:
+      - templates/dashboard-configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.labels.grafana_dashboard
+          value: "1"
+      - equal:
+          path: metadata.annotations.grafana_folder
+          value: ci-test-app

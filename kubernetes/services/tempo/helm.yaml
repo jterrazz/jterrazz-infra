@@ -5,13 +5,8 @@ tempo:
       local:
         path: /var/tempo/traces
   retention: 720h # 30 days
-  # Drop the chart's default 1 GB Go memory ballast — a pre-Go-1.19 GC
-  # hack that deliberately pins ~1 GB resident to delay collection. On
-  # this near-idle tracing backend it was pure waste. Tempo 2.x
-  # recommends GOMEMLIMIT instead: the GC turns aggressive as RSS
-  # approaches the soft limit, well before the 1Gi hard limit / the
-  # WAL-flush OOM ceiling documented below. Steady-state RSS drops from
-  # ~620Mi toward ~150-250Mi.
+  # Keep at 0: the chart's default 1 GB ballast is a pre-Go-1.19 GC hack that
+  # pins ~1 GB resident to delay collection. GOMEMLIMIT below replaces it.
   memBallastSizeMbs: 0
   extraEnv:
     - name: GOMEMLIMIT
@@ -21,9 +16,8 @@ tempo:
       cpu: 25m
       memory: 192Mi
     limits:
-      # Tempo's ingester WAL flush spikes RAM beyond the 512Mi default —
-      # the upstream chart OOMKilled every few minutes on a busier
-      # cluster (~3k restarts over 64 days) and made `helm --wait` flake.
+      # Tempo's ingester WAL flush spikes well above idle RSS; a tighter limit
+      # OOMKills every few minutes and makes `helm --wait` flake.
       memory: 512Mi
   receivers:
     otlp:
@@ -36,6 +30,5 @@ tempo:
 persistence:
   enabled: true
   storageClassName: manual
-  # 5Gi→10Gi for 30d of traces (~108M/7d → ~460M/30d today; headroom for
-  # traffic growth). hostPath enforces no quota — nominal, real cap = Mac disk.
+  # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
   size: 10Gi

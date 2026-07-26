@@ -1,27 +1,14 @@
-# Cloudflared (Cloudflare Tunnel) — Phase 1 deployment.
+# Cloudflared (Cloudflare Tunnel) — the only public ingress path; the host has
+# no open public IP.
 #
-# Goal: provide a public ingress path that doesn't require an open public IP
-# on the host. Cloudflared establishes outbound QUIC connections to the
-# Cloudflare edge; public traffic for our domains is routed through the
-# tunnel and into the cluster's existing Traefik service. No change to
-# IngressRoutes, certs, or DNS topology in this phase — the tunnel sits
-# dormant until the user CNAMEs a hostname onto it.
+# The tunnel is remote-managed (token-based) and routes PER HOSTNAME, not by
+# wildcard: every public hostname needs its own Public Hostname rule in the
+# Cloudflare Zero Trust dashboard pointing at Traefik. Adding one there
+# auto-creates its CNAME; a bare CNAME with no matching rule 404s. Adding a
+# hostname therefore never touches this manifest — see README.md in this dir.
 #
-# Routing model: the tunnel is "remote-managed" (token-based) and routes
-# PER HOSTNAME (not a wildcard) — every public hostname needs its own Public
-# Hostname rule in the Cloudflare Zero Trust dashboard, each pointing at
-# Traefik. Adding one there auto-creates its CNAME
-# (<hostname> → tunnel-id.cfargotunnel.com); a bare CNAME with no matching
-# rule returns a 404 from cloudflared. No touch to this manifest per hostname.
-#
-# Deploy prerequisites (one-time, manual — see README.md in this dir):
-#   1. Create the tunnel in Cloudflare Zero Trust dashboard.
-#   2. Add CLOUDFLARE_TUNNEL_TOKEN to Infisical /jterrazz-infrastructure prod.
-#   3. Add a Public Hostname rule per hostname routed through the tunnel.
-#
-# The InfisicalSecret that materialises the `cloudflared-secrets` Secret this
-# Deployment reads lives in secret.yaml next to this file. Apply it first: the
-# pod will CrashLoop until the Secret exists.
+# Apply secret.yaml (next to this file) FIRST: the pod CrashLoops until the
+# `cloudflared-secrets` Secret it reads exists.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -32,17 +19,15 @@ metadata:
     app.kubernetes.io/name: cloudflared
     app.kubernetes.io/component: tunnel
 spec:
-  # Single replica for Phase 1 — cloudflared maintains 4 redundant edge
-  # connections per replica anyway, and we're validating the path before
-  # adding HA. Bump to 2 once we trust the topology.
+  # One replica is not a single point of failure the way it looks: cloudflared
+  # maintains 4 redundant edge connections per replica.
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: cloudflared
   strategy:
-    # RollingUpdate with 0 minAvailable would briefly take the tunnel down
-    # during upgrades; Recreate is fine here since edge connections are
-    # transient and Cloudflare gracefully fails over to the new replica.
+    # Recreate: edge connections are transient and Cloudflare fails over to the
+    # new replica, so there is nothing for a rolling update to protect.
     type: Recreate
   template:
     metadata:
@@ -72,8 +57,7 @@ spec:
             # HTTP/2 falls back to TCP/443 which traverses the NAT fine.
             - --protocol
             - http2
-            # Expose Prometheus metrics on :2000 so we can scrape later
-            # without redeploying.
+            # Also serves /ready, which both probes below use.
             - --metrics
             - 0.0.0.0:2000
             - run
@@ -87,9 +71,8 @@ spec:
             - name: metrics
               containerPort: 2000
               protocol: TCP
-          # `cloudflared ready` returns 200 when at least one edge connection
-          # is established. Used as both liveness and readiness so a stuck
-          # process gets restarted.
+          # /ready returns 200 once at least one edge connection is established;
+          # used for liveness too, so a stuck process gets restarted.
           livenessProbe:
             httpGet:
               path: /ready

@@ -1,18 +1,12 @@
 ---
-# Platform role — defaults.
-#
-# Only values that should not normally be touched live here; the visible
-# config surface (chart versions, private hostnames, ...) is
-# inventories/group_vars/all.yml.
+# Values a human should not normally touch; the visible config surface is
+# inventories/group_vars/all.yml. These three are read outside this role
+# (playbooks/platform.yml post_tasks), hence the unprefixed names.
 
-# k3s writes this on the node; every kubectl/helm task points KUBECONFIG at it.
+# Written by k3s on the node; every kubectl/helm task points KUBECONFIG here.
 kubeconfig: /etc/rancher/k3s/k3s.yaml
 
-# Where the repo's kubernetes/ tree is staged on the node for the duration of
-# the play (see tasks/stage-manifests.yml; removed again by platform.yml's
-# post_tasks).
+# Staged by tasks/stage-manifests.yml, removed by platform.yml's post_tasks.
 manifest_dir: /tmp/k8s-manifests
 
-# The shared per-service chart: ingress + certificate + hostPath storage for a
-# platform service, rendered from that service's service.yaml.
 service_chart: "{{ manifest_dir }}/kubernetes/charts/service"

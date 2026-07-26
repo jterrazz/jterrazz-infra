@@ -1,25 +1,18 @@
 ---
-# CI inventory — the same OrbStack VM, reached over Tailscale instead of the
-# OrbStack SSH proxy (a GitHub Actions runner has no OrbStack).
+# CI inventory — the same OrbStack VM, reached over Tailscale because a GitHub
+# Actions runner has no OrbStack. Used by .github/workflows/deploy-platform.yaml.
 #
-# Used by the `deploy-platform.yaml` GitHub Actions workflow. The runner joins
-# the tailnet as `tag:ci`, then ssh's into the VM via its Tailscale MagicDNS
-# name. The SSH private key comes from the repo's GitHub secret
-# `CI_DEPLOY_SSH_PRIVATE` (NOT Infisical — the workflow errors with a
-# `gh secret set` hint if it's missing) and is written to a tempfile that
-# ansible consumes via -e ansible_ssh_private_key_file.
-#
-# The matching public key is installed in root's authorized_keys by the
-# `security` role (see `security_ci_deploy_pubkey` default).
-#
-# NOT for laptop use — that's inventories/laptop.yml.
+# The SSH private key is the repo's GitHub secret `CI_DEPLOY_SSH_PRIVATE`, NOT
+# Infisical; its public half is `security_ci_deploy_pubkey` in
+# ansible/roles/security/defaults/main.yml, which the security role installs
+# into root's authorized_keys. Rotating means changing both.
 all:
   children:
     cluster:
       hosts:
         jterrazz-infrastructure:
-          # MagicDNS FQDN of the OrbStack VM. The runner has accept-dns
-          # via tailscale/github-action, so this resolves to 100.x.
+          # MagicDNS FQDN — resolves only because the runner joins the tailnet
+          # with accept-dns via tailscale/github-action.
           ansible_host: jterrazz-infrastructure.tail77a797.ts.net
           ansible_user: root
           ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes"

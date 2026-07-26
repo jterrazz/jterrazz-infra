@@ -1,15 +1,8 @@
 ---
-# Platform Namespaces
-#
 # Every platform namespace is declared here — no imperative `kubectl create
-# ns`, no per-service namespace manifest. Uniform convention: one
-# `app.kubernetes.io/component` label naming the namespace's role (the suffix
-# after `platform-`).
-#
-# Applied with the rest of this directory via `kubectl apply -f -R
-# kubernetes/cluster` (the kustomization.yaml that used to wrap these files is
-# gone — it was a flat resource list with two cosmetic labels and nothing
-# selected on either).
+# ns`, no per-service namespace manifest. Applied with the rest of this
+# directory by `kubectl apply -f -R kubernetes/cluster`
+# (ansible/roles/platform/tasks/cluster-base.yml).
 
 apiVersion: v1
 kind: Namespace
@@ -73,16 +66,3 @@ metadata:
   name: prod-gateway-intelligence
   labels:
     app.kubernetes.io/component: app-gateway
-
-# REMOVED namespaces (they died with their only tenant; the namespace object
-# is dropped rather than left empty, so `kubectl get ns` stays an honest
-# inventory of what runs here):
-#   platform-management  <- Portainer. Deleted; kubectl + the Grafana
-#                           dashboards cover what it was used for, and it held
-#                           a cluster-admin ServiceAccount reachable over HTTP,
-#                           which made it the highest-value target in the
-#                           cluster.
-#   platform-automation  <- n8n. Deleted; no workflows were in use.
-# Their hostPath data under /var/lib/k8s-data/{portainer,n8n} is untouched —
-# the PVs were Retain — so either can be resurrected from git history plus
-# that directory.

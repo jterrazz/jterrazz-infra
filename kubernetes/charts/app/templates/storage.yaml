@@ -3,24 +3,18 @@
 {{- if $spec.storage -}}
 {{- $appName := include "app.name" . -}}
 {{- /*
-Fail loudly on a half-configured storage block. Both fields are load-bearing:
-size sizes the PV *and* the PVC request (they must match for a manual bind),
-and mountPath is consumed by deployment.yaml. Without `required` a missing
-value rendered as an empty string and produced either a PV that never bound
-or a container with an empty mountPath — both only diagnosable at runtime.
+Both fields are load-bearing, hence `required`: size sizes the PV *and* the
+PVC request (they must match for a manual bind), and mountPath is consumed by
+deployment.yaml. An empty value produces a PV that never binds or a container
+with an empty mountPath — both only diagnosable at runtime.
 */ -}}
 {{- $size := $spec.storage.size | required (printf "spec.storage.size is required when spec.storage is set (app %s)" $appName) -}}
 {{- $_ := $spec.storage.mountPath | required (printf "spec.storage.mountPath is required when spec.storage is set (app %s)" $appName) -}}
 {{- /*
-NO nodeAffinity here, deliberately (removed in 2.3 along with the
-`infrastructure.nodeName` value). This chart is installed exclusively by app
-CI (jterrazz-actions/actions/docker-deploy), which never passed a node name —
-Ansible only ever installed the OTHER chart, so the branch was dead in every
-real render and produced nothing but an unread value. The service chart, whose
-PVs Ansible does create, still pins nodeAffinity.
-
-If a second node is ever added, restore it there and here together: an
-unpinned hostPath PV can bind on a node whose disk holds an empty directory.
+NO nodeAffinity here: only app CI installs this chart and it passes no node
+name. If a second node is ever added, restore it here AND in
+kubernetes/charts/service/templates/storage.yaml together — an unpinned
+hostPath PV can bind on a node whose disk holds an empty directory.
 */ -}}
 ---
 apiVersion: v1

@@ -1,4 +1,4 @@
-# Loki monolithic (single binary) mode for single-node setup
+# SingleBinary — one node, no need for the distributed read/write split.
 deploymentMode: SingleBinary
 
 loki:
@@ -17,10 +17,8 @@ loki:
           prefix: index_
           period: 24h
   limits_config:
-    # 90d query-lookback window. NB: compactor retention-delete is not
-    # enabled, so on-disk chunks are kept indefinitely regardless (log
-    # volume is tiny — ~103M since May); this bound is what actually caps
-    # how far back Grafana can query.
+    # Query-lookback bound only: compactor retention-delete is off, so on-disk
+    # chunks are kept indefinitely regardless (log volume is tiny).
     retention_period: 90d
 
 singleBinary:
@@ -32,8 +30,7 @@ singleBinary:
       value: "400MiB"
   persistence:
     storageClass: manual
-    # 10Gi→20Gi headroom for a 90d window (chunks are tiny today but kept
-    # indefinitely — see retention_period note). Nominal on hostPath.
+    # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
     size: 20Gi
   resources:
     requests:
@@ -42,7 +39,7 @@ singleBinary:
     limits:
       memory: 512Mi
 
-# Disable distributed mode components
+# Distributed-mode components, off (see deploymentMode).
 read:
   replicas: 0
 write:
@@ -50,11 +47,10 @@ write:
 backend:
   replicas: 0
 
-# Disable nginx gateway (accessed internally)
+# Nothing outside the cluster talks to Loki, so no gateway is needed.
 gateway:
   enabled: false
 
-# Disable self-monitoring and tests
 monitoring:
   selfMonitoring:
     enabled: false

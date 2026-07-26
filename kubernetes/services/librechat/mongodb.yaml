@@ -1,13 +1,8 @@
-# Standalone MongoDB for LibreChat.
-#
-# Replaces the LibreChat chart's bundled Bitnami mongodb subchart (deprecated
-# 2025-09, broken to pull). Single-node, no auth — it only listens inside the
-# platform-ai namespace and the cluster has no other tenants on this DB. Add
-# auth (and a Secret-injected MONGO_URI) before this is anything but private.
-#
-# Data lives on the manual hostPath PVC `librechat-data` created by the
-# service chart (service.yaml). Recreate strategy: never run two writers
-# against one RWO hostPath volume.
+# Standalone MongoDB for LibreChat, in place of the chart's bundled Bitnami
+# subchart. No auth: it listens only inside platform-ai and has no other
+# tenants — add auth (and a Secret-injected MONGO_URI) before this is anything
+# but private. Data is on the manual hostPath PVC `librechat-data`
+# (service.yaml), hence Recreate: never two writers on one RWO hostPath volume.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,19 +23,16 @@ spec:
       labels:
         app: librechat-mongodb
     spec:
-      # hostPath dirs are created root-owned. The mongo image's entrypoint
-      # normally chowns /data/db itself and gosu's down to the mongodb user,
-      # but we pin the container to uid 999 below so that entrypoint branch
-      # never runs — hence this explicit chown, matching the pattern used by
-      # the app chart and by openpanel's datastores.
+      # hostPath dirs are created root-owned. The mongo entrypoint would chown
+      # /data/db itself and gosu down, but pinning the container to uid 999
+      # below means that branch never runs — hence this explicit chown.
       initContainers:
         - name: fix-perms
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
           command: ["sh", "-c", "chown -R 999:999 /data/db"]
-          # Must stay root to chown, but keeps every other guardrail: no
-          # privilege escalation, seccomp on, and all capabilities dropped
-          # except the three `chown -R` needs (CHOWN to change ownership,
-          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          # Root, but every capability dropped except the three `chown -R`
+          # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
+          # traverse and modify dirs root does not own.
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -55,14 +47,13 @@ spec:
               mountPath: /data/db
       containers:
         - name: mongodb
-          # Pinned to the 7.0 minor, not the floating `7`. A silent jump to a
-          # new minor rewrites on-disk feature-compatibility metadata, which
-          # is a one-way door for this hostPath data — mongod refuses to start
-          # against files written by a newer release. Bump deliberately, and
-          # set featureCompatibilityVersion before/after.
+          # ONE-WAY DOOR: pinned to the 7.0 minor, never the floating `7`. A
+          # minor jump rewrites on-disk feature-compatibility metadata and
+          # mongod then refuses to start against files a newer release wrote.
+          # Bump deliberately, setting featureCompatibilityVersion either side.
           image: mongo:7.0
-          # mongod runs as the image's `mongodb` user (uid/gid 999); the
-          # initContainer above hands it a correctly-owned data dir.
+          # uid/gid 999 is the image's `mongodb` user — the same uid the
+          # initContainer above chowns to.
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
@@ -87,11 +78,9 @@ spec:
               memory: 192Mi
             limits:
               memory: 384Mi
-          # TCP probe, not `mongosh --eval`: mongosh is a heavy Node REPL whose
-          # cold-start alone exceeds the 1s default probe timeout, so the exec
-          # probe timed out on ~every check → 57 liveness-kills / crash-loop
-          # (the storage engine also needs ~3s to open on the Mac hostPath).
-          # A listening port 27017 means mongod is up and accepting connections.
+          # TCP probe, NOT `mongosh --eval`: mongosh is a heavy Node REPL whose
+          # cold start alone exceeds the default 1s probe timeout, which
+          # crash-loops the pod on liveness kills.
           livenessProbe:
             tcpSocket:
               port: 27017

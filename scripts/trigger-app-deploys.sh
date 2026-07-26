@@ -1,9 +1,6 @@
 #!/bin/bash
-# Trigger app CI workflows to deploy all applications.
-# Run after a fresh cluster rebuild to deploy all apps.
-#
-# Usage: ./scripts/trigger-app-deploys.sh
-# Prerequisites: gh CLI authenticated (gh auth login)
+# Trigger every app's CI to redeploy — run after a fresh cluster rebuild.
+# Needs an authenticated `gh`.
 
 set -euo pipefail
 
@@ -30,11 +27,8 @@ for i in "${!REPOS[@]}"; do
     warn "Failed to trigger $repo (workflow may not exist yet)"
   fi
 
-  # Stagger dispatches: this fires 6 rolling deploys (Docker build + helm
-  # upgrade) against a single memory-constrained node. Without a gap, all 6
-  # CI runs land on the cluster at once and compete for RAM during the
-  # build/deploy window. A short sleep spreads them out instead of letting
-  # the whole herd hit at once (skip it after the last repo).
+  # Stagger: these are rolling deploys against ONE memory-constrained node,
+  # and without a gap every CI run lands at once and competes for RAM.
   if (( i < ${#REPOS[@]} - 1 )); then
     sleep 20
   fi

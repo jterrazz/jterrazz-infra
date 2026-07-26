@@ -1,17 +1,13 @@
 ---
-# Platform Services Playbook — everything above k3s (Helm releases + raw
-# manifests). All kubectl/helm commands run ON the node; no external k8s API
-# access is needed.
+# Everything above k3s (Helm releases + raw manifests). All kubectl/helm
+# commands run ON the node, so no external k8s API access is needed.
 #
-# The body lives in roles/platform. Every include there carries a tag, so a
-# targeted redeploy is possible:
+# ALSO run standalone by .github/workflows/deploy-platform.yaml, so it must
+# never assume the site.yml host-layer plays ran in the same invocation. The
+# body is roles/platform, whose includes are tagged for targeted redeploys:
 #
 #   ansible-playbook playbooks/platform.yml -i inventories/laptop.yml \
 #     -e "@vars.yml" --tags telemetry
-#
-# This playbook is ALSO run standalone by .github/workflows/deploy-platform.yaml
-# (platform layer only, over Tailscale), so it must not assume that the other
-# site.yml plays ran in the same invocation.
 - name: Platform Services Deployment
   hosts: cluster
   become: true
@@ -27,11 +23,9 @@
         state: absent
       tags: [always]
 
-    # No version numbers in here. The previous banner listed hand-written
-    # versions that had drifted from the actual --version pins, so it
-    # confidently reported versions that were never deployed.
-    # `platform_chart_versions` in inventories/group_vars/all.yml is what we
-    # ask for; `helm list -A` on the node is what is actually running.
+    # Deliberately lists NO version numbers: a hand-written banner drifts from
+    # the actual --version pins and then confidently reports versions that were
+    # never deployed. `helm list -A` is the only honest answer.
     - name: Deployment complete
       ansible.builtin.debug:
         msg: |

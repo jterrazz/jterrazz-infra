@@ -1,12 +1,10 @@
 ---
-# Platform layer, in dependency order.
+# Ordering is dependency order, not preference.
 #
-# `preflight` and `stage-manifests` are tagged `always` on purpose: every other
-# file below reads values/manifests out of {{ manifest_dir }} and most need the
-# Tailscale facts, so `--tags telemetry` has to bring them along or it fails on
-# a missing path. (They used to carry a skippable `prereqs` tag with a comment
-# claiming otherwise.) Use `--skip-tags chart-publish` to leave the OCI chart
-# alone.
+# `preflight` and `stage-manifests` are tagged `always` because every file
+# below reads manifests out of {{ manifest_dir }} and most need the Tailscale
+# facts — a targeted `--tags telemetry` fails on a missing path without them.
+# `--skip-tags chart-publish` leaves the published OCI chart alone.
 
 - name: Validate required secrets
   ansible.builtin.import_tasks: preflight.yml

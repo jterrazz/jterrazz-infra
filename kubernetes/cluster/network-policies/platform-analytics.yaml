@@ -1,15 +1,8 @@
 ---
-# Network Policies for platform-analytics (OpenPanel). k3s enforces
-# NetworkPolicy, so this is real isolation, not decoration.
-#
-# Rationale: ClickHouse, Postgres and Redis run without passwords (ClickHouse
-# and Redis by upstream design). Default-deny ingress + a same-namespace allow
-# means only OpenPanel's own pods can reach the datastores; nothing in another
-# namespace can touch an unauthenticated ClickHouse/Redis. Traefik (kube-system)
-# is allowed only to the two HTTP frontends (op-api, op-dashboard) on 3000.
-#
-# Moved here from kubernetes/platform/openpanel/netpol.yaml so every
-# NetworkPolicy in the cluster lives in one directory, one file per namespace.
+# platform-analytics (OpenPanel). k3s enforces NetworkPolicy, so this is real
+# isolation: ClickHouse, Postgres and Redis run WITHOUT passwords (upstream
+# design), and these policies are the only thing keeping another namespace off
+# them.
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -32,14 +25,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # OpenPanel's own pods -> each other (apps to datastores); sourced by the
+    # namespace label, so nothing outside platform-analytics matches.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: platform-analytics
 
 ---
-# Traefik (kube-system) -> op-api (private API + public /api/track) and
-# op-dashboard, on 3000. op-worker has no ingress and stays same-namespace only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -56,6 +49,9 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Traefik (kube-system) -> op-api and op-dashboard on 3000, i.e. both
+    # IngressRoutes in kubernetes/services/openpanel/ingress.yaml. op-worker
+    # is excluded by the podSelector and stays same-namespace only.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -65,13 +61,9 @@ spec:
           protocol: TCP
 
 ---
-# Egress. NEW — platform-analytics was the one namespace with ingress policies
-# but no egress counterpart, so its pods could dial anything in the cluster.
-# This brings it to parity with platform-networking / platform-registry.
-#
-# NOTE this policy makes egress DEFAULT-DENY for every pod in the namespace
-# (podSelector {} + policyTypes: Egress), so each rule below is load-bearing —
-# an OpenPanel flow that is not listed here stops working.
+# Egress is DEFAULT-DENY for every pod in the namespace (podSelector {} +
+# policyTypes: Egress), so each rule below is load-bearing — an OpenPanel flow
+# not listed here stops working.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -82,8 +74,8 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # DNS. CoreDNS lives in kube-system, but allow cluster-wide to be safe —
-    # same shape as the other namespaces' egress policies.
+    # All op-* pods -> CoreDNS on 53; namespace-wide because a pod resolves
+    # before it can know which namespace answered.
     - to:
         - namespaceSelector: {}
       ports:
@@ -91,18 +83,16 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # op-api / op-worker / op-dashboard -> the three datastores, all of which
-    # live in this namespace: Postgres 5432, Redis 6379, ClickHouse 8123
-    # (the HTTP protocol op-api's client uses) and 9000 (native).
+    # op-api / op-worker / op-dashboard -> the three datastores in this same
+    # namespace (Postgres 5432, Redis 6379, ClickHouse 8123 HTTP + 9000 native).
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: platform-analytics
-    # op-dashboard's server-side rendering fetches its OWN public URL
-    # (openpanel.jterrazz.com) from inside the pod; the coredns-custom block
-    # maps that host to Traefik's ClusterIP, so SSR is a pod -> Traefik:443
-    # flow that never leaves the cluster. Without this rule /onboarding fails
-    # with `[tRPC SSR Error] fetch failed`. See README.md, "Dashboard SSR".
+    # op-dashboard SSR -> Traefik (kube-system) on 443: it fetches its OWN
+    # public URL from inside the pod and coredns-custom maps that host to
+    # Traefik's ClusterIP. Without this /onboarding fails with
+    # `[tRPC SSR Error] fetch failed`.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -110,15 +100,8 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # Outbound HTTPS to the internet.
-    #
-    # TODO tighten after repave validation — 443 to anywhere, matching the
-    # deliberate looseness of the platform-registry egress rule. OpenPanel's
-    # app images make outbound calls whose full set upstream does not
-    # enumerate (geo/IP enrichment, avatar fetches), and a too-narrow rule
-    # here degrades analytics silently rather than failing loudly. Narrow to a
-    # concrete host list once a week of traffic on the fresh cluster confirms
-    # what it actually dials.
+    # op-* pods -> the internet on 443 (geo/IP enrichment, avatar fetches);
+    # deliberately un-narrowed, see issue #3.
     - ports:
         - protocol: TCP
           port: 443

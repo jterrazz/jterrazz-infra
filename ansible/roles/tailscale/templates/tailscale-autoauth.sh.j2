@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 # Managed by Ansible (tailscale role). THE definition of "log this node into
-# the tailnet" — run by tailscale-autoauth.service on every boot, and by the
-# tailscale role at deploy time. Re-authenticates if the daemon came back
-# logged out: a logged-out node can't resolve *.ts.net, which breaks
-# registry.jterrazz.com pulls and ImagePullBackOffs every app pod (Cloudflare
-# then 503s the public hostnames).
+# the tailnet", run both by tailscale-autoauth.service on every boot and by the
+# tailscale role at deploy time — keep it the only spelling of `tailscale up`.
 #
 # TS_CLIENT_ID / TS_CLIENT_SECRET come from /etc/tailscale/autoauth.env under
 # systemd, and from the task environment when Ansible calls it.
@@ -18,8 +15,8 @@ for _ in $(seq 1 30); do
     sleep 2
 done
 
-# Whitespace-tolerant: `tailscale status --json` pretty-prints with a
-# space after the colon, so an unspaced pattern never matches.
+# Whitespace-tolerant: `tailscale status --json` pretty-prints with a space
+# after the colon, so an unspaced pattern never matches.
 if tailscale status --json | grep -Eq '"BackendState"[[:space:]]*:[[:space:]]*"Running"'; then
     echo "Tailscale already Running; nothing to do."
     exit 0

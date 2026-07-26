@@ -1,8 +1,7 @@
 ---
-# Traefik Middlewares
-
-# Global rate limiting - protects against abuse without impacting normal users
-# 100 req/s average with burst of 200 allows normal browsing while blocking aggressive scrapers
+# Global rate limit — 100 req/s average, burst 200: normal browsing passes,
+# aggressive scrapers do not. Attached to the websecure entrypoint for every
+# route (traefik-config.yaml).
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -18,51 +17,38 @@ spec:
     period: 1s
     # Key the limiter on the REAL client IP.
     #
-    # The XFF chain for public traffic is:
-    #   client -> CF edge (APPENDS the client IP to XFF) -> cloudflared
-    #   (hostNetwork, on the node) -> Traefik
-    # and Traefik only preserves that XFF because the entrypoint's
-    # forwardedHeaders.trustedIPs now trusts the node/pod peer
-    # (traefik-config.yaml). Before that fix XFF was stripped and every
-    # request shared one empty bucket — a single global 100 req/s limit.
+    # excludedIPs, NOT `depth: N`: `depth` counts from the right of XFF and
+    # hard-codes how many hops appended a value (whether cloudflared appends
+    # its own is a version-dependent detail), and it reads XFF positionally
+    # regardless of the entrypoint's trustedIPs decision. `excludedIPs` walks
+    # XFF right-to-left and returns the first address that is not one of OUR
+    # hops, which lands on the client IP either way and is spoof-resistant: a
+    # client-supplied XFF value always sits LEFT of the address CF appended,
+    # so it is never reached.
     #
-    # Why excludedIPs and NOT `depth: N`:
-    #   * `depth` counts from the RIGHT of XFF and hard-codes how many hops
-    #     appended a value. Whether cloudflared appends its own hop is a
-    #     version-dependent implementation detail, so depth silently keys on
-    #     the wrong element the day that changes.
-    #   * `depth` also bypasses the entrypoint trust decision entirely — it
-    #     reads XFF positionally regardless of trustedIPs, which is exactly
-    #     the contradiction this middleware used to encode (`depth: 1` while
-    #     trustedIPs was set to unrelated Cloudflare ranges).
-    #   * `excludedIPs` walks XFF right-to-left and returns the first address
-    #     that is not one of OUR OWN hops. That lands on the client IP whether
-    #     or not cloudflared appended a hop, and it is spoof-resistant: a
-    #     client-supplied XFF value always sits to the LEFT of the address CF
-    #     appended, so it is never reached.
+    # KEEP IN SYNC, entry for entry, with
+    # `--entryPoints.websecure.forwardedHeaders.trustedIPs` in
+    # kubernetes/cluster/traefik/traefik-config.yaml
+    # (spec.valuesContent additionalArguments) — a range trusted there but
+    # missing here becomes the "client IP" this limiter buckets on.
     #
-    # The list mirrors the entrypoint trustedIPs — every range a request may
-    # legitimately have transited on our side. Keep the two in sync.
-    #
-    # Known limitation (unchanged by this fix): direct tailnet traffic carries
-    # no XFF at all and k3s klipper-lb MASQUERADEs it, so private hosts cannot
-    # be rate limited per client. That population is small and authenticated
-    # by the tailnet itself.
+    # Known limitation: direct tailnet traffic carries no XFF and klipper-lb
+    # MASQUERADEs it, so private hosts cannot be rate limited per client. That
+    # population is small and authenticated by the tailnet itself.
     sourceCriterion:
       ipStrategy:
         excludedIPs:
-          - "10.42.0.0/16" # k3s pod CIDR (cni0 gw + svclb pods)
-          - "10.43.0.0/16" # k3s service CIDR
-          - "127.0.0.1/32" # node-local loopback
-          - "100.64.0.0/10" # Tailscale CGNAT (incl. this node's tailnet IP)
-          - "169.254.0.0/16" # link-local
-          - "198.19.0.0/16" # OrbStack machine network (node default IPv4)
-          - "10.0.0.0/8" # RFC1918 — Hetzner private net / other node LANs
+          - "10.42.0.0/16" # k3s pod CIDR — cni0 gw + svclb pods, our own hops.
+          - "10.43.0.0/16" # k3s service CIDR — kube-proxy/klipper SNAT.
+          - "127.0.0.1/32" # node-local loopback.
+          - "100.64.0.0/10" # Tailscale CGNAT (incl. this node's tailnet IP).
+          - "169.254.0.0/16" # link-local — CNI/flannel edge cases.
+          - "198.19.0.0/16" # OrbStack machine network (node default IPv4).
+          - "10.0.0.0/8" # RFC1918 — any private LAN the node sits on.
           - "172.16.0.0/12"
           - "192.168.0.0/16"
 
 ---
-# Gzip/Brotli compression for text-based responses
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -79,7 +65,6 @@ spec:
       - image/webp
 
 ---
-# Security headers (HSTS, XSS protection, content-type sniffing, framing)
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -101,24 +86,13 @@ spec:
       Server: ""
 
 ---
-# IP allowlist for private (tailnet-only) hosts.
+# Tailnet-only allow-list. Attached by the service chart (`access: private`)
+# and by the app chart for any ingress entry with `public: false` — it is the
+# ONLY thing standing between a caller and Grafana or LibreChat.
 #
-# Attached by the service chart (`access: private`) and by the app chart for
-# any ingress entry with `public: false`. It is the ONLY thing standing
-# between a caller and Grafana and LibreChat.
-#
-# It used to allowlist all of RFC1918, which INCLUDES the k3s pod CIDR
-# (10.42.0.0/16) and service CIDR (10.43.0.0/16) — i.e. any pod in any
-# namespace could reach a private host through Traefik. The 172.16/12 and
-# 192.168/16 entries were pure surplus: nothing in this topology ever
-# sources from them. Both are removed.
-#
-# 10.42.0.0/16 unfortunately CANNOT be removed yet — see the TODO below.
-#
-# Routes that additionally need in-cluster / hairpin reachability use the
-# `cluster-internal-access` middleware INSTEAD of this one. Never chain the
-# two: Traefik ANDs chained ipAllowLists (source must satisfy both), so
-# chaining would allow strictly less, not more.
+# Routes that additionally need in-cluster / hairpin reachability use
+# `cluster-internal-access` INSTEAD. Never chain the two: Traefik ANDs chained
+# ipAllowLists, so chaining allows strictly less, not more.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -132,36 +106,25 @@ spec:
     sourceRange:
       - "100.64.0.0/10" # Tailscale CGNAT — humans on the tailnet.
       - "127.0.0.1/32" # node-local (hostPort / host-network clients).
-      # TODO tighten after repave validation — this is the entry that keeps
-      # the any-pod -> any-private-host path open, so it is the whole point of
-      # the item. It is retained because k3s ServiceLB (klipper-lb) MASQUERADEs
-      # LoadBalancer traffic inside the svclb pod's netns, so a tailnet
-      # client's request is expected to reach Traefik with an svclb POD IP as
-      # its source, not 100.64.x.x. Dropping this line would then lock every
-      # human out of every private host.
-      # VERIFY AFTER REPAVE: hit a private host from the tailnet and read the
-      # Traefik access log's ClientAddr. If it shows 100.64.x.x (real client
-      # IP preserved), delete this line — that single edit closes the
-      # any-pod -> private-host hole and is the only remaining work here.
-      - "10.42.0.0/16" # k3s pod CIDR — klipper-lb SNAT source for tailnet traffic.
+      # k3s pod CIDR — klipper-lb SNATs LoadBalancer traffic inside the svclb
+      # pod's netns, so a tailnet request may arrive with an svclb POD IP. Also
+      # what keeps any-pod -> any-private-host open; verify per issue #3.
+      - "10.42.0.0/16"
 
 ---
-# IP allowlist for routes that must ALSO be reachable from inside the cluster
-# or via a node hairpin. Strict superset of `private-access` — use one or the
-# other on a route, never both (chained ipAllowLists are ANDed).
+# Strict superset of `private-access`, for routes that must ALSO be reachable
+# from inside the cluster or via a node hairpin. Use one or the other on a
+# route, never both (chained ipAllowLists are ANDed).
 #
-# Flows that need this:
+# Flows that need it:
 #   * openpanel-private — the op-dashboard pod SSRs against
 #     openpanel.jterrazz.com, which CoreDNS maps to Traefik's ClusterIP, so
-#     the source is a plain pod IP in the pod CIDR.
-#     (kubernetes/services/openpanel/ingress.yaml)
+#     the source is a plain pod IP (kubernetes/services/openpanel/ingress.yaml).
 #   * registry — containerd on the NODE pulls registry.jterrazz.com, which
-#     CoreDNS maps to the node's own tailnet IP; that hairpins through the
-#     hostPort -> svclb -> Traefik path, so the source is a pod-CIDR or node
-#     address. That IngressRoute now comes from the service chart via
-#     `access: cluster-internal` (kubernetes/services/registry/service.yaml);
-#     it used to be hand-written in an Ansible template because the chart's
-#     old boolean `private` could not express this middleware.
+#     CoreDNS maps to the node's own tailnet IP; that hairpins through
+#     hostPort -> svclb -> Traefik, so the source is a pod-CIDR or node
+#     address (kubernetes/services/registry/service.yaml, `access:
+#     cluster-internal`).
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -178,6 +141,6 @@ spec:
       - "10.42.0.0/16" # k3s pod CIDR — in-cluster SSR callers + svclb SNAT.
       - "10.43.0.0/16" # k3s service CIDR — kube-proxy SNAT edge cases.
       - "198.19.0.0/16" # OrbStack machine network — node default IPv4.
-      - "10.0.0.0/8" # RFC1918 — Hetzner private net when that stack is live.
+      - "10.0.0.0/8" # RFC1918 — private LAN the node's default iface sits on.
       - "172.16.0.0/12"
       - "192.168.0.0/16"

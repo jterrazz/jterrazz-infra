@@ -1,7 +1,6 @@
-# Grafana unified-alerting rule, provisioned via the grafana alerts sidecar
-# (ConfigMaps labelled grafana_alert=1). Fires and shows in Grafana's Alerting
-# UI; no contact point is wired, so nothing is pushed out (delivery is a
-# deliberate later step). See kubernetes/services/grafana/helm.yaml.
+# Picked up by the alerts sidecar enabled in
+# kubernetes/services/grafana/helm.yaml, which selects on grafana_alert=1 —
+# that label is what makes this ConfigMap a rule rather than inert data.
 apiVersion: v1
 kind: ConfigMap
 metadata:

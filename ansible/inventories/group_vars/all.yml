@@ -1,36 +1,30 @@
 ---
-# Global variables — the visible config surface of this repo.
-#
-# Ansible auto-loads `group_vars/` from next to the inventory file, which is
-# what this is (inventories/laptop.yml, inventories/ci.yml). Role
-# `defaults/main.yml` is only for values a user should not normally touch.
+# Global variables — the visible config surface of this repo. This file MUST
+# stay beside the inventory files: Ansible auto-loads `group_vars/` from next
+# to the inventory (or the playbook) and nowhere else. Role `defaults/main.yml`
+# is only for values a user should not normally touch.
 
-# System
 timezone: UTC
 
-# Helm CLI version installed on the node by roles/platform/tasks/helm-cli.yml.
-# Three copies of this pin exist on purpose, because they configure three
-# different machines: this one (the cluster node), and the
-# `azure/setup-helm` versions in .github/workflows/publish-chart.yaml and
-# .github/workflows/validate.yaml (the GHA runners). Bump them together.
+# KEEP IN SYNC with the `azure/setup-helm` version in BOTH
+# .github/workflows/validate.yaml and .github/workflows/publish-chart.yaml.
+# Three machines, one Helm: a chart packaged by one version and rendered by
+# another is a silent behaviour difference. Consumed here by
+# roles/platform/tasks/helm-cli.yml.
 helm_version: "v3.20.0"
 
-# k3s
-# SINGLE SOURCE OF TRUTH for the k3s version — deliberately NOT duplicated in
-# roles/k3s/defaults, which is why that file no longer exists: two copies of a
-# version pin is a silent-drift trap (the role default wins only when this file
-# is not loaded).
+# SINGLE SOURCE OF TRUTH — deliberately NOT duplicated in roles/k3s/defaults
+# (which is why that file does not exist): a role default wins only when this
+# file is not loaded, so two copies is a silent-drift trap.
 k3s_version: "v1.35.1+k3s1"
 k3s_config_dir: "/etc/rancher/k3s"
 k3s_data_dir: "/var/lib/rancher/k3s"
 k3s_node_ip: "{{ ansible_default_ipv4.address }}"
 
-# Upstream Helm chart versions for the platform layer.
-#
-# One place instead of a --version pin buried in each task file: an unpinned
-# `helm upgrade --install` silently adopts whatever the repo's latest is at
-# deploy time, which turns an unrelated deploy into an uncontrolled upgrade of
-# somebody else's service. Bump deliberately.
+# Upstream Helm chart versions. Every `helm upgrade --install` in
+# roles/platform MUST pass one of these: unpinned, it silently adopts whatever
+# the repo's latest is at deploy time, turning an unrelated deploy into an
+# uncontrolled upgrade of somebody else's service.
 platform_chart_versions:
   cert_manager: "v1.20.2"
   infisical: "0.11.0"
@@ -42,30 +36,24 @@ platform_chart_versions:
   librechat: "2.0.6"
   alloy: "1.11.0"
 
-# Private hostnames served by this cluster.
+# Private hostnames, short-circuited IN-CLUSTER to the node's own tailnet IP.
+# Needed because CoreDNS cannot chase a CNAME from a public zone into the
+# tailnet zone, so without the override an in-cluster lookup NXDOMAINs.
+# Rendered into the `coredns-custom` ConfigMap by
+# roles/platform/tasks/coredns.yml via templates/coredns-custom.yaml.j2.
 #
-# These are the *.jterrazz.com names that resolve publicly to a CNAME chain
-# ending in the node's *.ts.net address. CoreDNS cannot chase a CNAME from a
-# public zone into the tailnet zone, so in-cluster lookups must be
-# short-circuited to the node's own tailnet IP — see the `coredns-custom`
-# ConfigMap in roles/platform/tasks/coredns.yml, which loops over this list.
-#
-# KEEP IN SYNC with `PRIVATE_HOSTS` in pulumi/src/dns.ts — that list creates
-# the public CNAME records; this one creates the in-cluster override. Adding a
-# private service means editing both.
+# KEEP IN SYNC with `PRIVATE_HOSTS` in pulumi/src/dns.ts, which creates the
+# matching PUBLIC CNAME. A host in only one of the two resolves nowhere useful.
 private_hostnames:
   - registry.jterrazz.com
   - grafana.jterrazz.com
   - gateway.jterrazz.com
   - chat.jterrazz.com
 
-# Private hostnames that must resolve IN-CLUSTER to Traefik's ClusterIP
-# instead of the node's tailnet IP.
-#
-# OpenPanel's dashboard does server-side rendering that fetches its OWN public
-# URL from inside the pod (image 2.2 has no API_URL_SSR override yet).
-# Resolving that to the node's tailnet IP would hairpin through the node
-# ServiceLB and time out (same reason LibreChat talks to the gateway via its
-# Service). The browser keeps using public DNS → node tailnet IP.
+# Same as above, but mapped to Traefik's ClusterIP rather than the node's
+# tailnet IP — for a pod that fetches its own PUBLIC URL from inside the
+# cluster. A pod cannot hairpin to the node's ServiceLB; it times out. Members
+# also belong in `PRIVATE_HOSTS` in pulumi/src/dns.ts. openpanel is here
+# because image 2.2 ignores API_URL_SSR — see issue #3.
 private_hostnames_via_traefik:
   - openpanel.jterrazz.com

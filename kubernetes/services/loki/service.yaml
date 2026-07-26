@@ -1,24 +1,13 @@
-# Service-chart values for Loki — storage only, no ingress.
-#
-# Loki has no hostname: Grafana queries it in-cluster at
-# loki.platform-telemetry.svc:3100 and the OTel collector / Alloy push to it
-# there. With `host` unset the chart emits neither IngressRoute nor
-# Certificate.
-#
-# MIGRATION: replaces the loki half of
-# ansible/templates/kubernetes/telemetry-storage.yaml.j2. Byte-identical
-# output:
-#   PV  loki-data        20Gi   /var/lib/k8s-data/loki
-#   PVC storage-loki-0   20Gi   volumeName: loki-data
+# Service-chart values for Loki — storage only. `host` is deliberately unset
+# (Grafana, the OTel collector and Alloy all reach Loki in-cluster), and with
+# no host the chart emits neither IngressRoute nor Certificate.
 name: loki
 storage:
   data:
-    # 20Gi of headroom for the 90d query window set in helm.yaml. Nominal on
-    # hostPath — no quota is enforced, the real cap is the Mac disk.
+    # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
     size: 20Gi
-    # The upstream grafana/loki chart runs SingleBinary as a StatefulSet, and
-    # a StatefulSet volumeClaimTemplate binds to `storage-<release>-<ordinal>`
-    # or nothing — give it any other claim name and it silently provisions a
-    # fresh local-path volume instead, losing every log. Release name is
-    # `loki`, one replica, so: storage-loki-0.
+    # DATA LOSS IF CHANGED. The upstream chart runs SingleBinary as a
+    # StatefulSet, whose volumeClaimTemplate binds to
+    # storage-<release>-<ordinal> or nothing — any other name and it silently
+    # provisions a fresh local-path volume, losing every log.
     claimName: storage-loki-0

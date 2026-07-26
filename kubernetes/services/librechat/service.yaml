@@ -1,17 +1,7 @@
 # Service-chart values for LibreChat (Cert + private IngressRoute + storage).
-# `access: private` attaches the `private-access` middleware (Tailscale-only
-# ipAllowList) — LibreChat is reachable on the tailnet at chat.jterrazz.com
-# and NOT exposed through the Cloudflare tunnel. When we later go public we
-# flip this to `access: public` and lean on LibreChat's own auth (registration
-# is disabled in helm.yaml until then).
-#
-# The `storage` map provisions both hostPath PV/PVC pairs. We use `manual`
-# hostPath PVCs (not the default `local-path` SC) on purpose:
-# /var/lib/k8s-data is the dir that survives a `pulumi destroy` repave;
-# local-path volumes do not.
-#
-# Object names and hostPath paths are unchanged — librechat-data /
-# librechat-uploads, mounting /var/lib/k8s-data/librechat/{mongo,uploads}.
+# Tailnet-only, and NOT exposed through the Cloudflare tunnel. Going public
+# means `access: public` plus leaning on LibreChat's own auth — registration is
+# disabled in helm.yaml until then.
 name: librechat
 host: chat.jterrazz.com
 port: 3080

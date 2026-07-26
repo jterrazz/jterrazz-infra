@@ -1,7 +1,4 @@
 ---
-# Security Role - Default Variables
-
-# SSH Configuration
 security_ssh_port: 22
 security_ssh_permit_root_login: "prohibit-password"
 security_ssh_password_authentication: "no"
@@ -10,45 +7,42 @@ security_ssh_max_auth_tries: 3
 security_ssh_client_alive_interval: 300
 security_ssh_client_alive_count_max: 2
 
-# Firewall (UFW)
 security_ufw_default_incoming: "deny"
 security_ufw_default_outgoing: "allow"
 security_ufw_default_forward: "deny"
 
-# CI deploy public key — installed in root's authorized_keys so the
-# `deploy-platform.yaml` workflow (running on a GHA runner that joins
-# Tailscale as tag:ci) can ssh in and run ansible. Public half is safe
-# to commit (it's a pubkey); the matching private key is the
-# CI_DEPLOY_SSH_PRIVATE GitHub Action secret on jterrazz-infrastructure.
-# Rotate by regenerating, replacing this default, updating the GH
-# secret, then `make deploy`.
+# Public half of a split keypair; installed into root's authorized_keys so
+# .github/workflows/deploy-platform.yaml can ssh in over the tailnet.
+#
+# KEEP IN SYNC with the GitHub secret `CI_DEPLOY_SSH_PRIVATE` on this repo.
+# Rotating = regenerate, replace this value, update that secret, then
+# `make deploy` to roll the new pubkey onto the VM — in that order, or CI
+# locks itself out.
 security_ci_deploy_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPPCsf2boqXrePRFuhL3KfJjpabJ0bjAeNqpTLl7GREf ci-deploy@jterrazz-infrastructure"
 
-# Firewall rules.
-#
-# 80/443 are open ONLY from Tailscale, not public. Cloudflared establishes
-# an outbound tunnel and is the only path for public HTTP traffic — it hits
-# Traefik via the cluster-internal ClusterIP. Tailscale clients hit Traefik
-# directly on the host's Tailscale IP, which is how private services like
-# the Docker registry, Grafana and LibreChat stay reachable.
-#
-# SSH stays open to any source: the host has no public inbound path at all
-# (no public IP; OrbStack's proxy and the tailnet are the only ways in), so
-# a source restriction here would buy nothing and can lock out the laptop.
+# NOTE UFW is the second gate for 80/443, not the first: klipper-lb DNATs in
+# PREROUTING before UFW's INPUT filter sees the packet, so the real gate is
+# `loadBalancerSourceRanges` in
+# kubernetes/cluster/traefik/traefik-config.yaml.
 security_ufw_rules:
+  # Any source -> sshd. Deliberately unrestricted: the host has no public
+  # inbound path at all, so a source rule buys nothing and can lock out the Mac.
   - { port: "22", proto: "tcp", rule: "allow", comment: "SSH" }
+  # Tailnet clients -> Traefik. Public HTTP arrives via cloudflared's outbound
+  # tunnel to Traefik's ClusterIP instead, never through these ports.
   - { port: "80", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "HTTP (Tailscale only)" }
   - { port: "443", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "HTTPS (Tailscale only)" }
+  # Tailnet clients (laptop kubectl, CI runners) -> the k3s API server.
   - { port: "6443", proto: "tcp", rule: "allow", from: "100.64.0.0/10", comment: "K8s API (Tailscale)" }
+  # RFC1918 -> the k3s API server, for a node reached over a private LAN
+  # rather than the tailnet.
   - { port: "6443", proto: "tcp", rule: "allow", from: "10.0.0.0/8", comment: "K8s API (Private)" }
   - { port: "6443", proto: "tcp", rule: "allow", from: "172.16.0.0/12", comment: "K8s API (Private)" }
   - { port: "6443", proto: "tcp", rule: "allow", from: "192.168.0.0/16", comment: "K8s API (Private)" }
 
-# Automatic Updates
 security_auto_reboot_enabled: false
 security_auto_reboot_time: "06:00"
 
-# Kernel Security Parameters
 security_kernel_params:
   - { name: "net.ipv4.tcp_syncookies", value: "1" }
   - { name: "net.ipv4.icmp_echo_ignore_broadcasts", value: "1" }

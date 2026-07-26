@@ -1,21 +1,7 @@
 ---
-# k3s Installation and Configuration
-#
-# Config a human is expected to change (version, directories, node IP) lives in
-# inventories/group_vars/all.yml — that file is the visible config surface.
-# This role has no defaults/main.yml on purpose: k3s_version must not be
-# duplicated (two copies of a version pin is a silent-drift trap, and the role
-# default wins only when group_vars is not loaded).
-#
-# Also deliberately absent, after grepping the repo for consumers:
-#   - k3s_cluster_cidr / k3s_service_cidr — never rendered into the config
-#     template, and their values (10.42.0.0/16, 10.43.0.0/16) are k3s's own
-#     defaults, so dropping them changes nothing.
-#   - k3s_tls_san / k3s_disable_components / k3s_extra_args — nothing in this
-#     repo ever set them. The TLS SAN list is built directly in
-#     templates/config.yaml.j2 from the node + Tailscale facts.
-#   - k3s_token — the token is generated on first install and persisted at
-#     {{ k3s_config_dir }}/token; nothing ever supplied an external one.
+# This role has NO defaults/main.yml on purpose: k3s_version lives in
+# inventories/group_vars/all.yml and must not be duplicated, since a role
+# default silently wins whenever group_vars is not loaded.
 
 - name: Create the k3s directories
   ansible.builtin.file:
@@ -47,7 +33,8 @@
     k3s_needs_install: "{{ not k3s_binary.stat.exists or (k3s_version not in (k3s_current_version.stdout | default(''))) }}"
   tags: [k3s]
 
-# Token Management - Generate once and persist
+# Generated once and persisted at {{ k3s_config_dir }}/token — regenerating it
+# on an existing cluster invalidates every node's registration.
 - name: Check if the k3s token file exists
   ansible.builtin.stat:
     path: "{{ k3s_config_dir }}/token"
@@ -97,9 +84,9 @@
   no_log: true
   tags: [k3s]
 
-# The tailscale role sets these earlier in site.yml; this only fires when the
-# k3s role is run on its own. The IP and DNS name go into the API server's TLS
-# SANs, which is the only way `kubectl` over the tailnet gets a valid cert.
+# Only fires when this role runs standalone (site.yml's tailscale role sets
+# them). The IP and DNS name go into the API server's TLS SANs, which is the
+# only way kubectl over the tailnet gets a valid cert.
 - name: Ensure Tailscale facts are available
   ansible.builtin.include_role:
     name: tailscale
@@ -107,7 +94,6 @@
   when: tailscale_ip is not defined
   tags: [k3s]
 
-# Configuration
 - name: Generate the k3s config
   ansible.builtin.template:
     src: config.yaml.j2
@@ -116,7 +102,6 @@
   notify: Restart k3s
   tags: [k3s]
 
-# Installation
 - name: Download the k3s install script
   ansible.builtin.get_url:
     url: https://get.k3s.io
@@ -141,7 +126,6 @@
     state: absent
   tags: [k3s]
 
-# Service Management
 - name: Enable the k3s service
   ansible.builtin.systemd_service:
     name: k3s
@@ -150,16 +134,11 @@
     daemon_reload: true
   tags: [k3s]
 
-# Apply a config change BEFORE the readiness checks below. Without this the
-# handler runs at the end of the play, i.e. k3s gets restarted only after
-# "Wait for k3s to be ready" and "Verify cluster is running" have already
-# passed against the OLD config — so a broken config change looks green and
-# only surfaces on the next run.
-#
-# Placement matters: the flush must sit AFTER install/enable, not right
-# after the config template — on a fresh host the template fires the notify
-# while the k3s unit doesn't exist yet, and an earlier flush dies with
-# "Could not find the requested service k3s".
+# Placement is load-bearing in BOTH directions. Later than this and the
+# readiness checks below pass against the OLD config, so a broken config change
+# looks green until the next run. Earlier (right after the config template) and
+# a fresh host dies with "Could not find the requested service k3s", because
+# the unit does not exist until the install task above.
 - name: Restart k3s now if the config changed
   ansible.builtin.meta: flush_handlers
 
@@ -179,7 +158,6 @@
   until: k3s_nodes.rc == 0
   tags: [k3s]
 
-# Kubectl Setup
 - name: Create the kubectl symlink
   ansible.builtin.file:
     src: /usr/local/bin/k3s

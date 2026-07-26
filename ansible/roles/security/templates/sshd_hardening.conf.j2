@@ -1,45 +1,38 @@
-# SSH Daemon Hardening
-# Managed by Ansible (security role) - Do not edit manually
+# Managed by Ansible (security role) — do not edit manually.
 #
-# This is a DROP-IN loaded by `Include /etc/ssh/sshd_config.d/*.conf` at the
-# top of Debian's stock /etc/ssh/sshd_config. Keywords set here win because in
-# sshd_config the first occurrence of a keyword takes effect and the Include
-# comes before the distro's own defaults.
+# A DROP-IN loaded by `Include /etc/ssh/sshd_config.d/*.conf` at the TOP of
+# Debian's stock sshd_config. Keywords here win only because of that position:
+# in sshd_config the first occurrence of a keyword takes effect.
 #
-# Port only takes effect because the base role disables ssh.socket: under Debian
-# 13's default socket activation the listener is owned by the socket unit's
-# ListenStream and this directive is ignored.
+# `Port` additionally depends on the base role disabling ssh.socket — under
+# socket activation the listener is the socket unit's ListenStream and this
+# directive is ignored.
 
 Port {{ security_ssh_port }}
 AddressFamily inet
 ListenAddress 0.0.0.0
 
-# Security - Modern ciphers only
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 MACs hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com
 KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384
 
-# Authentication
 PermitRootLogin {{ security_ssh_permit_root_login }}
 PubkeyAuthentication {{ security_ssh_pubkey_authentication }}
 PasswordAuthentication {{ security_ssh_password_authentication }}
-# ChallengeResponseAuthentication was renamed in OpenSSH 8.7; the old spelling
-# is a deprecated alias that current sshd warns about.
+# ChallengeResponseAuthentication is the pre-8.7 spelling; current sshd warns
+# on the deprecated alias.
 KbdInteractiveAuthentication no
 GSSAPIAuthentication no
 UsePAM yes
 
-# Limits
 MaxAuthTries {{ security_ssh_max_auth_tries }}
 MaxSessions 3
 MaxStartups 3:50:10
 
-# Timeouts
 ClientAliveInterval {{ security_ssh_client_alive_interval }}
 ClientAliveCountMax {{ security_ssh_client_alive_count_max }}
 LoginGraceTime 30
 
-# Restrictions
 X11Forwarding no
 AllowTcpForwarding no
 AllowAgentForwarding no
@@ -47,6 +40,5 @@ PermitTunnel no
 PermitEmptyPasswords no
 PermitUserEnvironment no
 
-# Logging
 SyslogFacility AUTH
 LogLevel VERBOSE

@@ -1,138 +1,69 @@
 ---
 name: jterrazz-infra
-description: Infrastructure and deployment for jterrazz projects — K3s, Helm, Traefik, CI/CD deploy. Use when deploying apps, configuring Kubernetes, adding domains, or troubleshooting infra.
+description: Infrastructure and deployment for jterrazz projects — k3s, Helm, Traefik, CI/CD deploy. Use when deploying apps, configuring Kubernetes, adding domains, or troubleshooting infra.
 ---
 
 # @jterrazz Infrastructure
 
-Part of the @jterrazz ecosystem. Defines how all apps deploy.
+One k3s cluster on one machine: an OrbStack VM (`jterrazz-infrastructure`,
+Debian 13 trixie, arm64) on the dev Mac. Pulumi provisions it, Ansible
+configures it, Helm deploys onto it. Public traffic enters through a Cloudflare
+tunnel; private services are tailnet-only. Apps live in their own repos and
+deploy themselves through the shared `app` chart published here. Hetzner is a
+recipe in `docs/hetzner.md`, not a live mode.
 
-Single-node k3s cluster, **dual-mode** — pick which stack you bring up:
+## Where things are documented
 
-- `jterrazz/production` → Hetzner cax21 VPS (live, has a public IPv4)
-- `jterrazz/local`      → OrbStack VM on the dev Mac (no monthly bill)
+| Need                                          | Read                                   |
+| --------------------------------------------- | --------------------------------------- |
+| How it fits together, layout, CI              | `README.md`                             |
+| Secrets, troubleshooting, repave, restore     | `docs/RUNBOOK.md`                       |
+| Non-inferable gotchas + hand-synced pairs     | `CLAUDE.md`                             |
+| `application.yaml` schema (deploying an app)  | `kubernetes/charts/app/README.md`       |
+| Per-service detail                            | `kubernetes/services/<svc>/README.md`   |
+| Bringing the Hetzner target back              | `docs/hetzner.md`                       |
 
-Same Ansible playbooks and Helm charts on either target. CI-driven app
-deploys via Helm. OrbStack is the current active prod (May 2026 swap).
-
-## Stack
-
-- **Host OS**: Debian 13 (trixie) on both targets — no dual-distro support
-- **Cluster**: k3s (single-node, SQLite/kine datastore — no embedded etcd)
-- **Ingress**: Traefik IngressRoutes
-- **Public traffic**: cloudflared (outbound QUIC tunnel — no host port exposure)
-- **Private access**: Tailscale (SSH + internal services)
-- **TLS**: cert-manager + Let's Encrypt DNS-01 via Cloudflare
-- **DNS**: Pulumi-managed Cloudflare records (private CNAMEs in `pulumi/src/dns.ts`) + cloudflared auto-DNS for public tunnel hostnames
-- **Secrets**: Infisical — `/jterrazz-infrastructure` (+ per-service subfolders
-  `grafana`, `n8n`, `portainer`, `librechat`, `openpanel`) for Ansible,
-  `/jterrazz-actions` for app CI
-- **Observability**: Grafana + Loki + Tempo + Prometheus + OTel Collector
-- **Registry**: Private Docker registry at `registry.jterrazz.com`
-
-## Deploying a new app
-
-1. **App repo**: add `Dockerfile`, `.infrastructure/application.yaml`, `Makefile`, CI workflows (reuses `jterrazz/jterrazz-actions/.github/workflows/release-docker.yaml`)
-2. **Infra repo (only if new public zone)**: add domain to `kubernetes/platform/cert-manager/issuers.yaml`
-3. **GitHub secrets** on the app repo: `INFISICAL_CLIENT_ID` + `INFISICAL_CLIENT_SECRET`
-4. **Cloudflare** (new public domain): SSL mode Full (Strict); add a Public Hostname in the tunnel UI — it auto-creates the CNAME
-
-## Application manifest
-
-Full schema reference: `kubernetes/charts/app/README.md`.
-
-```yaml
-apiVersion: jterrazz.com/v1
-kind: Application
-metadata:
-  name: {app-name}
-spec:
-  port: 3000
-  resources:
-    cpu: 100m
-    memory: 256Mi       # >= 512Mi also gets an auto NODE_OPTIONS heap cap
-  health:
-    path: /health
-environments:
-  prod:
-    tag: main           # deploy on every main push (image: latest)
-    replicas: 1
-    ingress:            # ALWAYS a list; `public` is required per entry
-      - host: {domain}
-        path: /
-        public: true
-```
-
-`tag` strategies:
-
-- `tag: main` → deploys on `main` push, image `latest`
-- `tag: next` → deploys on `v*` tag push, image is that tag
-- `tag: v1.2.3` (pinned) → deploys only on `workflow_dispatch`
-- `secretsEnv: prod` on a non-standard env (like `next`) maps it to an
-  existing Infisical env
-
-Opt into in-cluster platform services with
-`spec.platformServices: [otel-collector, gateway-intelligence]` — that one
-line wires env vars, the egress NetworkPolicy and (where relevant) the
-server-side ingress rule. Telemetry is opt-in: no declaration, no OTLP.
-
-## Namespace convention
-
-- `prod-{app-name}` for production
-- `platform-*` for infrastructure services
-
-## Domains
-
-Managed zones: `jterrazz.com`, `clawrr.com`, `clawssify.com`, `sig.news`, `spwn.sh`.
-
-A new **private** hostname needs two edits, hand-synced: `PRIVATE_HOSTS` in
-`pulumi/src/dns.ts` (the public CNAME) **and** `private_hostnames` in
-`ansible/playbooks/group_vars/all.yml` (the in-cluster CoreDNS override).
-Apps exposing a private surface can instead use the existing
-`*.internal.jterrazz.com` wildcard and need no DNS change at all.
-
-## Key commands
+## Commands
 
 ```bash
-# Provision + configure the active target
-make deploy-local                    # OrbStack
-make deploy                          # Hetzner
+make deploy           # pulumi up + ansible site.yml
+make deploy-platform  # ansible platform.yml only (everything above k3s)
+make diff             # what a deploy would change
+make redeploy-apps    # trigger every app's CI to rebuild + redeploy
+make destroy          # delete the VM (Mac-side data stays)
+make lint             # the checks CI runs
+make check-tools      # required toolchain present?
 
-# SSH to the cluster
-ssh root@jterrazz-infrastructure@orb                       # OrbStack
-ssh -i /tmp/ssh_key root@$(cd pulumi && pulumi stack output sshHost --stack production)  # Hetzner
-
-# Check an app
-kubectl get pods -n prod-{app-name}
-kubectl get ingressroute -n prod-{app-name}
-kubectl get certificate -n prod-{app-name}
-
-# Restart cert-manager after k3s churn
+orb -m jterrazz-infrastructure -u root kubectl get pod -A   # cluster access
 kubectl rollout restart -n platform-networking \
   deploy/cert-manager deploy/cert-manager-webhook deploy/cert-manager-cainjector
 
-# Trigger every app's CI to (re)deploy (post-rebuild bootstrap)
-make apps
-
-# Re-run one slice of the platform layer (17 tagged task files)
+# One slice of the platform layer (tags: coredns, cluster-base, helm,
+# cluster-core, telemetry, librechat, openpanel, registry, chart-publish)
 cd ansible && ansible-playbook playbooks/platform.yml \
-  -i inventories/local/hosts.yml -e "@<extra-vars>" --tags telemetry
-
-# Run the same checks CI runs (shellcheck, ansible-lint, helm lint)
-make lint
-
-# Tear down (data on the Mac stays for OrbStack)
-make destroy-local
-./scripts/deploy.sh production --destroy
+  -i inventories/laptop.yml -e "@<extra-vars>" --tags telemetry
 ```
 
 ## Never
 
-- Never force push to main
-- Never delete PVCs without backing up data
-- Never skip Cloudflare Full (Strict) SSL mode
-- Never commit secrets — use Infisical
-- Never change an app-chart template without bumping `version:` in
-  `kubernetes/charts/app/Chart.yaml` — the chart is consumed unversioned, so
-  the change lands on every app's next deploy (and CI refuses to republish an
-  existing version)
+- **Never unpin trixie** in `pulumi/src/targets/orbstack.ts` — `orb create
+  debian` defaults to bookworm, and every Ansible role is Debian-13-native.
+- **Never chain the two ipAllowList middlewares** (`private-access`,
+  `cluster-internal-access`). Traefik ANDs them, so chaining allows strictly
+  less, not more. Pick one per route.
+- **Never pin a chart below the version its data was migrated by.** On-disk
+  formats are one-way doors (mongod's featureCompatibilityVersion, Postgres
+  majors, BoltDB).
+- **Never edit a chart template without bumping `version:`** in its
+  `Chart.yaml`. The app chart is consumed *unversioned* by every app, and both
+  publish guards skip rather than overwrite — so a forgotten bump ships
+  nothing, silently.
+- **Never reintroduce a second deployment target** (`target`, `manageDns`,
+  `deployment_target`). Single target is the point of the current shape.
+- **Never `kubectl create ns`** — namespaces are declared in
+  `kubernetes/cluster/namespaces.yaml`.
+- **Never commit secrets** — Infisical holds them; `.env` holds only the
+  machine-identity credentials that bootstrap it.
+- **Never delete a PVC without checking `/var/lib/k8s-data`** first. PVs are
+  `Retain`, and a stale `claimRef` blocks rebinding.
+- **Never skip Cloudflare Full (Strict)** SSL mode on a new zone.

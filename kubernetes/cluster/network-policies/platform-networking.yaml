@@ -1,8 +1,7 @@
 ---
-# Network Policies for platform-networking namespace
-# Note: Traefik runs in kube-system by default with k3s
+# platform-networking — cert-manager (+ its webhook/cainjector) and
+# cloudflared. Traefik itself runs in kube-system under k3s, not here.
 
-# Allow external traffic to any ingress resources
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,25 +14,23 @@ spec:
     - Egress
   ingress:
     - ports:
+        # Anything -> this namespace on 80/443: HTTP(S) to whatever ingress
+        # resources land here.
         - protocol: TCP
           port: 80
         - protocol: TCP
           port: 443
-        # cert-manager's admission webhook. The kube-apiserver dials it
-        # directly on 10250; this policy previously allowed only 80/443, so
-        # every webhook call was dropped and any Certificate/Issuer write
-        # failed with "no endpoints available for service
-        # cert-manager-webhook". That is the most plausible cause of the
-        # recurring cert-manager breakage documented in CLAUDE.md and in
-        # kubernetes/services/openpanel/README.md.
+        # kube-apiserver -> cert-manager's admission webhook on 10250. Omit it
+        # and every Certificate/Issuer write fails with "no endpoints
+        # available for service cert-manager-webhook".
         - protocol: TCP
           port: 10250
-        # cert-manager Prometheus metrics endpoint (controller + webhook),
-        # scraped from platform-telemetry.
+        # Prometheus (platform-telemetry) -> cert-manager controller + webhook
+        # metrics on 9402.
         - protocol: TCP
           port: 9402
   egress:
-    # DNS
+    # cert-manager -> CoreDNS (kube-system) on 53 for in-cluster names.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -41,14 +38,10 @@ spec:
       ports:
         - protocol: UDP
           port: 53
-    # cloudflared -> Cloudflare edge. Today cloudflared runs with
-    # hostNetwork: true, so its traffic never traverses this policy (pod
-    # policies do not apply to host-network pods) — the tunnel works despite
-    # this rule, not because of it. Declared anyway so that removing
-    # hostNetwork someday (see the deployment's comment about the OrbStack CNI
-    # bug) does not silently kill the tunnel. 7844 is cloudflared's
-    # QUIC (UDP) and HTTP/2 (TCP) edge port; the deployment currently forces
-    # --protocol http2, so TCP is the one in use.
+    # cloudflared -> the Cloudflare edge on 7844 (QUIC/UDP and HTTP2/TCP; the
+    # deployment forces --protocol http2, so TCP is the one in use). Today
+    # cloudflared runs hostNetwork, so its traffic never traverses this policy
+    # — declared so that dropping hostNetwork does not silently kill the tunnel.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -61,12 +54,12 @@ spec:
           port: 7844
         - protocol: TCP
           port: 7844
-    # Allow to all pods (for backends)
+    # cloudflared -> Traefik and any in-cluster backend, TCP any port.
     - to:
         - namespaceSelector: {}
       ports:
         - protocol: TCP
-    # Allow HTTPS to internet (for Let's Encrypt ACME, Cloudflare API)
+    # cert-manager -> Let's Encrypt ACME and the Cloudflare API on 443.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -77,7 +70,8 @@ spec:
       ports:
         - protocol: TCP
           port: 443
-    # Allow DNS to internet (for cert-manager DNS-01 challenge verification)
+    # cert-manager -> public DNS on 53, to self-check its own DNS-01 challenge
+    # records before asking Let's Encrypt to validate them.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

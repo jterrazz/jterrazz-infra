@@ -1,19 +1,12 @@
 ---
-# ansible-lint configuration
+# Callers MUST pass `-c ansible/.ansible-lint`: config auto-discovery searches
+# the CWD and walks UP, never down into the linted directory, so running from
+# the repo root without it silently reverts profile, skips and excludes to
+# defaults.
 #
-# CI and `make lint` both run
-#   ansible-lint -c ansible/.ansible-lint ansible/
-# from the repo root, so violation paths are repo-relative.
-#
-# The `-c` is load-bearing: ansible-lint's config auto-discovery searches the
-# CWD and walks UP, never down into the directory it was asked to lint. Running
-# it without `-c` from the repo root therefore silently ignored this file —
-# profile, skip_list and exclude_paths all reverted to defaults.
-#
-# Profile `production` is the strictest built-in tier. It is achievable here
-# because this repo is a small, single-target playbook set — if a rule ever
-# becomes genuinely wrong for this setup, skip it below WITH A REASON rather
-# than dropping the profile.
+# `production` is the strictest built-in tier. If a rule becomes genuinely
+# wrong for this setup, skip it below WITH A REASON rather than dropping the
+# profile.
 profile: production
 
 exclude_paths:
@@ -22,20 +15,15 @@ exclude_paths:
   - pulumi/
 
 skip_list:
-  # This repo drives one node imperatively (helm/kubectl on the host). A large
-  # number of steps genuinely have no module equivalent and their idempotency
-  # is expressed via changed_when, which we do set.
+  # This repo drives one node imperatively (helm/kubectl on the host); many
+  # steps have no module equivalent and express idempotency via changed_when.
   - command-instead-of-shell # `shell` is used where set -o pipefail / loops are needed
   - no-changed-when # explicitly handled everywhere it matters; the rest are probes
-  # Long single-line helm invocations are more readable than folded YAML here.
-  - yaml[line-length]
-  # var-naming[no-role-prefix] exists to stop a dozen third-party roles from
-  # colliding in the shared play namespace. This repo has five first-party
-  # roles driving one host, and the two vars that ARE read outside their role
-  # (`kubeconfig` and `manifest_dir`, used by platform.yml's post_tasks) are
-  # deliberately named without a prefix because they describe the node, not the
-  # role. Renaming ~40 `register:` handles to `platform_grafana_result` &c.
-  # would buy no collision safety here and cost readability.
+  - yaml[line-length] # long single-line helm invocations beat folded YAML here
+  # Guards against third-party roles colliding in the shared play namespace,
+  # which cannot happen with five first-party roles on one host. `kubeconfig`
+  # and `manifest_dir` are unprefixed deliberately: platform.yml's post_tasks
+  # read them, and they describe the node rather than a role.
   - var-naming[no-role-prefix]
 
 warn_list:

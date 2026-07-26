@@ -1,14 +1,9 @@
 ---
-# ========================================
-# OpenPanel (self-hosted product analytics)
-# ========================================
-# Private dashboard on openpanel.jterrazz.com (Tailscale); public event
-# ingest on analytics.jterrazz.com (/api/track only, via cloudflared).
 # 6 workloads: Postgres + Redis + ClickHouse (stateful, hostPath PVCs) and
-# op-api / op-worker / op-dashboard. op-api runs the DB migrations on boot.
-# The platform-analytics namespace is declared in
-# kubernetes/cluster/namespaces.yaml and applied by cluster-base.yml — it is
-# not created imperatively here.
+# op-api / op-worker / op-dashboard. The order below is dependency order —
+# config and secrets, then datastores, then op-api (which migrates on boot).
+# The namespace comes from kubernetes/cluster/namespaces.yaml via
+# cluster-base.yml, never `kubectl create ns` here.
 - name: Apply the OpenPanel shared config
   ansible.builtin.command: >
     kubectl apply
@@ -18,8 +13,8 @@
   register: openpanel_base_apply
   changed_when: "'created' in openpanel_base_apply.stdout or 'configured' in openpanel_base_apply.stdout"
 
-# Sync secrets from Infisical (/jterrazz-infrastructure/openpanel) before the
-# DBs/apps so their envFrom + POSTGRES_PASSWORD resolve on first boot.
+# Before the DBs/apps, so their envFrom and POSTGRES_PASSWORD resolve on first
+# boot.
 - name: Apply the OpenPanel Infisical secret
   ansible.builtin.command: kubectl apply -f {{ manifest_dir }}/kubernetes/services/openpanel/secret.yaml
   environment:
@@ -33,13 +28,11 @@
     wait_secret_name: openpanel-secrets
     wait_secret_namespace: platform-analytics
 
-# The namespace's NetworkPolicies (default-deny + allows) live in
-# kubernetes/cluster/network-policies/platform-analytics.yaml and are applied
-# by cluster-base.yml earlier in the play — so the unauthenticated datastores
-# are firewalled before they come up, with no task needed here.
+# NOTE the namespace's NetworkPolicies are NOT applied here: cluster-base.yml
+# applies them earlier in the play, so the unauthenticated datastores are
+# firewalled before they ever come up.
 
-# PV/PVCs come from the service chart (storage map in service.yaml), and must
-# exist before the datastores reference the claims.
+# Must precede the datastores below — they reference these claims by name.
 - name: Deploy the OpenPanel service-chart resources
   ansible.builtin.include_tasks: service-charts.yml
   vars:
@@ -67,7 +60,6 @@
     - op-clickhouse
   changed_when: false
 
-# Apps + ingress. op-api migrates on boot, so give it a longer timeout.
 - name: Deploy the OpenPanel apps and ingress
   ansible.builtin.command: >
     kubectl apply

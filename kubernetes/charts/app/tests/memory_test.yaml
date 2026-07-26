@@ -1,0 +1,70 @@
+suite: memory quantity parsing (app.memMi / app.memoryLimit)
+#
+# app.memMi is the chart's only quantity parser and it is deliberately partial:
+# it understands `<n>Mi` and `<n>Gi` and nothing else, returning "" otherwise so
+# both callers (app.memoryLimit, app.nodeMaxOldSpace) can fall back to
+# "can't reason about this, leave it alone". These tests pin all three arms.
+templates:
+  - templates/deployment.yaml
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: passes a Mi request through and doubles it for the limit
+    set:
+      spec.resources.memory: 512Mi
+      spec.resources.memoryLimit: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 512Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1024Mi
+
+  - it: converts a Gi request to Mi for the derived limit
+    # 1Gi request -> 2048Mi limit, NOT 2Gi. Identical quantity; the chart emits
+    # every DERIVED limit in Mi so the unit never depends on the input's unit.
+    set:
+      spec.resources.memory: 1Gi
+      spec.resources.memoryLimit: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 2048Mi
+
+  - it: uses an explicit memoryLimit verbatim, without unit conversion
+    # The explicit value short-circuits the parser entirely — a `1Gi` limit
+    # stays `1Gi`, so an app can pin the exact string k8s will show.
+    set:
+      spec.resources.memory: 512Mi
+      spec.resources.memoryLimit: 1Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1Gi
+
+  - it: leaves an unparseable request alone rather than guessing
+    # Neither Mi nor Gi -> app.memMi returns "" -> the limit is the request
+    # itself. The alternative (doubling a number whose unit we misread) would
+    # silently ship a 1000x-wrong limit.
+    set:
+      spec.resources.memory: 1000000Ki
+      spec.resources.memoryLimit: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 1000000Ki
+
+  - it: falls back to the 256Mi default when no request is declared
+    set:
+      spec.resources: null
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 256Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 512Mi

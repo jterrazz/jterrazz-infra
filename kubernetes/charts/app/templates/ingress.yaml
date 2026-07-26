@@ -3,8 +3,7 @@
 {{- $ingressList := fromYamlArray (include "app.ingressList" .) -}}
 
 {{- /* One Certificate per unique host — multiple ingress entries on the
-       same host share the same TLS secret. Names derive from the host
-       slug so kubectl get certificate is readable. */ -}}
+       same host share one TLS secret. */ -}}
 {{- $hosts := dict -}}
 {{- range $entry := $ingressList -}}
   {{- if $entry.host -}}
@@ -30,9 +29,8 @@ spec:
     - {{ $host }}
 {{- end }}
 
-{{- /* One IngressRoute per entry (+ a strip-prefix middleware when the
-       path isn't /). Resource name = {app}-{idx} to stay unique even if
-       two entries share host or path. */ -}}
+{{- /* Resource name is {app}-{idx} so two entries sharing a host or path
+       still get unique object names. */ -}}
 {{- range $idx, $entry := $ingressList }}
 {{- if not (hasKey $entry "public") }}
   {{- fail (printf "ingress entry %d for %s is missing the required `public: true|false` field — declare network visibility explicitly" $idx $appName) }}
@@ -41,11 +39,9 @@ spec:
 {{- $isPublic := $entry.public }}
 {{- $path := $entry.path | default "/" }}
 {{- $hasPath := ne $path "/" }}
-{{- /* stripPrefix defaults to TRUE (legacy /api behaviour: backend
-       routes are mounted at /<resource> without the /api prefix). Apps
-       that mount routes at the literal path (e.g. an MCP server
-       registered at /mcp) set stripPrefix: false to keep the prefix
-       visible to the backend. */ -}}
+{{- /* Defaults TRUE: backends mount routes at /<resource>, without the /api
+       prefix. An app serving the literal path (e.g. an MCP server at /mcp)
+       sets stripPrefix: false. */ -}}
 {{- $stripPrefix := true }}
 {{- if hasKey $entry "stripPrefix" }}{{- $stripPrefix = $entry.stripPrefix }}{{- end }}
 {{- $emitStripPrefix := and $hasPath $stripPrefix }}

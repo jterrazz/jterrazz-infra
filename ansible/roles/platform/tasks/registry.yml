@@ -1,16 +1,11 @@
 ---
-# ========================================
-# Private container registry (registry.jterrazz.com)
-# ========================================
-# Applied late because its IngressRoute needs cert-manager to issue the TLS
-# cert, and the chart publish that follows needs the registry up.
+# Applied late on purpose: its IngressRoute needs cert-manager to have issued
+# the TLS cert, and publish-app-chart.yml after it needs the registry up.
 #
-# The Deployment/Service/IngressRoute/Certificate are static manifests in
-# kubernetes/services/registry/. Only the htpasswd Secret is generated here:
-# it is a BOOTSTRAP secret (the Infisical operator can't provide it — the
-# registry has to be up before anything can pull the operator's images on a
-# fresh cluster) and it is a bcrypt hash of DOCKER_REGISTRY_PASSWORD, which
-# never belongs in git.
+# Only the htpasswd Secret is generated here. It is a BOOTSTRAP secret — the
+# Infisical operator cannot provide it, because on a fresh cluster the registry
+# must be up before anything can pull the operator's own images — and it is a
+# bcrypt hash, which never belongs in git.
 
 - name: Install apache2-utils for htpasswd
   ansible.builtin.apt:
@@ -18,11 +13,9 @@
     state: present
     update_cache: true
 
-# The password is piped in on stdin (`-i`) with the value coming from the
-# task environment, NOT passed as `htpasswd -nbB deploy <password>`: an
-# argument would be visible to any user on the box via `ps` for as long as
-# the command runs. `echo` is a shell builtin, so it forks nothing, and the
-# environment of a root-owned process is not world-readable.
+# stdin (`-i`) with the value from the task environment, NEVER
+# `htpasswd -nbB deploy <password>`: an argument is visible to any user on the
+# box via `ps` for as long as the command runs.
 - name: Generate the htpasswd hash for the registry
   ansible.builtin.shell:
     cmd: |
@@ -35,8 +28,8 @@
   changed_when: false
   no_log: true
 
-# The k8s module, not `kubectl create --from-literal` in a shell: a bcrypt
-# hash is full of `$` and `/`, which a shell would happily expand or mangle.
+# The k8s module, NOT `kubectl create --from-literal` in a shell: a bcrypt hash
+# is full of `$` and `/`, which a shell would expand or mangle.
 - name: Create the registry htpasswd bootstrap secret
   kubernetes.core.k8s:
     kubeconfig: "{{ kubeconfig }}"
@@ -51,23 +44,16 @@
         htpasswd: "{{ htpasswd_result.stdout | trim }}"
   no_log: true
 
-# Bind the registry to a hostPath PV at /var/lib/k8s-data/registry/ — same
-# pattern as every other platform service. Critical on OrbStack: without this
-# the PVC binds to the default local-path provisioner under
-# /var/lib/rancher/k3s/storage/... which gets wiped on `pulumi destroy &&
-# pulumi up` (registry blobs lost). The hostPath version follows the Mac-side
-# symlink for free.
 - name: Deploy the registry service-chart resources
   ansible.builtin.include_tasks: service-charts.yml
   vars:
     service_chart_releases:
       - { name: registry, namespace: platform-registry }
 
-# `grep -rl '^apiVersion:'` rather than `kubectl apply -f <dir>`: the same
-# directory also holds service.yaml, which is a Helm VALUES file consumed by
-# the task above, not a manifest. kubectl would abort the whole apply on it
-# with "apiVersion not set". A real manifest has a top-level apiVersion: key —
-# the same structural test CI uses to pick manifests out of kubernetes/.
+# `grep -rl '^apiVersion:'`, not `kubectl apply -f <dir>`: the directory also
+# holds service.yaml, a Helm VALUES file, and kubectl aborts the whole apply on
+# it with "apiVersion not set". Same structural test
+# .github/workflows/validate.yaml uses to pick manifests out of kubernetes/.
 - name: Apply the registry manifests
   ansible.builtin.shell:
     cmd: |
@@ -86,10 +72,9 @@
     KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false
 
-# The Helm login in publish-app-chart.yml talks HTTPS to registry.jterrazz.com,
-# so the Let's Encrypt cert must be issued first. On a fresh cluster DNS-01
-# issuance lags the registry pod by a minute or two — wait for it, otherwise
-# the login fails with a TLS error.
+# publish-app-chart.yml's `helm registry login` talks HTTPS, and on a fresh
+# cluster DNS-01 issuance lags the registry pod by a minute or two — without
+# this the login fails with a TLS error.
 - name: Wait for the registry TLS certificate to be issued
   ansible.builtin.command: >
     kubectl wait --for=condition=Ready certificate/registry-tls

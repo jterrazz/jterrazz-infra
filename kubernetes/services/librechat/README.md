@@ -5,8 +5,8 @@ Private chat UI on **`chat.jterrazz.com`** (Tailscale-only), namespace
 (`gateway-intelligence`) rather than any provider API directly, so no
 provider key is ever stored here.
 
-Deployed by `ansible/playbooks/tasks/platform/librechat.yml` (tags:
-`librechat`, `services`, `gateway`).
+Deployed by `ansible/roles/platform/tasks/librechat.yml` (tags: `librechat`,
+`services`, `gateway`).
 
 ## Architecture
 
@@ -32,8 +32,8 @@ Deployed by `ansible/playbooks/tasks/platform/librechat.yml` (tags:
   (`mongodb.yaml`) on a `manual` hostPath PVC.
 - **No Meilisearch** ⇒ `SEARCH: "false"` — conversation search is off.
 - **Private-only for now**: `ALLOW_REGISTRATION: "false"` plus the
-  `private-access` middleware. Going public means dropping `private: true`
-  from `service.yaml` and leaning on LibreChat's own auth.
+  `private-access` middleware. Going public means flipping `access: private`
+  to `access: public` in `service.yaml` and leaning on LibreChat's own auth.
 - `fullnameOverride: librechat` — the IngressRoute in `service.yaml` targets a
   Service literally named `librechat`, so the chart's fullname must match.
 
@@ -41,7 +41,7 @@ Deployed by `ansible/playbooks/tasks/platform/librechat.yml` (tags:
 
 | Component      | Version                                                     |
 | -------------- | ----------------------------------------------------------- |
-| Helm chart     | `oci://ghcr.io/danny-avila/librechat-chart/librechat` **2.0.6** (pinned in `tasks/platform/librechat.yml`) |
+| Helm chart     | `oci://ghcr.io/danny-avila/librechat-chart/librechat` **2.0.6** (pinned as `platform_chart_versions.librechat` in `ansible/inventories/group_vars/all.yml`) |
 | LibreChat app  | `registry.librechat.ai/danny-avila/librechat:v0.8.7-rc1`     |
 | MongoDB        | `mongo:7.0`                                                  |
 | (init) chown   | `busybox:1.37` (digest-pinned in `mongodb.yaml`)             |
@@ -145,9 +145,10 @@ for a specific reason:
    because it exists solely for LibreChat. *(Deferred alternative: set the
    client label via the upstream chart's pod labels and delete this file.)*
 
-   The Ansible task creates `prod-gateway-intelligence` first if missing — on
-   a fresh cluster the gateway app doesn't exist yet (app CI deploys it
-   later), and Helm adopts the pre-created namespace.
+   The `prod-gateway-intelligence` namespace is pre-declared in
+   `kubernetes/cluster/namespaces.yaml` (applied by `cluster-base.yml`, which
+   runs before this policy) — on a fresh cluster the gateway app doesn't exist
+   yet, and Helm adopts the pre-created namespace when its CI deploys later.
 
 3. **`ANTHROPIC_API_KEY: "gateway-noauth"` is a non-secret placeholder.**
    CLIProxyAPI (the gateway) runs with `api-keys: []`, which leaves its access
@@ -176,7 +177,7 @@ kubectl exec -it -n platform-ai deploy/librechat-mongodb -- \
 
 # Re-deploy just this service
 cd ansible && ansible-playbook playbooks/platform.yml \
-  -i inventories/local/hosts.yml -e "@<extra-vars>" --tags librechat
+  -i inventories/laptop.yml -e "@<extra-vars>" --tags librechat
 ```
 
 Backup: the two hostPath dirs on the Mac are the whole state. For a
@@ -194,7 +195,7 @@ exposes no `-latest` alias. To move the default agent to a newer Opus, edit
 the `opus-full` modelSpec in `helm.yaml` and bump **all three** of `model`,
 `label` and `description` (there's a boxed reminder in the file), then push to
 main — `deploy-platform.yaml` redeploys on any change under
-`kubernetes/**`.
+`kubernetes/services/**`.
 
 Add the new model ID to both `endpoints.custom[0].models.default` and
 `endpoints.anthropic.models` while you're there, so it's also reachable from

@@ -1,18 +1,11 @@
-// Unattended Upgrades Configuration
-// Managed by Ansible (security role)
+// Managed by Ansible (security role).
 //
-// Debian origin patterns. This MUST be Debian-shaped: the Ubuntu-style
-// "${distro_id}:${distro_codename}-security" pattern matches NOTHING on
-// Debian, because Debian's security archive publishes with
-// Origin=Debian / Codename=<codename>-security / Label=Debian-Security —
-// the archive is labelled `Debian-Security`, not `Debian:trixie-security`.
-// With the Ubuntu pattern unattended-upgrades runs, finds zero allowed
-// origins and exits successfully having installed nothing, so security
-// updates stop SILENTLY. Verify with:
+// These origin patterns MUST stay Debian-shaped. The Ubuntu-style
+// "${distro_id}:${distro_codename}-security" matches NOTHING here — Debian's
+// security archive publishes as Origin=Debian, Label=Debian-Security. With the
+// Ubuntu pattern unattended-upgrades finds zero allowed origins and exits
+// successfully having installed nothing, so patching stops SILENTLY. Verify:
 //   unattended-upgrade --dry-run --debug
-//
-// The ESM / ESMApps origins that used to be listed here are Ubuntu Pro only
-// and are dead config on Debian.
 Unattended-Upgrade::Origins-Pattern {
     "origin=Debian,codename=${distro_codename},label=Debian";
     "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";

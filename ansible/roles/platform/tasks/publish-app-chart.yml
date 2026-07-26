@@ -1,16 +1,8 @@
 ---
-# ========================================
-# Publish the app Helm chart to the OCI registry
-# ========================================
-#
-# This DUPLICATES .github/workflows/publish-chart.yaml, deliberately. That
-# workflow is the normal path (a chart change on main republishes it); this
-# one exists for the fresh-cluster case, where the registry is empty and the
-# app CI cannot pull `oci://registry.jterrazz.com/charts/app` at all, so no
-# app could deploy until someone hand-ran the workflow.
-#
-# If the registry already has the chart and you want a faster deploy, skip it:
-#   ansible-playbook playbooks/platform.yml ... --skip-tags chart-publish
+# Deliberately DUPLICATES .github/workflows/publish-chart.yaml. That workflow
+# is the normal path; this exists for the fresh-cluster case, where the
+# registry is empty and no app can pull the chart at all until someone
+# hand-runs it. Skip with `--skip-tags chart-publish` when the chart is there.
 
 - name: Login to the OCI registry for Helm
   ansible.builtin.command:
@@ -35,15 +27,11 @@
   ansible.builtin.set_fact:
     app_chart_version: "{{ (app_chart_yaml.content | b64decode | from_yaml).version }}"
 
-# Mirrors the guard in .github/workflows/publish-chart.yaml, and for the same
-# reason: this chart is pulled UNVERSIONED by every app's deploy
-# (`oci://…/charts/app`, no explicit version pin), so silently overwriting an
-# already-published version would mean two different sets of templates
-# answering to the same tag depending on when an app happened to pull. Skipping
-# — rather than failing — keeps a routine redeploy green; the guard's only job
-# is to prevent the OVERWRITE, and publishing nothing achieves that. Bump
-# `version:` in Chart.yaml when you change a template, or this publishes
-# nothing.
+# Mirrors the guard in .github/workflows/publish-chart.yaml: the chart is
+# pulled UNVERSIONED by every app deploy, so overwriting a published version
+# means two different template sets answer to one tag depending on when an app
+# pulled. It SKIPS rather than fails, to keep a routine redeploy green — which
+# is why an unbumped kubernetes/charts/app/Chart.yaml publishes nothing.
 - name: Check whether this chart version is already published
   ansible.builtin.command: >
     helm pull oci://registry.jterrazz.com/charts/app
@@ -64,12 +52,9 @@
 - name: Package and push the app chart
   when: app_chart_published.rc != 0
   block:
-    # helm package writes <name>-<version>.tgz, and the version comes from
-    # Chart.yaml — so the filename is not knowable here. It used to be
-    # recovered by parsing `helm package`'s human-readable stdout with
-    # `stdout.split(': ')[-1]`, which breaks the moment helm changes its output
-    # or emits a warning line. Packaging into a directory that was just emptied
-    # means the one file in it IS the chart, whatever it is called.
+    # The .tgz filename is not knowable here (helm derives it from Chart.yaml),
+    # and parsing it out of `helm package` stdout breaks on any warning line.
+    # Emptying the directory first means the one file in it IS the chart.
     - name: Reset the chart staging directory
       ansible.builtin.file:
         path: /tmp/app-chart

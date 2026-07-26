@@ -1,18 +1,12 @@
 ---
-# ========================================
-# Pre-flight validation
-# ========================================
+# Every secret the platform play consumes is asserted here, before anything is
+# deployed. The list must stay COMPLETE: a secret checked only at its point of
+# use fails halfway through a deploy, and one with a fallback default fails
+# worse — the deploy goes green and the service comes up with a known password.
 #
-# Every secret the platform play consumes is checked here, in one place,
-# before anything is deployed. The list must cover ALL of them: a secret that
-# is only checked at the point of use fails halfway through a deploy, and a
-# secret with a fallback default (there used to be a literal
-# `changeme-on-first-login` for the Grafana admin password) fails in the worst
-# possible way — the deploy goes green and a public-ish service comes up with
-# a known password.
-#
-# Both callers produce this exact set via scripts/lib/infisical-vars.py:
-# scripts/deploy.sh and .github/workflows/deploy-platform.yaml.
+# KEEP IN SYNC with `SCOPES` in scripts/lib/infisical-vars.py, which is what
+# both callers (scripts/deploy.sh and
+# .github/workflows/deploy-platform.yaml) use to produce this exact set.
 
 - name: Validate required secrets
   ansible.builtin.assert:

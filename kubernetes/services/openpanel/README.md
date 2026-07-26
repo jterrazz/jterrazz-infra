@@ -101,7 +101,11 @@ different exposure, path routing), so `ingress.yaml` stays hand-written.
   stored here once created.
 - **Non-secret config** — ConfigMap `openpanel-config` (URLs, CORS origins,
   `SELF_HOSTED=true`, Postgres user/db). Add a new sending site's origin to
-  `API_CORS_ORIGINS`.
+  `API_CORS_ORIGINS` — the ingest is a **browser** POST, so an origin missing
+  from that list is rejected at the CORS preflight and the events are simply
+  never delivered, with nothing in op-api's logs to say so. List every variant
+  a browser can actually be on — `jterrazz.com` **and** `www.jterrazz.com` are
+  both present for that reason.
 
 ## Common operations
 
@@ -201,9 +205,9 @@ the Mac; a file snapshot is sufficient. No scheduled backup needed.
   cut). **To verify after the next repave: if `API_URL_SSR` is honored by
   image 2.2, the CoreDNS Traefik-ClusterIP special case can be removed.** Test
   by deleting `openpanel.jterrazz.com` from `private_hostnames_via_traefik` in
-  `ansible/playbooks/group_vars/all.yml` (the list the `coredns-custom`
+  `ansible/inventories/group_vars/all.yml` (the list the `coredns-custom`
   ConfigMap is rendered from — see
-  `ansible/playbooks/tasks/platform/coredns.yml`), restarting CoreDNS and
+  `ansible/roles/platform/tasks/coredns.yml`), restarting CoreDNS and
   op-dashboard, and loading `/onboarding`. Until that is confirmed, both the
   env var and the CoreDNS mapping stay.
 

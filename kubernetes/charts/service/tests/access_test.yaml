@@ -1,0 +1,101 @@
+suite: access -> Traefik ipAllowList middleware selection
+#
+# `access` picks exactly ONE of the two Traefik ipAllowList middlewares, or
+# none. Never both: Traefik ANDs chained ipAllowLists, so chaining allows
+# strictly LESS, not more — and cluster-internal-access is already a strict
+# superset of private-access.
+#
+# This is the chart's network-exposure switch, so every arm is pinned,
+# including the two that must fail the render rather than pick a default.
+templates:
+  - templates/ingress-route.yaml
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: "attaches cluster-internal-access for `access: cluster-internal`"
+    # The fixture's value. This is the arm registry (containerd's hairpin pull)
+    # and openpanel (dashboard SSR from a pod IP) need — the arm the pre-2.1
+    # boolean could not express at all.
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - name: cluster-internal-access
+              namespace: platform-networking
+
+  - it: "attaches private-access for `access: private`"
+    set:
+      access: private
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - name: private-access
+              namespace: platform-networking
+
+  - it: attaches private-access when `access` is omitted entirely
+    # The default must be the NARROW list. A values file that forgets the key
+    # gets tailnet-only, never public.
+    set:
+      access: null
+    asserts:
+      - equal:
+          path: spec.routes[0].middlewares
+          value:
+            - name: private-access
+              namespace: platform-networking
+
+  - it: "attaches no access middleware for `access: public`"
+    # Still behind the global rate-limit / compress / security-headers chain
+    # the websecure entrypoint attaches — just no ipAllowList.
+    set:
+      access: public
+    asserts:
+      - notExists:
+          path: spec.routes[0].middlewares
+
+  - it: hard-fails on an unrecognised access value
+    set:
+      access: privat
+    asserts:
+      - failedTemplate:
+          errorMessage: access must be one of private|cluster-internal|public, got "privat"
+
+  - it: "hard-fails on the legacy boolean `private:` key"
+    # A leftover `private: false` would otherwise fall through to the `private`
+    # DEFAULT and silently NARROW a route that was meant to be public — a
+    # change in network exposure made by omission, which is the one class of
+    # change that must never happen quietly.
+    set:
+      private: false
+    asserts:
+      - failedTemplate:
+          errorMessage: "`private` was replaced by `access: private|cluster-internal|public` in service chart 2.1 — remove it from this values file"
+
+  - it: "hard-fails on `private: true` just the same"
+    set:
+      private: true
+    asserts:
+      - failedTemplate:
+          errorMessage: "`private` was replaced by `access: private|cluster-internal|public` in service chart 2.1 — remove it from this values file"
+
+  - it: routes to the named service on the declared port
+    asserts:
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`ci-test-service.jterrazz.com`)
+      - equal:
+          path: spec.routes[0].services
+          value:
+            - name: ci-test-service
+              port: 8080
+      - equal:
+          path: spec.tls.secretName
+          value: ci-test-service-tls
+
+  - it: renders nothing without a host
+    set:
+      host: null
+    asserts:
+      - hasDocuments:
+          count: 0

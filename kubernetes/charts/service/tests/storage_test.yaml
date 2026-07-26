@@ -1,0 +1,134 @@
+suite: named-volume storage map, claimName override, nodeAffinity
+#
+# hostPath paths and PV names here are LIVE DATA references. The `data` key
+# reproduces the historical `<name>-data` object names byte-for-byte, which is
+# why librechat-data, registry-data, grafana-data, prometheus-data and the
+# openpanel volumes all kept the names they were created with. Anything that
+# moves a path or a PV name in this chart moves (or orphans) real data on the
+# node's disk, so every one of them is pinned below.
+#
+# Document order is Helm's map iteration order — sorted by key — with a PV then
+# a PVC per volume. The fixture's keys are data, metrics, uploads:
+#   0/1 data   2/3 metrics   4/5 uploads
+templates:
+  - templates/storage.yaml
+values:
+  - ../ci/test-values.yaml
+tests:
+  - it: emits one PV and one PVC per named volume
+    asserts:
+      - hasDocuments:
+          count: 6
+      - isKind:
+          of: PersistentVolume
+        documentIndex: 0
+      - isKind:
+          of: PersistentVolumeClaim
+        documentIndex: 1
+
+  - it: names the `data` volume exactly like the pre-chart manifests did
+    asserts:
+      - equal:
+          path: metadata.name
+          value: ci-test-service-data
+        documentIndex: 0
+      - equal:
+          path: spec.hostPath.path
+          value: /var/lib/k8s-data/ci-test-service
+        documentIndex: 0
+      - equal:
+          path: spec.hostPath.type
+          value: DirectoryOrCreate
+        documentIndex: 0
+      - equal:
+          path: spec.capacity.storage
+          value: 3Gi
+        documentIndex: 0
+      - equal:
+          path: spec.persistentVolumeReclaimPolicy
+          value: Retain
+        documentIndex: 0
+
+  - it: nests a volume under the app directory when pathSuffix is set
+    # One directory per app on disk: /var/lib/k8s-data/<name>/<suffix>.
+    asserts:
+      - equal:
+          path: spec.hostPath.path
+          value: /var/lib/k8s-data/ci-test-service/uploads
+        documentIndex: 4
+
+  - it: defaults the PVC name to <name>-<key> and binds it by volumeName
+    asserts:
+      - equal:
+          path: metadata.name
+          value: ci-test-service-data
+        documentIndex: 1
+      - equal:
+          path: spec.volumeName
+          value: ci-test-service-data
+        documentIndex: 1
+      - equal:
+          path: spec.storageClassName
+          value: manual
+        documentIndex: 1
+      - equal:
+          path: spec.resources.requests.storage
+          value: 3Gi
+        documentIndex: 1
+
+  - it: claimName overrides ONLY the PVC name, never the PV or the binding
+    # A StatefulSet volumeClaimTemplate looks for storage-<release>-<ordinal>
+    # and provisions a fresh dynamic volume if it does not find one — which is
+    # how Loki and Tempo would silently abandon their hostPath data. The PV
+    # keeps its <name>-<key> identity and the PVC still binds to it.
+    asserts:
+      - equal:
+          path: metadata.name
+          value: ci-test-service-metrics
+        documentIndex: 2
+      - equal:
+          path: metadata.name
+          value: storage-ci-test-0
+        documentIndex: 3
+      - equal:
+          path: spec.volumeName
+          value: ci-test-service-metrics
+        documentIndex: 3
+
+  - it: pins every PV to the node holding the data
+    asserts:
+      - equal:
+          path: spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0]
+          value:
+            key: kubernetes.io/hostname
+            operator: In
+            values:
+              - ci-test-node
+        documentIndex: 0
+
+  - it: omits nodeAffinity entirely when no node name is supplied
+    # It used to render `values: [""]` — a PV matching no node, which can never
+    # bind, and whose failure surfaces as a pod stuck Pending with no reason
+    # naming this file.
+    set:
+      infrastructure.nodeName: ""
+    asserts:
+      - notExists:
+          path: spec.nodeAffinity
+        documentIndex: 0
+
+  - it: hard-fails a volume declared without a size
+    # Without `required` this rendered an empty capacity: a PV that never binds
+    # and a PVC requesting nothing, both diagnosable only at runtime.
+    set:
+      storage.sizeless.pathSuffix: whatever
+    asserts:
+      - failedTemplate:
+          errorMessage: storage.sizeless.size is required
+
+  - it: renders nothing when no volumes are declared
+    set:
+      storage: null
+    asserts:
+      - hasDocuments:
+          count: 0

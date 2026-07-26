@@ -1,15 +1,10 @@
 #!/bin/bash
 # Provision the cluster via Pulumi and configure it with Ansible.
 #
-# There is one cluster: the OrbStack VM on the dev Mac (Pulumi stack
-# `jterrazz/local`, Ansible inventory `inventories/laptop.yml`). The Hetzner
-# target was removed — see docs/hetzner.md to resurrect it.
-#
-# Secrets used by Ansible (Cloudflare API token, Tailscale OAuth, etc.) are
-# pulled live from Infisical `/jterrazz-infrastructure` env=prod by
-# scripts/lib/infisical-vars.py, using the universal-auth credentials in
-# `.env`. Nothing sensitive lives on disk beyond the temp extra-vars file —
-# 0600, deleted on exit via the trap below.
+# Ansible's secrets are pulled live from Infisical by
+# scripts/lib/infisical-vars.py using the universal-auth credentials in
+# `.env`. Nothing sensitive lands on disk beyond the temp extra-vars file —
+# 0600, deleted on exit by the trap below.
 #
 # Usage:
 #   ./scripts/deploy.sh              # full: pulumi up + site.yml
@@ -28,7 +23,6 @@ source "$SCRIPT_DIR/lib/common.sh"
 STACK="jterrazz/local"
 INVENTORY="$PROJECT_DIR/ansible/inventories/laptop.yml"
 
-# .env in repo root carries PULUMI/INFISICAL tokens locally; gitignored.
 if [ ! -f "$PROJECT_DIR/.env" ]; then
     error "Missing $PROJECT_DIR/.env"
     error "It must define PULUMI_ACCESS_TOKEN, INFISICAL_CLIENT_ID and INFISICAL_CLIENT_SECRET."
@@ -40,10 +34,9 @@ set -a
 source "$PROJECT_DIR/.env"
 set +a
 
-# Populated by fetch_secrets_file(). Script-scope (not `local` inside that
-# function) and declared before the trap below so cleanup can see it however
-# the script exits — including a failure partway through the fetch. `${var:-}`
-# keeps `rm -f` from tripping `set -u` if the path was never populated.
+# Script-scope and declared BEFORE the trap so cleanup sees it however the
+# script exits, including a failure partway through the fetch. `${var:-}` keeps
+# `rm -f` from tripping `set -u` if the path was never populated.
 secrets_file=""
 trap 'rm -f "${secrets_file:-}"' EXIT
 
@@ -61,21 +54,19 @@ pulumi_destroy() {
     pulumi destroy --yes --refresh
 }
 
-# Sets the script-scope $secrets_file rather than returning the path via
-# `echo` + command substitution: command substitution runs this function in a
-# subshell, so a global assignment made inside it (e.g. right after `mktemp`,
-# before the fetch can fail) would never reach the parent shell, and the EXIT
-# trap would leak the tempfile on a partial failure.
+# Sets the script-scope $secrets_file instead of echoing the path: command
+# substitution would run this in a SUBSHELL, so the assignment made right after
+# `mktemp` would never reach the parent and the EXIT trap would leak the
+# tempfile whenever the fetch failed partway.
 fetch_secrets_file() {
     local scope="$1"
     secrets_file=$(mktemp -t jterrazz-infrastructure-vars-XXXXXX.yml)
     "$SCRIPT_DIR/lib/infisical-vars.py" "$scope" "$secrets_file"
 }
 
-# A fresh machine (or a laptop after `ansible-galaxy` cache eviction) would
-# otherwise silently rely on whatever collections happen to be bundled with the
-# local ansible install, which may not satisfy requirements.yml. Cheap and
-# idempotent — ansible-galaxy skips collections already at the pinned version.
+# Without this a fresh machine silently uses whatever collections the local
+# ansible install happens to bundle, which may not satisfy requirements.yml.
+# Idempotent — ansible-galaxy skips collections already at the pinned version.
 install_collections() {
     info "Installing Ansible collections (requirements.yml)"
     ansible-galaxy collection install -r "$PROJECT_DIR/ansible/requirements.yml"
@@ -83,8 +74,7 @@ install_collections() {
 
 run_site() {
     fetch_secrets_file site
-    # ansible.cfg uses a relative roles_path; run from ansible/ so it
-    # resolves correctly. The extra-vars file path is absolute.
+    # ansible.cfg has a relative roles_path, so this must run from ansible/.
     cd "$PROJECT_DIR/ansible"
     install_collections
     info "ansible-playbook site.yml"

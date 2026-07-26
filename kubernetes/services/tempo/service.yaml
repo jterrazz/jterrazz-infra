@@ -1,20 +1,12 @@
-# Service-chart values for Tempo — storage only, no ingress.
-#
-# Tempo has no hostname: Grafana queries it in-cluster and the OTel collector
-# pushes OTLP to tempo.platform-telemetry.svc:4318. With `host` unset the
-# chart emits neither IngressRoute nor Certificate.
-#
-# MIGRATION: replaces the tempo half of
-# ansible/templates/kubernetes/telemetry-storage.yaml.j2. Byte-identical
-# output:
-#   PV  tempo-data        10Gi   /var/lib/k8s-data/tempo
-#   PVC storage-tempo-0   10Gi   volumeName: tempo-data
+# Service-chart values for Tempo — storage only. `host` is deliberately unset
+# (Grafana and the OTel collector both reach Tempo in-cluster), and with no
+# host the chart emits neither IngressRoute nor Certificate.
 name: tempo
 storage:
   data:
-    # 10Gi for the 30d retention set in helm.yaml (~460M/30d today).
+    # Nominal — hostPath enforces no quota, the real cap is the Mac disk.
     size: 10Gi
-    # Same StatefulSet constraint as loki: the grafana/tempo chart's
-    # volumeClaimTemplate binds to storage-<release>-<ordinal> and nothing
-    # else. Release name `tempo`, one replica -> storage-tempo-0.
+    # DATA LOSS IF CHANGED — same StatefulSet constraint as loki: the
+    # volumeClaimTemplate binds to storage-<release>-<ordinal> or silently
+    # provisions a fresh local-path volume.
     claimName: storage-tempo-0

@@ -1,19 +1,12 @@
 {{- /*
-`access` (chart 2.1) picks the Traefik ipAllowList middleware for this route.
-It replaces the boolean `private` of chart 2.0, which could only express
-"private-access or nothing" — so any route that needed the strictly-wider
-`cluster-internal-access` list (registry's containerd hairpin pull,
-openpanel's dashboard SSR) could not be described by this chart at all and
-had to be hand-written elsewhere.
+`access` picks the Traefik ipAllowList middleware for this route: exactly one,
+or none. NEVER chain the two allow-lists — Traefik ANDs chained ipAllowLists,
+so the source would have to satisfy BOTH and chaining allows strictly less,
+not more.
 
-Never chain the two allow-lists: Traefik ANDs chained ipAllowLists, so the
-source would have to satisfy BOTH — chaining allows strictly less, not more.
-Hence exactly one middleware, or none.
-
-Fail loudly on a leftover `private:` key. Silently ignoring it would swap a
-tailnet-only route for the `private` DEFAULT on a values file that meant
-`private: false`, i.e. quietly narrow or widen network exposure — the one
-class of change that must never happen by omission.
+A leftover boolean `private:` key fails the render rather than being ignored:
+ignoring it would silently apply the `private` DEFAULT to a values file that
+meant `private: false`, i.e. change network exposure by omission.
 */ -}}
 {{- if hasKey .Values "private" }}
 {{- fail "`private` was replaced by `access: private|cluster-internal|public` in service chart 2.1 — remove it from this values file" }}

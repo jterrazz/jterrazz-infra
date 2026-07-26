@@ -2,61 +2,44 @@ import * as pulumi from "@pulumi/pulumi";
 import * as cloudflare from "@pulumi/cloudflare";
 
 /**
- * Cloudflare-side DNS for the cluster's private services.
+ * Cloudflare-side DNS for the cluster's private services. Apex CNAMEs for
+ * PUBLIC hostnames are deliberately absent: cloudflared's Public-Hostname
+ * feature auto-creates those, and declaring them here would fight it.
  *
- * Replaces an in-cluster external-dns controller: every private CNAME
- * is declared here, statically, and Pulumi updates it when the
- * machine's Tailscale hostname changes.
- *
- * Public records (apex CNAMEs to the Cloudflare tunnel) are intentionally
- * NOT in here — they're managed by cloudflared's Public-Hostname feature
- * in the Zero Trust dashboard, which auto-creates the CNAME when a new
- * hostname is wired into the tunnel.
- *
- * The Cloudflare provider authenticates via `CLOUDFLARE_API_TOKEN` (env)
- * or `cloudflare:apiToken` Pulumi config. The same token external-dns
- * was using (DNS:Edit on the managed zones) is sufficient.
+ * Auth is `CLOUDFLARE_API_TOKEN` (env) or `cloudflare:apiToken` config;
+ * DNS:Edit on the managed zones suffices.
  */
 
-// jterrazz.com zone — looked up once via `cloudflare/v4/zones?name=…` and
-// hardcoded so we don't pay the API round-trip on every `pulumi up`. Zones
-// are stable identifiers; if it ever moves we'd see a 404 at apply time.
+// Hardcoded rather than looked up, to save an API round-trip on every
+// `pulumi up`. Zone IDs are stable; a moved zone 404s at apply time.
 const JTERRAZZ_ZONE_ID = "ca5eefcd2d8b1d8895fc255f26141d46";
 
-// Tailscale tailnet suffix. Stable across the tailnet — the only
-// variable is the cluster's hostname (= `jterrazz-infrastructure`), passed in
-// from src/targets/orbstack.ts. (This comment used to name a `machine.ts`
-// that has not existed for several refactors.)
+// Tailnet suffix; the only variable part is the cluster hostname, passed in
+// from createMachine() in src/targets/orbstack.ts.
 const TAILNET_DOMAIN = "tail77a797.ts.net";
 
-// Cloudflare Tunnel hostname. Public hosts CNAME'd here (proxied) reach the
-// in-cluster Traefik via cloudflared. The tunnel's per-hostname routing rule
-// still lives in the Zero Trust dashboard (needs Tunnel:Edit, which the DNS
-// token can't do) — Pulumi owns the CNAME, the dashboard owns the route. The
-// UUID is stable and public (it's the CNAME target), so not a secret.
+// Pulumi owns the CNAME; the Zero Trust dashboard owns the matching
+// per-hostname tunnel ROUTE (that needs Tunnel:Edit, which the DNS token
+// lacks). A record here without a route there returns 404 from cloudflared.
+// The UUID is public — it is the CNAME target — so not a secret.
 const TUNNEL_HOSTNAME = "8f4157bb-f883-424b-8ccd-8332867cf1b2.cfargotunnel.com";
 
 /**
- * Private services whose hostname routes to the cluster via Tailscale.
- * Each one becomes a CNAME from `<host>.jterrazz.com` to the active
- * cluster's Tailscale FQDN. The Traefik private-access middleware on the
- * cluster handles the IP allow-list; this layer just keeps DNS honest.
- * `openpanel` is the PRIVATE OpenPanel dashboard; its public ingest sibling
- * `analytics` is a proxied tunnel record in PUBLIC_TUNNEL_HOSTS below.
+ * Private services, each a CNAME from `<host>.jterrazz.com` to the cluster's
+ * Tailscale FQDN. Access control is the Traefik private-access middleware;
+ * this layer only keeps DNS honest.
+ *
+ * KEEP IN SYNC with `private_hostnames` (+ `private_hostnames_via_traefik`,
+ * which holds `openpanel`) in
+ * ansible/inventories/group_vars/all.yml: this list creates the PUBLIC CNAME,
+ * that one creates the in-cluster CoreDNS override. A host in only one of the
+ * two resolves nowhere useful. Deleting a service means deleting both.
  */
 const PRIVATE_HOSTS = ["grafana", "registry", "gateway", "chat", "openpanel"];
-// Removed with their services: `n8n` (platform-automation, no workflows in
-// use) and `portainer` (platform-management, a cluster-admin dashboard
-// reachable over HTTP). Deleting the CNAME is part of deleting the service —
-// a record left pointing at the tailnet resolves to a host that 404s at
-// Traefik, which reads as an outage rather than an absence.
 
 /**
- * Public services fronted by the Cloudflare tunnel (proxied/orange). Their
- * matching per-hostname route must also exist in the tunnel's Zero Trust
- * config. `analytics` is OpenPanel's event-ingest host — only /api/track is
- * routed by Traefik (see the openpanel-ingest IngressRoute); the dashboard
- * stays private on `openpanel`.
+ * Public services fronted by the Cloudflare tunnel. Each needs a matching
+ * per-hostname route in the Zero Trust config, or cloudflared 404s it.
  */
 const PUBLIC_TUNNEL_HOSTS = ["analytics"];
 
@@ -69,16 +52,14 @@ export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>
             name: host,
             type: "CNAME",
             content: fqdn,
-            // Tailscale-routed services must NOT be proxied through
-            // Cloudflare — clients hit the Tailscale IP directly through
-            // their tailnet, no edge involvement.
+            // Tailscale-routed services must NOT be proxied: clients reach the
+            // Tailscale IP directly, with no Cloudflare edge involvement.
             proxied: false,
             ttl: 1, // 1 = "Auto" in Cloudflare's API
             comment: `Managed by Pulumi (replaces external-dns for ${host}.jterrazz.com)`,
         });
     }
 
-    // Public hosts routed through the Cloudflare tunnel (proxied/orange).
     for (const host of PUBLIC_TUNNEL_HOSTS) {
         new cloudflare.Record(`public-${host}`, {
             zoneId: JTERRAZZ_ZONE_ID,
@@ -92,13 +73,11 @@ export function createPrivateDnsRecords(tailscaleHostname: pulumi.Output<string>
         });
     }
 
-    // Wildcard for the *.internal.jterrazz.com namespace: any new app
-    // exposing a private surface picks its own subdomain
-    // (e.g. signews.internal.jterrazz.com) and resolves through this
-    // record. Saves us from declaring a per-host CNAME for each new app
-    // and from updating Pulumi every time an app gains a private side.
-    // DNS-only (grey cloud) — proxied wildcards need a paid plan, and
-    // Tailscale-routed traffic must skip the Cloudflare edge anyway.
+    // Any app needing a private surface should take a subdomain here
+    // (signews.internal.jterrazz.com) rather than a new PRIVATE_HOSTS entry —
+    // this record covers it with no Pulumi change and no group_vars edit.
+    // DNS-only: proxied wildcards need a paid plan, and Tailscale-routed
+    // traffic must skip the Cloudflare edge anyway.
     new cloudflare.Record("private-wildcard-internal", {
         zoneId: JTERRAZZ_ZONE_ID,
         name: "*.internal",

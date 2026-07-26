@@ -13,34 +13,29 @@ spec:
   storage: {}
   configFiles: {}
   dashboards: {}
-  # Container-level securityContext OVERRIDES, merged over the chart's
-  # hardened defaults (runAsNonRoot, allowPrivilegeEscalation: false,
-  # capabilities.drop [ALL], seccompProfile RuntimeDefault — see
-  # templates/deployment.yaml). Escape hatch only: an app that genuinely needs
-  # a capability back sets it here rather than forking the chart. Note
-  # readOnlyRootFilesystem is intentionally not part of the defaults; Next.js
-  # apps write caches at runtime.
+  # Escape hatch only: merged OVER the chart's hardened container defaults
+  # (see templates/deployment.yaml) by an app that genuinely needs a
+  # capability back, so it never has to fork the chart.
   securityContext: {}
-  # Opt-in in-cluster platform services (chart 2.0). Each name is resolved
-  # against the catalog in templates/_helpers.tpl and wires env + egress netpol
-  # (+ server-side ingress for a catalog target). Valid: otel-collector,
+  # Opt-in in-cluster platform services, resolved against the catalog in
+  # templates/_helpers.tpl (app.platformCatalog). Valid: otel-collector,
   # gateway-intelligence. Unknown names hard-fail the render.
   platformServices: []
   networkPolicy:
-    # Bespoke ingress: namespaces of client apps allowed to reach this app's
-    # port, by name (prod-/next-/staging-<name>). For one-off, non-platform
-    # traffic only — platform-service ingress (and all egress) is handled by
+    # Namespaces of client apps allowed to reach this app's port, by bare name
+    # (expanded to prod-/next-/staging-<name>). One-off, non-platform traffic
+    # only — platform-service ingress and all egress come from
     # spec.platformServices.
     allowedClients: []
   health:
     path: /health
     periodSeconds: 30
-    # Probe timeouts/thresholds (k8s defaults 1s/3 are too tight for apps
-    # that also run in-process background work). Override per-app if needed.
+    # k8s's own defaults (1s / 3) are too tight for an app that also runs
+    # in-process background work.
     timeoutSeconds: 5
     failureThreshold: 5
     # startupProbe grace = startupFailureThreshold * startupPeriodSeconds
-    # (default 60 * 5s = 5min) before liveness/readiness begin.
+    # (60 * 5s = 5min) before liveness/readiness begin.
     startupPeriodSeconds: 5
     startupFailureThreshold: 60
 
@@ -54,8 +49,3 @@ registry:
   server: registry.jterrazz.com
   username: ""
   password: ""
-
-# NOTE: `infrastructure.nodeName` was removed in chart 2.3. It gated the
-# hostPath PV's nodeAffinity, but only app CI installs this chart and CI never
-# passed a node name, so the branch never rendered. The service chart
-# (kubernetes/charts/service), whose PVs Ansible does create, still has it.

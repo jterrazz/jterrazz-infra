@@ -1,26 +1,17 @@
-# Private container registry — Deployment + Service.
+# Private container registry — Deployment + Service only. The
+# IngressRoute/Certificate/PV/PVC come from the service chart (service.yaml in
+# this directory).
 #
-# Statically extracted from ansible/templates/kubernetes/registry.yaml.j2.
-# That template existed for exactly one reason: it interpolated the htpasswd
-# hash Ansible generates at deploy time. Everything else in it was static and
-# is now plain YAML — the IngressRoute/Certificate/PV/PVC come from the
-# service chart (service.yaml in this directory) and the htpasswd Secret is
-# bootstrapped separately by Ansible (`registry_htpasswd`), because a password
-# hash must never be committed.
-#
-# AUTH — why htpasswd and not something better:
-#   The registry image's only built-in auth modes are `htpasswd` (a static
-#   file) and `token` (needs a separate auth server to issue JWTs). A token
-#   server is a whole extra service to run and rotate for a single-user
-#   registry, so this is htpasswd with ONE account (`deploy`), hashed with
-#   bcrypt (`htpasswd -niB`). The hash lands in Secret `registry-auth` key
-#   `htpasswd`, mounted read-only at /auth. REGISTRY_AUTH_HTPASSWD_PATH points
-#   the registry at it.
-#   Consequence: the credential is shared by CI pushes and by containerd's
-#   node-level pulls, and rotating it means re-running the registry Ansible
-#   task AND updating DOCKER_REGISTRY_PASSWORD in Infisical. The netpol in
-#   kubernetes/cluster/network-policies/platform-registry.yaml is the second
-#   half of the story — nothing but Traefik can reach :5000 at all.
+# AUTH is htpasswd because the registry image offers only that or `token`,
+# and `token` needs a whole separate JWT-issuing server for a single-user
+# registry. ONE account (`deploy`), bcrypt-hashed; the hash is in Secret
+# `registry-auth` key `htpasswd`, bootstrapped by
+# ansible/roles/platform/tasks/registry.yml because a password hash must never
+# be committed. Consequence: CI pushes and containerd's node-level pulls share
+# one credential, so rotating means re-running that task AND updating
+# DOCKER_REGISTRY_PASSWORD in Infisical. The other half of the story is
+# kubernetes/cluster/network-policies/platform-registry.yaml — nothing but
+# Traefik reaches :5000 at all.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -49,10 +40,7 @@ spec:
               value: "htpasswd"
             - name: REGISTRY_AUTH_HTPASSWD_REALM
               value: "Registry"
-            # The file inside the `auth` volume below, i.e. the `htpasswd`
-            # key of Secret registry-auth. Ansible creates that Secret from
-            # the bcrypt hash it generates at deploy time; it is deliberately
-            # NOT in this repo.
+            # /auth is the `auth` volume below; `htpasswd` is the Secret key.
             - name: REGISTRY_AUTH_HTPASSWD_PATH
               value: "/auth/htpasswd"
             - name: REGISTRY_STORAGE_DELETE_ENABLED
@@ -67,24 +55,20 @@ spec:
             requests:
               cpu: 10m
               memory: 128Mi
-            # 64Mi throttled large blob pushes to a crawl: streaming a
-            # ~50MB image layer made Go's GC thrash inside the cgroup,
-            # dropping registry throughput to ~0.6MB/s so buildkit hit its
-            # ~60s upload timeout and the push failed ("blob upload
-            # invalid" on the retried, wrong-offset resume). The Mac
-            # hostPath itself is fast (~287MB/s), so this is pure memory
-            # starvation. 512Mi gives blob uploads headroom.
+            # Do not lower: a tight limit makes Go's GC thrash while streaming
+            # a large blob, throughput collapses to ~0.6MB/s, and buildkit's
+            # ~60s upload timeout fires — surfacing as "blob upload invalid"
+            # on the retried, wrong-offset resume rather than as an OOM.
             limits:
               memory: 512Mi
       volumes:
         - name: data
           persistentVolumeClaim:
-            # PVC comes from the service chart (service.yaml -> storage.data).
+            # From the service chart (service.yaml -> storage.data).
             claimName: registry-data
         - name: auth
           secret:
-            # Bootstrapped by ansible/playbooks/tasks/platform/registry.yml,
-            # not by this repo's manifests.
+            # Bootstrapped by ansible/roles/platform/tasks/registry.yml.
             secretName: registry-auth
 ---
 apiVersion: v1

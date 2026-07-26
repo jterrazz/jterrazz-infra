@@ -1,10 +1,6 @@
 {#
-  CoreDNS split-DNS overrides for this cluster's private hostnames.
-
-  Rendered by roles/platform/tasks/coredns.yml. The hostname lists live in
-  inventories/group_vars/all.yml (`private_hostnames`,
-  `private_hostnames_via_traefik`) so adding a private service is a one-line
-  edit there instead of a hand-maintained line in a here-doc.
+  Rendered by roles/platform/tasks/coredns.yml from `private_hostnames` and
+  `private_hostnames_via_traefik` in inventories/group_vars/all.yml.
 #}
 apiVersion: v1
 kind: ConfigMap

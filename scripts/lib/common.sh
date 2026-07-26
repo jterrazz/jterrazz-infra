@@ -1,15 +1,13 @@
 #!/bin/bash
-# Common utilities shared across all scripts
-# Source this file: source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# Shared logging helpers. Source it:
+#   source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
-# Colors
 export RED='\033[0;31m'
 export GREEN='\033[0;32m'
 export YELLOW='\033[1;33m'
 export BLUE='\033[0;34m'
-export NC='\033[0m' # No Color
+export NC='\033[0m'
 
-# Logging functions
 info() { echo -e "${BLUE}→ $1${NC}"; }
 success() { echo -e "${GREEN}✓ $1${NC}"; }
 warn() { echo -e "${YELLOW}⚠ $1${NC}"; }

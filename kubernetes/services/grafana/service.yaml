@@ -1,10 +1,4 @@
 # Service-chart values for Grafana (Cert + private IngressRoute + storage).
-#
-# `storage` is new here: the grafana-data PV/PVC used to be rendered by
-# ansible/templates/kubernetes/telemetry-storage.yaml.j2 alongside
-# loki/tempo/prometheus. Object names (grafana-data / grafana-data), size
-# (1Gi) and hostPath (/var/lib/k8s-data/grafana) are unchanged — same
-# migration as prometheus/loki/tempo's service.yaml.
 name: grafana
 host: grafana.jterrazz.com
 port: 80

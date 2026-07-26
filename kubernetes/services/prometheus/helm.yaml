@@ -4,56 +4,41 @@ server:
   resources:
     requests:
       cpu: 50m
-      # req raised 384→640Mi: live working set (~431Mi) plus scrape/query
-      # burst headroom repeatedly exceeded the old 384Mi request.
+      # Live working set is ~431Mi; the rest is scrape/query burst headroom.
       memory: 640Mi
-    # 512→768Mi: working set reached ~431Mi (84%) after new app metrics +
-    # per-environment labels grew the active-series count. 768→896Mi adds
-    # burst headroom for 30d-range dashboard queries (see retention note);
-    # the request stays 640Mi so the guaranteed reservation is unchanged.
     limits:
       memory: 896Mi
-  # 30d of time-based history. The old retentionSize: "2GB" cap is REMOVED
-  # (it silently clipped metrics to ~7d — the TSDB sat right at 2.0G/7d —
-  # which is why Grafana only showed a week). Retention is now purely by
-  # age. Cost is disk + page cache (both reclaimable), NOT heap: Prometheus
-  # keeps only the ~2h head block's index in RAM, so steady RSS tracks
-  # active-series churn, not window length; only long-range queries
-  # transiently load older mmap'd chunks. ~285MB/day → 30d ≈ 8-10GB on the
-  # hostPath PV (Mac disk, 100G+ free; hostPath enforces no quota anyway).
+  # Age-based only — do NOT add a retentionSize cap: at ~285MB/day a size cap
+  # silently clips the window (a 2GB cap gave ~7d of history). Cost of a long
+  # window is disk + page cache, not heap: Prometheus keeps only the ~2h head
+  # block's index in RAM.
   retention: "30d"
-  # GOMEMLIMIT (soft) — Go 1.19+ GC tracks it and madvise()s freed
-  # pages back to the OS as RSS nears the limit. Kept under the 896Mi
-  # hard limit; mmap'd TSDB chunks are page cache (reclaimable, not
-  # counted here) so 680MiB leaves ample headroom.
+  # Soft limit under the 896Mi hard limit, so the Go GC releases pages to the
+  # OS as RSS climbs instead of drifting into an OOM kill.
   env:
     - name: GOMEMLIMIT
       value: "680MiB"
   extraFlags:
-    # OTel collector pushes metrics here.
+    # Required by the OTel collector's prometheusremotewrite exporter.
     - "web.enable-remote-write-receiver"
-    # Let the configmap-reload sidecar hot-reload config via POST /-/reload.
-    # Without it every reload got 403 (~1/min of log spam) and config changes
-    # only applied on a full pod restart.
+    # Without it the configmap-reload sidecar's POST /-/reload 403s every
+    # minute and config changes only apply on a full pod restart.
     - "web.enable-lifecycle"
-  # Fix data directory permissions (Prometheus runs as nobody:65534)
+  # hostPath dirs are created root-owned; Prometheus runs as nobody:65534.
   initContainers:
     - name: fix-permissions
-      # Digest-pinned to the same busybox reference the app chart and the
-      # openpanel/librechat datastores use — one image, one digest, cluster-wide.
       image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
       command: ["sh", "-c", "chown -R 65534:65534 /data"]
       volumeMounts:
         - name: storage-volume
           mountPath: /data
 
-# Disable components not needed
+# Grafana owns alerting (see grafana/helm.yaml sidecar.alerts).
 alertmanager:
   enabled: false
 prometheus-pushgateway:
   enabled: false
 
-# Infrastructure metrics
 kube-state-metrics:
   enabled: true
   resources:

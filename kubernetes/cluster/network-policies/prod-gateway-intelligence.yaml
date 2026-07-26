@@ -1,32 +1,16 @@
 ---
-# Network Policy for prod-gateway-intelligence — additive, and the only
-# policy in this directory whose namespace is NOT declared in
-# kubernetes/cluster/namespaces.yaml: prod-gateway-intelligence belongs to an
-# app-chart workload deployed by app CI, not to the platform. Ansible
-# pre-creates the namespace so this policy can land on a fresh cluster before
-# the app's first deploy; Helm adopts it later.
+# Additive policy in an app-chart workload's namespace: NetworkPolicies union,
+# so this grants platform-ai access without touching the gateway's chart.
 #
-# What it does: lets LibreChat (platform-ai) reach the gateway.
+# It exists because LibreChat is NOT an app-chart workload (its pod labels come
+# from the upstream LibreChat chart), so it cannot stamp the
+# `platform-client.jterrazz.com/gateway-intelligence` label that the gateway's
+# chart-rendered ingress rule selects on. Setting that label via the LibreChat
+# chart's podLabels would let this file be deleted; deferred deliberately —
+# one fewer moving part in the third-party chart.
 #
-# gateway-intelligence is an app-chart workload. As of app-chart 2.0 its
-# generated ingress admits any pod stamped
-# `platform-client.jterrazz.com/gateway-intelligence: "true"` (chart consumers
-# opt in via spec.platformServices). LibreChat is NOT an app-chart workload
-# (its pod labels come from the upstream LibreChat chart), so it can't easily
-# stamp that label — hence this bespoke additive policy stays. NetworkPolicies
-# are additive, so this extra policy in the gateway's namespace grants
-# platform-ai access to pod port 8317 without touching the gateway chart.
-#
-# ALTERNATIVE (deferred): set the client label via the LibreChat chart's
-# podLabels/deployment labels, then this file could be deleted and the
-# gateway's chart-rendered label-selector ingress would admit LibreChat
-# automatically. Kept explicit for now — one fewer moving part in the
-# third-party chart.
-#
-# Moved here from kubernetes/platform/librechat/gateway-netpol.yaml: it is a
-# cluster network policy, and grouping every policy under
-# kubernetes/cluster/network-policies means one `kubectl apply -f -R` covers
-# them all regardless of which service motivated each one.
+# The namespace itself is pre-declared in kubernetes/cluster/namespaces.yaml so
+# this lands on a fresh cluster before the gateway app's first CI deploy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -40,6 +24,9 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # LibreChat (platform-ai) -> gateway-intelligence POD port 8317 (not the
+    # Service port 80); sourced by kubernetes/services/librechat/helm.yaml's
+    # ANTHROPIC_REVERSE_PROXY / configYamlContent baseURL.
     - from:
         - namespaceSelector:
             matchLabels:

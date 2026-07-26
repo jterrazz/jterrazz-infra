@@ -1,12 +1,7 @@
-# PostgreSQL for OpenPanel (relational data: orgs, projects, dashboards,
-# users). Upstream self-hosting pins postgres:14-alpine. Single-node,
-# Recreate strategy — never two writers on one RWO hostPath volume.
-#
-# Data lives on the `openpanel-postgres` manual hostPath PV/PVC (Retain,
-# under /var/lib/k8s-data -> the Mac on OrbStack) so it survives pod
-# restarts, redeploys and `pulumi destroy` repaves. That PV/PVC pair used to
-# be declared at the top of this file; it now comes from the service chart —
-# see the `storage.postgres` entry in service.yaml.
+# PostgreSQL for OpenPanel (orgs, projects, dashboards, users). Upstream
+# self-hosting pins postgres:14-alpine. Recreate strategy — never two writers
+# on one RWO hostPath volume. Data is on the `openpanel-postgres` manual
+# hostPath PV/PVC (service.yaml, Retain) so it survives a repave.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -27,19 +22,17 @@ spec:
       labels:
         app: op-postgres
     spec:
-      # hostPath dirs are created root-owned. The postgres entrypoint normally
-      # chowns PGDATA itself and su-exec's down, but we pin the container to
-      # uid 70 below so that branch never runs — hence this explicit chown.
-      # NOTE 70:70 is correct for the ALPINE variant (the Debian-based
-      # postgres images use 999 instead).
+      # hostPath dirs are created root-owned. The postgres entrypoint would
+      # chown PGDATA itself and su-exec down, but pinning uid 70 below means
+      # that branch never runs. 70:70 is correct for the ALPINE variant ONLY —
+      # the Debian-based postgres images use 999.
       initContainers:
         - name: fix-perms
           image: busybox:1.37@sha256:e226d6308690dbe282443c8c7e57365c96b5228f0fe7f40731b5d84d37a06839
           command: ["sh", "-c", "chown -R 70:70 /var/lib/postgresql/data"]
-          # Must stay root to chown, but keeps every other guardrail: no
-          # privilege escalation, seccomp on, and all capabilities dropped
-          # except the three `chown -R` needs (CHOWN to change ownership,
-          # FOWNER + DAC_OVERRIDE to traverse/modify dirs root does not own).
+          # Root, but every capability dropped except the three `chown -R`
+          # needs: CHOWN to change ownership, FOWNER + DAC_OVERRIDE to
+          # traverse and modify dirs root does not own.
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
@@ -55,8 +48,8 @@ spec:
       containers:
         - name: postgres
           image: postgres:14-alpine
-          # Runs as the alpine image's `postgres` user (uid/gid 70); the
-          # initContainer above hands it a correctly-owned PGDATA.
+          # uid/gid 70 is the alpine image's `postgres` user — the same uid the
+          # initContainer above chowns to.
           securityContext:
             runAsNonRoot: true
             runAsUser: 70

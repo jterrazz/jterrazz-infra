@@ -1,0 +1,69 @@
+name: Smoke
+
+# Black-box verification that the cluster is actually serving: every public
+# hostname through the Cloudflare tunnel, every private hostname over the
+# tailnet, and the TLS expiry of both sets. The logic is scripts/smoke.sh —
+# this workflow only supplies a runner with tailnet membership.
+#
+# Three triggers, three different questions:
+#   * workflow_run after Deploy Platform — "did that deploy break anything a
+#     green ansible-playbook run would not have noticed?" A platform apply can
+#     succeed and still leave a service unreachable (a broken IngressRoute, a
+#     middleware that no longer resolves, a pod that comes back CrashLooping
+#     after --wait returned).
+#   * schedule — nothing else notices a certificate that quietly stopped
+#     renewing, or an app that died days after its last deploy. This repo has
+#     no uptime monitor; the weekly run is it.
+#   * workflow_dispatch — after a manual change, or to confirm a suspicion.
+
+on:
+  schedule:
+    # Mondays 07:17 UTC. Off the hour on purpose: GitHub's scheduler queues
+    # every :00 job on the planet at once and delays are routine.
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy Platform"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Never cancel a run in flight: each one is a point-in-time observation, and a
+# cancelled smoke test reads as "unknown", not "fine".
+concurrency:
+  group: smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Probe public + private surfaces
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # A workflow_run fires on completion regardless of outcome; probing right
+    # after a FAILED deploy would just report the failure a second time, in a
+    # place that looks like an independent signal. The other two triggers have
+    # no such object and must always run.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Same first-party action deploy-platform.yaml uses, at @main for the
+      # same reason (owner-controlled, meant to roll across the fleet). It
+      # fetches the Infisical-held CI secrets and joins the tailnet as tag:ci —
+      # without it the --private and the private half of --certs cannot resolve
+      # or connect, since Traefik's 443 only accepts Tailscale CGNAT sources.
+      - name: Setup infrastructure
+        uses: jterrazz/jterrazz-actions/actions/infra-connect@main
+        with:
+          infisical-client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          infisical-client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+
+      # curl and openssl are preinstalled on ubuntu-latest; there is nothing to
+      # set up. The script exits non-zero if any single check fails and prints
+      # a per-check PASS/FAIL line plus a summary of the failures.
+      - name: Smoke test
+        run: ./scripts/smoke.sh --public --private --certs

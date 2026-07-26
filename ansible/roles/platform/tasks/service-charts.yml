@@ -1,13 +1,10 @@
 ---
-# Deploy the `<name>-platform` releases of the shared service chart
-# (kubernetes/charts/service) — the per-service Certificate + IngressRoute +
-# hostPath PV/PVCs that sit alongside each upstream Helm release.
+# Installs the `<name>-platform` release of kubernetes/charts/service — the
+# Certificate + IngressRoute + hostPath PV/PVCs beside each upstream release.
 #
-# Callers set `service_chart_releases` to a list of {name, namespace} and
-# include this file. The release must land BEFORE the upstream chart:
-# `helm install <app> --wait` blocks on a pod that can't schedule because its
-# PVC doesn't exist yet. The ordering only matters on a fresh cluster — once
-# the PVs exist a re-run is fine.
+# Callers MUST include this BEFORE the upstream chart: `helm install --wait`
+# blocks on a pod that cannot schedule for want of a PVC that does not exist
+# yet. (Only matters on a fresh cluster; once the PVs exist a re-run is fine.)
 #
 # Args:
 #   service_chart_releases — [{name, namespace}, ...]; values come from

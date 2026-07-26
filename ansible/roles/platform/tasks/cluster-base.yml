@@ -1,19 +1,11 @@
 ---
-# ========================================
-# Cluster-wide manifests
-# ========================================
-# Namespaces, the `manual` StorageClass, Traefik config/middleware/TLS options
-# and the default-deny NetworkPolicies — everything under kubernetes/cluster/.
+# Everything under kubernetes/cluster/: namespaces, the `manual` StorageClass,
+# Traefik config/middleware/TLS options and the default-deny NetworkPolicies.
 
-# Generous timeout — fresh k3s clusters (and especially the first
-# OrbStack VM with no image cache) need several minutes for Traefik's
-# Helm-install Job to pull images and complete. `kubectl wait` already
-# blocks and polls, so one call with a long deadline replaces the old
-# 240-iteration Ansible retry loop that re-ran kubectl every 2 seconds.
-#
-# It sits at the top of this file rather than with the manifest staging
-# because the Traefik objects applied below (middlewares, TLS options,
-# HelmChartConfig) are meaningless until the upstream install has landed.
+# Must come before the apply below — the Traefik objects it applies
+# (middlewares, TLS options, HelmChartConfig) are meaningless until the
+# upstream install has landed. The long deadline is for a fresh VM with no
+# image cache, where the Helm-install Job needs minutes to pull.
 - name: Wait for Traefik to be ready
   ansible.builtin.command:
     argv:
@@ -30,13 +22,11 @@
     KUBECONFIG: "{{ kubeconfig }}"
   changed_when: false
 
-# Make released PVs available for rebinding (for data persistence across redeployments)
-#
 # A PV whose PVC was deleted goes to Released and will NOT rebind while it
 # still carries the old claimRef, so the app's new PVC stays Pending forever
-# and the pod never schedules. This used to be `failed_when: false`, which
-# meant a kubectl/RBAC problem here surfaced minutes later as an unexplained
-# scheduling failure. Failing loudly with the patch output is the whole point.
+# and its pod never schedules. Do NOT make this `failed_when: false`: a
+# kubectl/RBAC problem here then surfaces minutes later as an unexplained
+# scheduling failure instead of as itself.
 - name: Clear claimRef from released PVs
   block:
     - name: Patch released PVs to drop their stale claimRef
@@ -59,11 +49,9 @@
           recreated will stay Pending until this succeeds. kubectl said:
           {{ pv_clear.stderr | default('(no stderr captured)') }}
 
-# Plain `kubectl apply -f <dir> -R`, no kustomize: the kustomization.yaml was a
-# hand-maintained resource list that had to be edited every time a file was
-# added, and the overlay it once served (environments/production) is gone.
-# Everything under kubernetes/cluster/ is a plain manifest, so recursive apply
-# IS the deployed state.
+# Recursive apply, no kustomize — so a new file under kubernetes/cluster/ is
+# deployed without editing a resource list. kubectl walks the directory
+# lexically, which namespaces.yaml relies on to sort before network-policies/.
 - name: Deploy the cluster-wide manifests
   ansible.builtin.command:
     cmd: kubectl apply -f {{ manifest_dir }}/kubernetes/cluster -R
